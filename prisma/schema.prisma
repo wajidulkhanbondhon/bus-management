@@ -1,0 +1,511 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -------------------------------------------------------------
+// USER, AUTH & RBAC
+// -------------------------------------------------------------
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  phone         String?   @unique
+  fullName      String
+  passwordHash  String
+  roleId        String
+  role          Role      @relation(fields: [roleId], references: [id])
+  isActive      Boolean   @default(true)
+  discountLimit Float     @default(0.0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  createdBookings   Booking[]          @relation("BookingCreator")
+  receivedPayments  Payment[]          @relation("PaymentReceiver")
+  appliedDiscounts  Discount[]         @relation("DiscountApplier")
+  approvedDiscounts DiscountApproval[] @relation("DiscountApprover")
+  auditLogs         AuditLog[]
+  notifications     Notification[]
+  closedDays        DayClosing[]       @relation("DayClosingUser")
+
+  @@index([roleId])
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique // "SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF", "ACCOUNTANT", "VIEWER"
+  description String?
+  permissions RolePermission[]
+  users       User[]
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique // e.g. "booking:create", "discount:approve", "day:close"
+  name        String
+  category    String
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+// -------------------------------------------------------------
+// BUS, ROUTE & SEAT LAYOUT
+// -------------------------------------------------------------
+model Bus {
+  id             String      @id @default(uuid())
+  busName        String
+  busNumber      String      @unique
+  operator       String      @default("Central Transport Office")
+  regNumber      String      @unique
+  capacity       Int
+  busType        String      @default("MIXED") // "MALE", "FEMALE", "MIXED"
+  status         String      @default("ACTIVE") // "ACTIVE", "INACTIVE", "MAINTENANCE"
+  notes          String?
+  seatLayoutId   String?
+  seatLayout     SeatLayout? @relation(fields: [seatLayoutId], references: [id])
+  trips          Trip[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model SeatLayout {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  totalRows   Int
+  totalCols   Int
+  totalSeats  Int
+  layoutJson  String   // JSON string of layout matrix
+  buses       Bus[]
+  seats       Seat[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Seat {
+  id            String        @id @default(uuid())
+  seatLayoutId  String
+  seatLayout    SeatLayout    @relation(fields: [seatLayoutId], references: [id], onDelete: Cascade)
+  seatNumber    String        // e.g. "A1", "A2", "B1"
+  rowIndex      Int
+  colIndex      Int
+  seatType      String        @default("STANDARD") // "STANDARD", "VIP", "STAFF", "RESERVED", "EMERGENCY", "DISABLED"
+  genderAllowed String        @default("ANY") // "MALE_ONLY", "FEMALE_ONLY", "ANY"
+  fareZoneId    String?
+  fareZone      FareZone?     @relation(fields: [fareZoneId], references: [id])
+  baseFare      Float         @default(500.0)
+  isActive      Boolean       @default(true)
+
+  seatHolds     SeatHold[]
+  seatLocks     SeatLock[]
+  bookingSeats  BookingSeat[]
+
+  @@unique([seatLayoutId, seatNumber])
+  @@index([seatLayoutId])
+}
+
+model FareZone {
+  id          String     @id @default(uuid())
+  name        String     @unique // e.g. "Front VIP", "Standard A-E", "Rear Economy"
+  description String?
+  defaultFare Float
+  seats       Seat[]
+  fareRules   FareRule[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model BusRoute {
+  id           String     @id @default(uuid())
+  routeName    String     // e.g. "Rajshahi to Dhaka (Admission Express)"
+  origin       String
+  destination  String
+  distanceKm   Float?
+  estDuration  String?
+  stops        TripStop[]
+  trips        Trip[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model TripStop {
+  id           String   @id @default(uuid())
+  routeId      String
+  route        BusRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stopName     String
+  sequenceNo   Int
+  fareOffset   Float    @default(0.0)
+}
+
+// -------------------------------------------------------------
+// TRIP & SEAT INVENTORY
+// -------------------------------------------------------------
+model Trip {
+  id             String      @id @default(uuid())
+  tripCode       String      @unique // e.g. "TRIP-20260823-001"
+  busId          String
+  bus            Bus         @relation(fields: [busId], references: [id])
+  routeId        String
+  route          BusRoute    @relation(fields: [routeId], references: [id])
+  departureDate  DateTime
+  departureTime  DateTime
+  arrivalEst     DateTime?
+  tripBusType    String?     // "MALE", "FEMALE", "MIXED"
+  status         String      @default("SCHEDULED") // "SCHEDULED", "BOARDING", "ON_ROUTE", "COMPLETED", "CANCELLED"
+  basePrice      Float
+  notes          String?
+
+  fareRules      FareRule[]
+  seatHolds      SeatHold[]
+  seatLocks      SeatLock[]
+  bookings       Booking[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([departureDate, status])
+  @@index([busId, departureDate])
+}
+
+model FareRule {
+  id          String    @id @default(uuid())
+  tripId      String
+  trip        Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  fareZoneId  String
+  fareZone    FareZone  @relation(fields: [fareZoneId], references: [id])
+  customPrice Float
+
+  @@unique([tripId, fareZoneId])
+}
+
+model SeatHold {
+  id         String   @id @default(uuid())
+  tripId     String
+  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  seatId     String
+  seat       Seat     @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  staffId    String
+  holdToken  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([tripId, seatId])
+  @@index([expiresAt])
+}
+
+model SeatLock {
+  id          String    @id @default(uuid())
+  tripId      String
+  trip        Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  seatId      String
+  seat        Seat      @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  lockType    String    @default("TEMPORARY") // "PERMANENT", "TEMPORARY"
+  reason      String    @default("OTHER") // "EMERGENCY", "VIP", "STAFF", "RESERVED", "MAINTENANCE", "OTHER"
+  notes       String?
+  lockedBy    String
+  lockedUntil DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tripId, seatId])
+}
+
+// -------------------------------------------------------------
+// PASSENGERS, STUDENTS & GUARDIANS
+// -------------------------------------------------------------
+model Student {
+  id            String             @id @default(uuid())
+  admissionId   String?            @unique // e.g. "RU-2026-98124"
+  fullName      String
+  phone         String
+  gender        String             // "MALE", "FEMALE", "OTHER"
+  institution   String?            // e.g. "Rajshahi University Unit-A"
+  groupCategory String?            // "Science", "Arts", "Commerce"
+  address       String?
+  notes         String?
+  guardians     Guardian[]
+  passengers    BookingPassenger[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([phone])
+}
+
+model Guardian {
+  id           String             @id @default(uuid())
+  studentId    String
+  student      Student            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  name         String
+  phone        String
+  relationship String             // "FATHER", "MOTHER", "BROTHER", "SISTER", "UNCLE", "OTHER"
+  gender       String             // "MALE", "FEMALE"
+  notes        String?
+  passengers   BookingPassenger[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+}
+
+// -------------------------------------------------------------
+// BOOKING, SEATS & PASSENGER ALLOCATION
+// -------------------------------------------------------------
+model Booking {
+  id             String            @id @default(uuid())
+  bookingNumber  String            @unique // e.g. "BK-20260823-10284"
+  tripId         String
+  trip           Trip              @relation(fields: [tripId], references: [id])
+  createdById    String
+  createdBy      User              @relation("BookingCreator", fields: [createdById], references: [id])
+  bookingStatus  String            @default("CONFIRMED") // "DRAFT", "HELD", "CONFIRMED", "CANCELLED", "NO_SHOW", "COMPLETED", "REFUNDED", "PARTIALLY_REFUNDED"
+  paymentStatus  String            @default("UNPAID") // "UNPAID", "PARTIALLY_PAID", "PAID", "REFUNDED", "PARTIALLY_REFUNDED"
+  
+  grossAmount    Float
+  discountAmount Float             @default(0.0)
+  netAmount      Float
+  paidAmount     Float             @default(0.0)
+  dueAmount      Float
+  
+  notes          String?
+  passengers     BookingPassenger[]
+  seats          BookingSeat[]
+  discounts      Discount[]
+  payments       Payment[]
+  refunds        Refund[]
+  ledgerEntries  FinancialLedger[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([tripId, bookingStatus])
+  @@index([createdAt])
+  @@index([paymentStatus])
+}
+
+model BookingSeat {
+  id           String   @id @default(uuid())
+  bookingId    String
+  booking      Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  seatId       String
+  seat         Seat     @relation(fields: [seatId], references: [id])
+  fareSnapshot Float    // Retains exact historical price at booking time
+
+  @@unique([bookingId, seatId])
+  @@index([seatId])
+}
+
+model BookingPassenger {
+  id             String    @id @default(uuid())
+  bookingId      String
+  booking        Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  studentId      String?
+  student        Student?  @relation(fields: [studentId], references: [id])
+  guardianId     String?
+  guardian       Guardian? @relation(fields: [guardianId], references: [id])
+  passengerName  String
+  passengerPhone String
+  passengerType  String    // "STUDENT", "GUARDIAN", "GUEST"
+  gender         String    // "MALE", "FEMALE"
+  seatNumber     String    // Seat assigned to this passenger
+}
+
+// -------------------------------------------------------------
+// DISCOUNT & APPROVALS
+// -------------------------------------------------------------
+model Discount {
+  id             String            @id @default(uuid())
+  bookingId      String
+  booking        Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  discountType   String            @default("FIXED") // "FIXED", "PERCENTAGE"
+  discountRate   Float
+  discountAmount Float
+  reason         String
+  appliedById    String
+  appliedBy      User              @relation("DiscountApplier", fields: [appliedById], references: [id])
+  approvals      DiscountApproval[]
+  createdAt      DateTime          @default(now())
+
+  @@index([bookingId])
+}
+
+model DiscountApproval {
+  id           String    @id @default(uuid())
+  discountId   String
+  discount     Discount  @relation(fields: [discountId], references: [id], onDelete: Cascade)
+  approvedById String
+  approvedBy   User      @relation("DiscountApprover", fields: [approvedById], references: [id])
+  status       String    // "APPROVED", "REJECTED", "PENDING"
+  notes        String?
+  createdAt    DateTime  @default(now())
+}
+
+// -------------------------------------------------------------
+// PAYMENTS, TRANSACTIONS & REFUNDS
+// -------------------------------------------------------------
+model Payment {
+  id             String               @id @default(uuid())
+  receiptNumber  String               @unique // e.g. "RCT-20260823-0042"
+  bookingId      String
+  booking        Booking              @relation(fields: [bookingId], references: [id])
+  amount         Float
+  method         String               // "BKASH", "NAGAD", "ROCKET", "HAND_CASH", "BANK_TRANSFER", "OTHER"
+  receivedById   String
+  receivedBy     User                 @relation("PaymentReceiver", fields: [receivedById], references: [id])
+  notes          String?
+  transactions   PaymentTransaction[]
+  refunds        Refund[]
+  ledgerEntries  FinancialLedger[]
+  createdAt      DateTime             @default(now())
+
+  @@index([bookingId])
+  @@index([method, createdAt])
+}
+
+model PaymentTransaction {
+  id                 String    @id @default(uuid())
+  paymentId          String
+  payment            Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  transactionId      String    // Digital TrxID e.g. "BKA9281928"
+  senderReference    String?   // Sender mobile or account no
+  verificationStatus String    @default("VERIFIED") // "PENDING", "VERIFIED", "REJECTED"
+  verifiedAt         DateTime?
+  rawDetails         String?
+  createdAt          DateTime  @default(now())
+
+  @@index([transactionId])
+}
+
+model Refund {
+  id            String            @id @default(uuid())
+  refundNumber  String            @unique // e.g. "RF-20260823-0012"
+  bookingId     String
+  booking       Booking           @relation(fields: [bookingId], references: [id])
+  paymentId     String?
+  payment       Payment?          @relation(fields: [paymentId], references: [id])
+  amount        Float
+  method        String            // "BKASH", "NAGAD", "ROCKET", "HAND_CASH", "BANK_TRANSFER"
+  reason        String
+  processedById String
+  ledgerEntries FinancialLedger[]
+  createdAt     DateTime          @default(now())
+
+  @@index([bookingId])
+}
+
+// -------------------------------------------------------------
+// FINANCIAL LEDGER & DAY CLOSING
+// -------------------------------------------------------------
+model FinancialLedger {
+  id            String       @id @default(uuid())
+  entryNumber   String       @unique // e.g. "LED-20260823-00892"
+  entryType     String       // "SALE", "DISCOUNT", "PAYMENT_RECEIVED", "REFUND_ISSUED", "ADJUSTMENT", "DAY_CLOSING_TRANSFER"
+  debit         Float        @default(0.0)
+  credit        Float        @default(0.0)
+  balance       Float        @default(0.0)
+  paymentMethod String?      // "BKASH", "NAGAD", "ROCKET", "HAND_CASH", "BANK_TRANSFER", "OTHER"
+  bookingId     String?
+  booking       Booking?     @relation(fields: [bookingId], references: [id])
+  paymentId     String?
+  payment       Payment?     @relation(fields: [paymentId], references: [id])
+  refundId      String?
+  refund        Refund?      @relation(fields: [refundId], references: [id])
+  dayClosingId  String?
+  dayClosing    DayClosing?  @relation(fields: [dayClosingId], references: [id])
+  description   String
+  createdAt     DateTime     @default(now())
+
+  @@index([createdAt, entryType])
+  @@index([paymentMethod])
+}
+
+model DayClosing {
+  id                 String                     @id @default(uuid())
+  closingDate        DateTime                   @unique
+  closedById         String
+  closedBy           User                       @relation("DayClosingUser", fields: [closedById], references: [id])
+  isReopened         Boolean                    @default(false)
+  reopenedReason     String?
+  reopenedById       String?
+  
+  expectedGrossSales Float
+  expectedDiscount   Float
+  expectedNetSales   Float
+  expectedCollected  Float
+  expectedDue        Float
+  expectedRefunds    Float
+  
+  actualTotalCash    Float
+  cashDifference     Float
+  reconcileStatus    String                     // "MATCHED", "SHORT", "EXCESS"
+  
+  summaries          DayClosingPaymentSummary[]
+  ledgerEntries      FinancialLedger[]
+  notes              String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  @@index([closingDate])
+}
+
+model DayClosingPaymentSummary {
+  id             String     @id @default(uuid())
+  dayClosingId   String
+  dayClosing     DayClosing @relation(fields: [dayClosingId], references: [id], onDelete: Cascade)
+  method         String     // "BKASH", "NAGAD", "ROCKET", "HAND_CASH", "BANK_TRANSFER", "OTHER"
+  expectedAmount Float
+  actualAmount   Float
+  difference     Float
+  status         String     // "MATCHED", "SHORT", "EXCESS"
+  trxCount       Int
+}
+
+// -------------------------------------------------------------
+// AUDIT LOG, NOTIFICATIONS & SYSTEM SETTINGS
+// -------------------------------------------------------------
+model AuditLog {
+  id            String   @id @default(uuid())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  action        String   // "SEAT_LOCKED", "BOOKING_CREATED", "DISCOUNT_APPLIED", "DAY_CLOSED", "PAYMENT_RECEIVED", "REFUND_ISSUED"
+  entity        String   // "Booking", "Seat", "Payment", "DayClosing", "Trip"
+  entityId      String
+  previousValue String?  // JSON string
+  newValue      String?  // JSON string
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([userId, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  title     String
+  message   String
+  type      String   // "INFO", "WARNING", "APPROVAL_REQUEST", "MISMATCH"
+  isRead    Boolean  @default(false)
+  linkUrl   String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}

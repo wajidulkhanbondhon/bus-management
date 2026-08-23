@@ -1,0 +1,621 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum RoleType {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  BOOKING_STAFF
+  ACCOUNTANT
+  VIEWER
+}
+
+enum BusType {
+  MALE
+  FEMALE
+  MIXED
+}
+
+enum BusStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum SeatType {
+  STANDARD
+  VIP
+  STAFF
+  RESERVED
+  EMERGENCY
+  DISABLED
+}
+
+enum GenderAllowed {
+  MALE_ONLY
+  FEMALE_ONLY
+  ANY
+}
+
+enum TripStatus {
+  SCHEDULED
+  BOARDING
+  ON_ROUTE
+  COMPLETED
+  CANCELLED
+}
+
+enum BookingStatus {
+  DRAFT
+  HELD
+  CONFIRMED
+  CANCELLED
+  NO_SHOW
+  COMPLETED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentMethod {
+  BKASH
+  NAGAD
+  ROCKET
+  HAND_CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum LockType {
+  PERMANENT
+  TEMPORARY
+}
+
+enum LockReason {
+  EMERGENCY
+  VIP
+  STAFF
+  RESERVED
+  MAINTENANCE
+  OTHER
+}
+
+enum DiscountType {
+  FIXED
+  PERCENTAGE
+}
+
+enum LedgerEntryType {
+  SALE
+  DISCOUNT
+  PAYMENT_RECEIVED
+  REFUND_ISSUED
+  ADJUSTMENT
+  DAY_CLOSING_TRANSFER
+}
+
+enum ReconciliationStatus {
+  MATCHED
+  SHORT
+  EXCESS
+}
+
+// -------------------------------------------------------------
+// USER, AUTH & RBAC
+// -------------------------------------------------------------
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  phone         String?   @unique
+  fullName      String
+  passwordHash  String
+  roleId        String
+  role          Role      @relation(fields: [roleId], references: [id])
+  isActive      Boolean   @default(true)
+  discountLimit Decimal   @default(0.00) @db.Decimal(10, 2)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  createdBookings   Booking[]          @relation("BookingCreator")
+  receivedPayments  Payment[]          @relation("PaymentReceiver")
+  appliedDiscounts  Discount[]         @relation("DiscountApplier")
+  approvedDiscounts DiscountApproval[] @relation("DiscountApprover")
+  auditLogs         AuditLog[]
+  notifications     Notification[]
+  closedDays        DayClosing[]       @relation("DayClosingUser")
+
+  @@index([roleId])
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        RoleType         @unique
+  description String?
+  permissions RolePermission[]
+  users       User[]
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  name        String
+  category    String
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+// -------------------------------------------------------------
+// BUS, ROUTE & SEAT LAYOUT
+// -------------------------------------------------------------
+model Bus {
+  id             String      @id @default(uuid())
+  busName        String
+  busNumber      String      @unique
+  operator       String      @default("Central Transport Office")
+  regNumber      String      @unique
+  capacity       Int
+  busType        BusType     @default(MIXED)
+  status         BusStatus   @default(ACTIVE)
+  notes          String?
+  seatLayoutId   String?
+  seatLayout     SeatLayout? @relation(fields: [seatLayoutId], references: [id])
+  trips          Trip[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model SeatLayout {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  totalRows   Int
+  totalCols   Int
+  totalSeats  Int
+  layoutJson  Json
+  buses       Bus[]
+  seats       Seat[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Seat {
+  id            String        @id @default(uuid())
+  seatLayoutId  String
+  seatLayout    SeatLayout    @relation(fields: [seatLayoutId], references: [id], onDelete: Cascade)
+  seatNumber    String
+  rowIndex      Int
+  colIndex      Int
+  seatType      SeatType      @default(STANDARD)
+  genderAllowed GenderAllowed @default(ANY)
+  fareZoneId    String?
+  fareZone      FareZone?     @relation(fields: [fareZoneId], references: [id])
+  baseFare      Decimal       @default(500.00) @db.Decimal(10, 2)
+  isActive      Boolean       @default(true)
+
+  seatHolds     SeatHold[]
+  seatLocks     SeatLock[]
+  bookingSeats  BookingSeat[]
+
+  @@unique([seatLayoutId, seatNumber])
+  @@index([seatLayoutId])
+}
+
+model FareZone {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String?
+  defaultFare Decimal    @db.Decimal(10, 2)
+  seats       Seat[]
+  fareRules   FareRule[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model BusRoute {
+  id           String     @id @default(uuid())
+  routeName    String
+  origin       String
+  destination  String
+  distanceKm   Decimal?   @db.Decimal(6, 2)
+  estDuration  String?
+  stops        TripStop[]
+  trips        Trip[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model TripStop {
+  id           String   @id @default(uuid())
+  routeId      String
+  route        BusRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stopName     String
+  sequenceNo   Int
+  fareOffset   Decimal  @default(0.00) @db.Decimal(10, 2)
+}
+
+// -------------------------------------------------------------
+// TRIP & SEAT INVENTORY
+// -------------------------------------------------------------
+model Trip {
+  id             String      @id @default(uuid())
+  tripCode       String      @unique
+  busId          String
+  bus            Bus         @relation(fields: [busId], references: [id])
+  routeId        String
+  route          BusRoute    @relation(fields: [routeId], references: [id])
+  departureDate  DateTime    @db.Date
+  departureTime  DateTime
+  arrivalEst     DateTime?
+  tripBusType    BusType?
+  status         TripStatus  @default(SCHEDULED)
+  basePrice      Decimal     @db.Decimal(10, 2)
+  notes          String?
+
+  fareRules      FareRule[]
+  seatHolds      SeatHold[]
+  seatLocks      SeatLock[]
+  bookings       Booking[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([departureDate, status])
+  @@index([busId, departureDate])
+}
+
+model FareRule {
+  id          String    @id @default(uuid())
+  tripId      String
+  trip        Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  fareZoneId  String
+  fareZone    FareZone  @relation(fields: [fareZoneId], references: [id])
+  customPrice Decimal   @db.Decimal(10, 2)
+
+  @@unique([tripId, fareZoneId])
+}
+
+model SeatHold {
+  id         String   @id @default(uuid())
+  tripId     String
+  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  seatId     String
+  seat       Seat     @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  staffId    String
+  holdToken  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([tripId, seatId])
+  @@index([expiresAt])
+}
+
+model SeatLock {
+  id          String     @id @default(uuid())
+  tripId      String
+  trip        Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  seatId      String
+  seat        Seat       @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  lockType    LockType   @default(TEMPORARY)
+  reason      LockReason @default(OTHER)
+  notes       String?
+  lockedBy    String
+  lockedUntil DateTime?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([tripId, seatId])
+}
+
+// -------------------------------------------------------------
+// PASSENGERS, STUDENTS & GUARDIANS
+// -------------------------------------------------------------
+model Student {
+  id            String             @id @default(uuid())
+  admissionId   String?            @unique
+  fullName      String
+  phone         String             @index
+  gender        String
+  institution   String?
+  groupCategory String?
+  address       String?
+  notes         String?
+  guardians     Guardian[]
+  passengers    BookingPassenger[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+}
+
+model Guardian {
+  id           String             @id @default(uuid())
+  studentId    String
+  student      Student            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  name         String
+  phone        String
+  relationship String
+  gender       String
+  notes        String?
+  passengers   BookingPassenger[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+}
+
+// -------------------------------------------------------------
+// BOOKING, SEATS & PASSENGER ALLOCATION
+// -------------------------------------------------------------
+model Booking {
+  id             String            @id @default(uuid())
+  bookingNumber  String            @unique
+  tripId         String
+  trip           Trip              @relation(fields: [tripId], references: [id])
+  createdById    String
+  createdBy      User              @relation("BookingCreator", fields: [createdById], references: [id])
+  bookingStatus  BookingStatus     @default(CONFIRMED)
+  paymentStatus  PaymentStatus     @default(UNPAID)
+  
+  grossAmount    Decimal           @db.Decimal(10, 2)
+  discountAmount Decimal           @default(0.00) @db.Decimal(10, 2)
+  netAmount      Decimal           @db.Decimal(10, 2)
+  paidAmount     Decimal           @default(0.00) @db.Decimal(10, 2)
+  dueAmount      Decimal           @db.Decimal(10, 2)
+  
+  notes          String?
+  passengers     BookingPassenger[]
+  seats          BookingSeat[]
+  discounts      Discount[]
+  payments       Payment[]
+  refunds        Refund[]
+  ledgerEntries  FinancialLedger[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([tripId, bookingStatus])
+  @@index([createdAt])
+  @@index([paymentStatus])
+}
+
+model BookingSeat {
+  id           String   @id @default(uuid())
+  bookingId    String
+  booking      Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  seatId       String
+  seat         Seat     @relation(fields: [seatId], references: [id])
+  fareSnapshot Decimal  @db.Decimal(10, 2)
+
+  @@unique([bookingId, seatId])
+  @@index([seatId])
+}
+
+model BookingPassenger {
+  id             String    @id @default(uuid())
+  bookingId      String
+  booking        Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  studentId      String?
+  student        Student?  @relation(fields: [studentId], references: [id])
+  guardianId     String?
+  guardian       Guardian? @relation(fields: [guardianId], references: [id])
+  passengerName  String
+  passengerPhone String
+  passengerType  String
+  gender         String
+  seatNumber     String
+}
+
+// -------------------------------------------------------------
+// DISCOUNT & APPROVALS
+// -------------------------------------------------------------
+model Discount {
+  id             String            @id @default(uuid())
+  bookingId      String
+  booking        Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  discountType   DiscountType      @default(FIXED)
+  discountRate   Decimal           @db.Decimal(10, 2)
+  discountAmount Decimal           @db.Decimal(10, 2)
+  reason         String
+  appliedById    String
+  appliedBy      User              @relation("DiscountApplier", fields: [appliedById], references: [id])
+  approvals      DiscountApproval[]
+  createdAt      DateTime          @default(now())
+
+  @@index([bookingId])
+}
+
+model DiscountApproval {
+  id           String    @id @default(uuid())
+  discountId   String
+  discount     Discount  @relation(fields: [discountId], references: [id], onDelete: Cascade)
+  approvedById String
+  approvedBy   User      @relation("DiscountApprover", fields: [approvedById], references: [id])
+  status       String
+  notes        String?
+  createdAt    DateTime  @default(now())
+}
+
+// -------------------------------------------------------------
+// PAYMENTS, TRANSACTIONS & REFUNDS
+// -------------------------------------------------------------
+model Payment {
+  id             String               @id @default(uuid())
+  receiptNumber  String               @unique
+  bookingId      String
+  booking        Booking              @relation(fields: [bookingId], references: [id])
+  amount         Decimal              @db.Decimal(10, 2)
+  method         PaymentMethod
+  receivedById   String
+  receivedBy     User                 @relation("PaymentReceiver", fields: [receivedById], references: [id])
+  notes          String?
+  transactions   PaymentTransaction[]
+  refunds        Refund[]
+  ledgerEntries  FinancialLedger[]
+  createdAt      DateTime             @default(now())
+
+  @@index([bookingId])
+  @@index([method, createdAt])
+}
+
+model PaymentTransaction {
+  id                 String             @id @default(uuid())
+  paymentId          String
+  payment            Payment            @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  transactionId      String
+  senderReference    String?
+  verificationStatus VerificationStatus @default(VERIFIED)
+  verifiedAt         DateTime?
+  rawResponse        Json?
+  createdAt          DateTime           @default(now())
+
+  @@index([transactionId])
+}
+
+model Refund {
+  id            String            @id @default(uuid())
+  refundNumber  String            @unique
+  bookingId     String
+  booking       Booking           @relation(fields: [bookingId], references: [id])
+  paymentId     String?
+  payment       Payment?          @relation(fields: [paymentId], references: [id])
+  amount        Decimal           @db.Decimal(10, 2)
+  method        PaymentMethod
+  reason        String
+  processedById String
+  ledgerEntries FinancialLedger[]
+  createdAt     DateTime          @default(now())
+
+  @@index([bookingId])
+}
+
+// -------------------------------------------------------------
+// FINANCIAL LEDGER & DAY CLOSING
+// -------------------------------------------------------------
+model FinancialLedger {
+  id            String          @id @default(uuid())
+  entryNumber   String          @unique
+  entryType     LedgerEntryType
+  debit         Decimal         @default(0.00) @db.Decimal(10, 2)
+  credit        Decimal         @default(0.00) @db.Decimal(10, 2)
+  balance       Decimal         @default(0.00) @db.Decimal(10, 2)
+  paymentMethod PaymentMethod?
+  bookingId     String?
+  booking       Booking?        @relation(fields: [bookingId], references: [id])
+  paymentId     String?
+  payment       Payment?        @relation(fields: [paymentId], references: [id])
+  refundId      String?
+  refund        Refund?         @relation(fields: [refundId], references: [id])
+  dayClosingId  String?
+  dayClosing    DayClosing?     @relation(fields: [dayClosingId], references: [id])
+  description   String
+  createdAt     DateTime        @default(now())
+
+  @@index([createdAt, entryType])
+  @@index([paymentMethod])
+}
+
+model DayClosing {
+  id                 String                     @id @default(uuid())
+  closingDate        DateTime                   @unique @db.Date
+  closedById         String
+  closedBy           User                       @relation("DayClosingUser", fields: [closedById], references: [id])
+  isReopened         Boolean                    @default(false)
+  reopenedReason     String?
+  reopenedById       String?
+  
+  expectedGrossSales Decimal                    @db.Decimal(10, 2)
+  expectedDiscount   Decimal                    @db.Decimal(10, 2)
+  expectedNetSales   Decimal                    @db.Decimal(10, 2)
+  expectedCollected  Decimal                    @db.Decimal(10, 2)
+  expectedDue        Decimal                    @db.Decimal(10, 2)
+  expectedRefunds    Decimal                    @db.Decimal(10, 2)
+  
+  actualTotalCash    Decimal                    @db.Decimal(10, 2)
+  cashDifference     Decimal                    @db.Decimal(10, 2)
+  reconcileStatus    ReconciliationStatus
+  
+  summaries          DayClosingPaymentSummary[]
+  ledgerEntries      FinancialLedger[]
+  notes              String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  @@index([closingDate])
+}
+
+model DayClosingPaymentSummary {
+  id             String               @id @default(uuid())
+  dayClosingId   String
+  dayClosing     DayClosing           @relation(fields: [dayClosingId], references: [id], onDelete: Cascade)
+  method         PaymentMethod
+  expectedAmount Decimal              @db.Decimal(10, 2)
+  actualAmount   Decimal              @db.Decimal(10, 2)
+  difference     Decimal              @db.Decimal(10, 2)
+  status         ReconciliationStatus
+  trxCount       Int
+}
+
+// -------------------------------------------------------------
+// AUDIT LOG, NOTIFICATIONS & SYSTEM SETTINGS
+// -------------------------------------------------------------
+model AuditLog {
+  id            String   @id @default(uuid())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  action        String
+  entity        String
+  entityId      String
+  previousValue Json?
+  newValue      Json?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([userId, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  linkUrl   String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
