@@ -46,6 +46,9 @@ import {
   Plus,
   Edit2,
   Trash2,
+  Tag,
+  KeyRound,
+  MessageSquare,
   X
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -103,6 +106,18 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
     sequence: 1,
     pickupEnabled: true,
     dropEnabled: true
+  });
+
+  // Coupon CRUD Form State
+  const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
+  const [editingCouponId, setEditingCouponId] = useState<string | null>(null);
+  const [couponForm, setCouponForm] = useState({
+    code: '',
+    discountType: 'FIXED' as 'FIXED' | 'PERCENTAGE',
+    amount: 50,
+    maxUses: 100,
+    validUntil: '2026-12-31',
+    targetUniversity: 'সকল বিশ্ববিদ্যালয় (All)'
   });
 
   // Category Tag Add State
@@ -258,6 +273,54 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
     triggerAutoSave(updated, language === 'bn' ? '✓ পয়েন্ট মুছে ফেলা হয়েছে।' : '✓ Stop deleted.');
   };
 
+  // --- COUPONS CRUD HANDLERS ---
+  const handleOpenAddCoupon = () => {
+    setEditingCouponId(null);
+    setCouponForm({
+      code: '',
+      discountType: 'FIXED',
+      amount: 50,
+      maxUses: 100,
+      validUntil: '2026-12-31',
+      targetUniversity: 'সকল বিশ্ববিদ্যালয় (All)'
+    });
+    setIsCouponModalOpen(true);
+  };
+
+  const handleSaveCoupon = () => {
+    if (!couponForm.code.trim()) return;
+
+    let updatedCoupons = [...(orgSettings.coupons || [])];
+    if (editingCouponId) {
+      updatedCoupons = updatedCoupons.map(c =>
+        c.id === editingCouponId ? { ...c, ...couponForm, code: couponForm.code.toUpperCase().trim() } : c
+      );
+    } else {
+      updatedCoupons.push({
+        id: `cp-${Date.now()}`,
+        code: couponForm.code.toUpperCase().trim(),
+        discountType: couponForm.discountType,
+        amount: Number(couponForm.amount),
+        maxUses: Number(couponForm.maxUses),
+        usedCount: 0,
+        validUntil: couponForm.validUntil,
+        targetUniversity: couponForm.targetUniversity,
+        status: 'ACTIVE'
+      });
+    }
+
+    const updated = { ...orgSettings, coupons: updatedCoupons };
+    triggerAutoSave(updated, language === 'bn' ? '✓ কুপন কোড সফলভাবে যুক্ত হয়েছে!' : '✓ Coupon code added successfully!');
+    setIsCouponModalOpen(false);
+  };
+
+  const handleDeleteCoupon = (id: string) => {
+    if (!confirm(language === 'bn' ? 'আপনি কি এই কুপন কোডটি ডিলিট করতে চান?' : 'Are you sure you want to delete this coupon?')) return;
+    const updatedCoupons = (orgSettings.coupons || []).filter(c => c.id !== id);
+    const updated = { ...orgSettings, coupons: updatedCoupons };
+    triggerAutoSave(updated, language === 'bn' ? '✓ কুপন মুছে ফেলা হয়েছে।' : '✓ Coupon deleted.');
+  };
+
   // --- INCOME & EXPENSE TAGS CRUD ---
   const handleAddIncomeCategory = () => {
     if (!newIncomeCategory.trim()) return;
@@ -318,17 +381,21 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
     { id: 'seat_rules', nameBn: '৫. সিট রুলস ও জেন্ডার লক', nameEn: '5. Seat Rules & Gender Lock', icon: Lock },
     { id: 'passenger_rules', nameBn: '৬. অভিভাবক ও শিক্ষার্থী রুলস', nameEn: '6. Passenger Eligibility', icon: Users },
     { id: 'stops', nameBn: '৭. বোর্ডিং ও ড্রপিং পয়েন্ট ড্রপডাউন (Add/Edit/Delete)', nameEn: '7. Boarding & Dropping Points', icon: MapPin },
-    { id: 'booking', nameBn: '৮. টিকিট বুকিং ও হোল্ড টাইমার', nameEn: '8. Booking & Hold Rules', icon: Receipt },
-    { id: 'discounts', nameBn: '৯. ছাড় ও রোল-ভিত্তিক লিমিট', nameEn: '9. Discounts & Limits', icon: Percent },
-    { id: 'payments', nameBn: '১০. পেমেন্ট গেটওয়ে (বিকাশ/নগদ/রকেট)', nameEn: '10. Payment & MFS Gateways', icon: CreditCard },
-    { id: 'finance', nameBn: '১১. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং', nameEn: '11. Finance & Day Closing', icon: Coins },
-    { id: 'categories', nameBn: '১২. আয় ও ব্যয় ক্যাটাগরি (Add/Delete)', nameEn: '12. Income & Expense Tags', icon: Layers },
-    { id: 'documents', nameBn: '১৩. ডকুমেন্ট ও থার্মাল পিওএস প্রিন্ট', nameEn: '13. Documents & Thermal Print', icon: Printer },
-    { id: 'communication', nameBn: '১৪. এসএমএস ও হোয়াটসঅ্যাপ এলার্ট', nameEn: '14. SMS & WhatsApp API', icon: Send },
-    { id: 'security', nameBn: '১৫. নিরাপত্তা, পাসওয়ার্ড ও সেশন', nameEn: '15. Security & Session', icon: ShieldCheck },
-    { id: 'appearance', nameBn: '১৬. থিম ও কালার কাস্টমাইজেশন', nameEn: '16. Appearance & Themes', icon: Sparkles },
-    { id: 'payment_logos', nameBn: '১৭. পেমেন্ট ব্র্যান্ড লোগো সেটিংস', nameEn: '17. Payment Brand Logos', icon: CreditCard },
-    { id: 'database_backup', nameBn: '১৮. ডাটাবেজ ব্যাকআপ ও মাইগ্রেশন', nameEn: '18. Database Backup & Restore', icon: Database }
+    { id: 'coupons', nameBn: '৮. কুপন ও প্রমো কোড ইঞ্জিন (New)', nameEn: '8. Coupons & Promo Engine', icon: Tag },
+    { id: 'role_permissions', nameBn: '৯. স্টাফ রোল পারমিশন ম্যাট্রিক্স (New)', nameEn: '9. Role Permissions Matrix', icon: KeyRound },
+    { id: 'booking', nameBn: '১০. টিকিট বুকিং ও হোল্ড টাইমার', nameEn: '10. Booking & Hold Rules', icon: Receipt },
+    { id: 'discounts', nameBn: '১১. ছাড় ও রোল-ভিত্তিক লিমিট', nameEn: '11. Discounts & Limits', icon: Percent },
+    { id: 'payments', nameBn: '১২. পেমেন্ট গেটওয়ে (বিকাশ/নগদ/রকেট)', nameEn: '12. Payment & MFS Gateways', icon: CreditCard },
+    { id: 'finance', nameBn: '১৩. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং', nameEn: '13. Finance & Day Closing', icon: Coins },
+    { id: 'categories', nameBn: '১৪. আয় ও ব্যয় ক্যাটাগরি (Add/Delete)', nameEn: '14. Income & Expense Tags', icon: Layers },
+    { id: 'documents', nameBn: '১৫. ডকুমেন্ট ও থার্মাল পিওএস প্রিন্ট', nameEn: '15. Documents & Thermal Print', icon: Printer },
+    { id: 'sms_templates', nameBn: '১৬. কাস্টম এসএমএস টেমপ্লেট বিল্ডার (New)', nameEn: '16. SMS Template Builder', icon: MessageSquare },
+    { id: 'fuel', nameBn: '১৭. ফুয়েল ও মাইলেজ ক্যালকুলেটর (New)', nameEn: '17. Fuel & Mileage Rules', icon: Fuel },
+    { id: 'communication', nameBn: '১৮. এসএমএস ও হোয়াটসঅ্যাপ গেটওয়ে', nameEn: '18. SMS & WhatsApp API', icon: Send },
+    { id: 'security', nameBn: '১৯. নিরাপত্তা, পাসওয়ার্ড ও সেশন', nameEn: '19. Security & Session', icon: ShieldCheck },
+    { id: 'appearance', nameBn: '২০. থিম ও কালার কাস্টমাইজেশন', nameEn: '20. Appearance & Themes', icon: Sparkles },
+    { id: 'payment_logos', nameBn: '২১. পেমেন্ট ব্র্যান্ড লোগো সেটিংস', nameEn: '21. Payment Brand Logos', icon: CreditCard },
+    { id: 'database_backup', nameBn: '২২. ডাটাবেজ ব্যাকআপ ও মাইগ্রেশন', nameEn: '22. Database Backup & Restore', icon: Database }
   ];
 
   // Filter Categories by Search Query
@@ -353,8 +420,8 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 {language === 'bn'
-                  ? 'কাউন্টার, বোর্ডিং পয়েন্ট, সিট পলিসি, পেমেন্ট নম্বর ও ব্যাকআপ ম্যানেজমেন্ট'
-                  : 'Full CRUD configuration for counters, boarding points, fare rules, and system backups'}
+                  ? 'কাউন্টার, বোর্ডিং পয়েন্ট, কুপন ইঞ্জিন, রোল পারমিশন ও এসএমএস টেমপ্লেট নিয়ন্ত্রণ'
+                  : 'Master control for counters, stops, promo coupons, role permissions, and SMS templates'}
               </p>
             </div>
           </div>
@@ -390,7 +457,7 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={language === 'bn' ? 'সেটিংস খুঁজুন (e.g. bKash, discount, branch)...' : 'Search settings...'}
+              placeholder={language === 'bn' ? 'সেটিংস খুঁজুন (e.g. coupon, sms, branch)...' : 'Search settings...'}
               className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 shadow-2xs"
             />
           </div>
@@ -740,13 +807,124 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 8: Booking & Hold Policies */}
+          {/* SECTION 8: Coupons & Promo Engine (NEW FULL CRUD) */}
+          {activeSection === 'coupons' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <Tag className="w-5 h-5 text-indigo-600" />
+                  <span>{language === 'bn' ? '৮. ভর্তি পরীক্ষা স্পেশাল কুপন ও প্রমো কোড' : '8. Promo Coupons Engine'}</span>
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Badge variant="primary">{(orgSettings.coupons || []).length} টি সক্রিয় কুপন</Badge>
+                  <Button size="sm" variant="primary" onClick={handleOpenAddCoupon} className="font-bold rounded-xl text-xs">
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    {language === 'bn' ? 'নতুন কুপন কোড তৈরি' : 'Create Coupon'}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="space-y-3">
+                  {(orgSettings.coupons || []).map((cp, idx) => (
+                    <div key={cp.id || idx} className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                            {cp.code}
+                          </span>
+                          <Badge variant="success">
+                            {cp.discountType === 'FIXED' ? `৳${cp.amount} ছাড়` : `${cp.amount}% ছাড়`}
+                          </Badge>
+                          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                            {cp.targetUniversity}
+                          </span>
+                        </div>
+                        <p className="text-slate-500 mt-1.5 font-mono text-[11px]">
+                          ব্যবহার: {cp.usedCount} / {cp.maxUses} বার • মেয়াদ: {cp.validUntil}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <Button size="sm" variant="danger" onClick={() => handleDeleteCoupon(cp.id)} className="h-8 px-2.5 font-bold rounded-xl">
+                          <Trash2 className="w-3.5 h-3.5 mr-1" />
+                          {language === 'bn' ? 'মুছে ফেলুন' : 'Delete'}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 9: Role Permissions Matrix (NEW) */}
+          {activeSection === 'role_permissions' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-amber-600" />
+                  <span>{language === 'bn' ? '৯. স্টাফ ও ইউজার রোল পারমিশন ম্যাট্রিক্স' : '9. Role Permissions Matrix'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-bold">
+                      <th className="p-3">অনুমোদিত অ্যাকশন / ফিচার</th>
+                      <th className="p-3 text-center">বুকিং স্টাফ</th>
+                      <th className="p-3 text-center">কাউন্টার ম্যানেজার</th>
+                      <th className="p-3 text-center">একাউন্ট্যান্ট</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                    <tr>
+                      <td className="p-3 font-bold">টিকিট কাটা ও বুকিং করা</td>
+                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
+                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
+                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-bold">টিকিট বাতিল ও রিফান্ড অনুমোদন</td>
+                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
+                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
+                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-bold">সর্বোচ্চ ৫০ টাকা ছাড় দেওয়া</td>
+                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
+                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
+                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-bold">সর্বোচ্চ ২০০ টাকা ছাড় অনুমোদন</td>
+                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
+                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
+                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-bold">দৈনিক লাভ/ক্ষতি ও সেলস রিপোর্ট দেখা</td>
+                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
+                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
+                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-bold">ডে ক্লোজিং হিসাব সম্পন্ন ও লক করা</td>
+                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
+                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
+                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 10: Booking & Hold Policies */}
           {activeSection === 'booking' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Receipt className="w-5 h-5 text-blue-600" />
-                  <span>{language === 'bn' ? '৮. টিকিট বুকিং ও সিট হোল্ড টাইমার' : '8. Booking & Hold Rules'}</span>
+                  <span>{language === 'bn' ? '১০. টিকিট বুকিং ও সিট হোল্ড টাইমার' : '10. Booking & Hold Rules'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -777,13 +955,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 9: Discounts & Caps */}
+          {/* SECTION 11: Discounts & Caps */}
           {activeSection === 'discounts' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Percent className="w-5 h-5 text-purple-600" />
-                  <span>{language === 'bn' ? '৯. ডিসকাউন্ট ও ছাড়ের রোল-ভিত্তিক লিমিট' : '9. Role-Based Discount Limits'}</span>
+                  <span>{language === 'bn' ? '১১. ছাড় ও কমিশন নীতিমালা' : '11. Role-Based Discount Limits'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -834,13 +1012,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 10: Payment Gateways & MFS */}
+          {/* SECTION 12: Payment Gateways & MFS */}
           {activeSection === 'payments' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-emerald-600" />
-                  <span>{language === 'bn' ? '১০. পেমেন্ট গেটওয়ে ও বিকাশ/নগদ মার্চেন্ট কনফিগ' : '10. Payment Gateways & MFS'}</span>
+                  <span>{language === 'bn' ? '১২. পেমেন্ট গেটওয়ে ও বিকাশ/নগদ মার্চেন্ট কনফিগ' : '12. Payment Gateways & MFS'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -879,13 +1057,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 11: Finance & Day Closing */}
+          {/* SECTION 13: Finance & Day Closing */}
           {activeSection === 'finance' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Coins className="w-5 h-5 text-amber-600" />
-                  <span>{language === 'bn' ? '১১. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং হিসাব' : '11. Finance & Day Closing'}</span>
+                  <span>{language === 'bn' ? '১৩. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং হিসাব' : '13. Finance & Day Closing'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -911,13 +1089,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 12: Income & Expense Categories (FULL CRUD) */}
+          {/* SECTION 14: Income & Expense Categories (FULL CRUD) */}
           {activeSection === 'categories' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Layers className="w-5 h-5 text-indigo-600" />
-                  <span>{language === 'bn' ? '১২. আয় ও ব্যয় ক্যাটাগরি ব্যবস্থাপনা (Add / Delete Tags)' : '12. Income & Expense Categories'}</span>
+                  <span>{language === 'bn' ? '১৪. আয় ও ব্যয় ক্যাটাগরি ব্যবস্থাপনা (Add / Delete Tags)' : '14. Income & Expense Categories'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-6 text-xs">
@@ -994,13 +1172,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 13: Documents & Thermal Printing */}
+          {/* SECTION 15: Documents & Thermal Printing */}
           {activeSection === 'documents' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Printer className="w-5 h-5 text-blue-600" />
-                  <span>{language === 'bn' ? '১৩. ডকুমেন্ট ও থার্মাল পিওএস প্রিন্ট সেটিংস' : '13. Documents & Thermal Print'}</span>
+                  <span>{language === 'bn' ? '১৫. ডকুমেন্ট ও থার্মাল পিওএস প্রিন্ট সেটিংস' : '15. Documents & Thermal Print'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -1044,13 +1222,102 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 14: SMS & WhatsApp Gateways */}
+          {/* SECTION 16: SMS Template Builder (NEW) */}
+          {activeSection === 'sms_templates' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-emerald-600" />
+                  <span>{language === 'bn' ? '১৬. কাস্টম এসএমএস ও হোয়াটসঅ্যাপ টেমপ্লেট বিল্ডার' : '16. SMS Template Builder'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">১. টিকিট নিশ্চিতকরণ এসএমএস টেমপ্লেট (Booking Confirmation)</label>
+                    <textarea
+                      rows={3}
+                      value={orgSettings.smsTemplates?.bookingConfirmation || ''}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, smsTemplates: { ...orgSettings.smsTemplates, bookingConfirmation: e.target.value } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-medium"
+                    />
+                    <div className="flex gap-1.5 mt-1 text-[10px] text-slate-400">
+                      <span>ট্যাগসমূহ:</span>
+                      <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-blue-600">{'{student_name}'}</span>
+                      <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-blue-600">{'{bus_name}'}</span>
+                      <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-blue-600">{'{seats}'}</span>
+                      <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-blue-600">{'{trip_date}'}</span>
+                      <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-blue-600">{'{tracking_link}'}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">২. পেমেন্ট রসিদ এসএমএস টেমপ্লেট (Payment Receipt)</label>
+                    <textarea
+                      rows={2}
+                      value={orgSettings.smsTemplates?.paymentReceipt || ''}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, smsTemplates: { ...orgSettings.smsTemplates, paymentReceipt: e.target.value } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">৩. যাত্রা শুরুর রিমাইন্ডার এসএমএস (Trip Reminder)</label>
+                    <textarea
+                      rows={2}
+                      value={orgSettings.smsTemplates?.tripReminder || ''}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, smsTemplates: { ...orgSettings.smsTemplates, tripReminder: e.target.value } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-medium"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 17: Fuel & Mileage Rules (NEW) */}
+          {activeSection === 'fuel' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <Fuel className="w-5 h-5 text-amber-600" />
+                  <span>{language === 'bn' ? '১৭. ফুয়েল ও ট্রিপ মাইলেজ অটো-ক্যালকুলেটর' : '17. Fuel & Mileage Rules'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-bold mb-1.5">বর্তমান ডিজেল প্রতি লিটার দর (৳)</label>
+                    <input
+                      type="number"
+                      value={orgSettings.fuel.currentPricePerLitre}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, fuel: { ...orgSettings.fuel, currentPricePerLitre: Number(e.target.value) } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1.5">টার্গেট মাইলেজ (কিমি / লিটার)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={orgSettings.fuel.targetKmPerLitre}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, fuel: { ...orgSettings.fuel, targetKmPerLitre: Number(e.target.value) } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 18: SMS & WhatsApp Gateways */}
           {activeSection === 'communication' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Send className="w-5 h-5 text-emerald-600" />
-                  <span>{language === 'bn' ? '১৪. এসএমএস ও হোয়াটসঅ্যাপ অটোমেশন গেটওয়ে' : '14. SMS & WhatsApp Automation'}</span>
+                  <span>{language === 'bn' ? '১৮. এসএমএস ও হোয়াটসঅ্যাপ অটোমেশন গেটওয়ে' : '18. SMS & WhatsApp Automation'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -1075,13 +1342,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 15: Security & Session */}
+          {/* SECTION 19: Security & Session */}
           {activeSection === 'security' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-rose-600" />
-                  <span>{language === 'bn' ? '১৫. নিরাপত্তা, পাসওয়ার্ড ও সেশন ম্যানেজমেন্ট' : '15. Security & Session Management'}</span>
+                  <span>{language === 'bn' ? '১৯. নিরাপত্তা, পাসওয়ার্ড ও সেশন ম্যানেজমেন্ট' : '19. Security & Session Management'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -1109,21 +1376,21 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 16: Appearance & Themes */}
+          {/* SECTION 20: Appearance & Themes */}
           {activeSection === 'appearance' && (
             <div className="space-y-6">
               <AppearanceSettingsClient />
             </div>
           )}
 
-          {/* SECTION 17: Payment Brand Logos */}
+          {/* SECTION 21: Payment Brand Logos */}
           {activeSection === 'payment_logos' && (
             <div className="space-y-6">
               <PaymentLogosSettingsClient />
             </div>
           )}
 
-          {/* SECTION 18: Database Backup & Hosting Migration */}
+          {/* SECTION 22: Database Backup & Hosting Migration */}
           {activeSection === 'database_backup' && (
             <div className="space-y-6">
               <DatabaseBackupClient />
@@ -1277,6 +1544,94 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               </Button>
               <Button variant="primary" size="sm" onClick={handleSaveStop} className="font-bold">
                 {language === 'bn' ? 'পয়েন্ট সেভ করুন' : 'Save Stop'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* --- COUPON MODAL (ADD & EDIT) --- */}
+      {isCouponModalOpen && (
+        <Modal
+          isOpen={isCouponModalOpen}
+          onClose={() => setIsCouponModalOpen(false)}
+          title={editingCouponId ? (language === 'bn' ? 'কুপন সম্পাদনা' : 'Edit Coupon') : (language === 'bn' ? 'নতুন কুপন কোড তৈরি করুন' : 'Create New Promo Coupon')}
+        >
+          <div className="space-y-4 p-2 text-xs">
+            <div>
+              <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">কুপন কোড (Promo Code) *</label>
+              <input
+                type="text"
+                value={couponForm.code}
+                onChange={(e) => setCouponForm({ ...couponForm, code: e.target.value.toUpperCase() })}
+                placeholder="e.g. RU_EXAM_50"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-black tracking-wider text-indigo-600"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">ছাড়ের ধরণ</label>
+                <select
+                  value={couponForm.discountType}
+                  onChange={(e) => setCouponForm({ ...couponForm, discountType: e.target.value as any })}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+                >
+                  <option value="FIXED">নির্দিষ্ট টাকা (Fixed BDT ৳)</option>
+                  <option value="PERCENTAGE">শতকরা হার (Percentage %)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">ছাড়ের পরিমাণ *</label>
+                <input
+                  type="number"
+                  value={couponForm.amount}
+                  onChange={(e) => setCouponForm({ ...couponForm, amount: Number(e.target.value) })}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">সর্বোচ্চ ব্যবহার লিমিট</label>
+                <input
+                  type="number"
+                  value={couponForm.maxUses}
+                  onChange={(e) => setCouponForm({ ...couponForm, maxUses: Number(e.target.value) })}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">মেয়াদ উত্তীর্ণের তারিখ</label>
+                <input
+                  type="date"
+                  value={couponForm.validUntil}
+                  onChange={(e) => setCouponForm({ ...couponForm, validUntil: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">প্রযোজ্য বিশ্ববিদ্যালয় / টার্গেট রুট</label>
+              <input
+                type="text"
+                value={couponForm.targetUniversity}
+                onChange={(e) => setCouponForm({ ...couponForm, targetUniversity: e.target.value })}
+                placeholder="e.g. রাজশাহী বিশ্ববিদ্যালয় (RU)"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setIsCouponModalOpen(false)}>
+                {language === 'bn' ? 'বাতিল' : 'Cancel'}
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleSaveCoupon} className="font-bold">
+                {language === 'bn' ? 'কুপন সেভ করুন' : 'Save Coupon'}
               </Button>
             </div>
           </div>

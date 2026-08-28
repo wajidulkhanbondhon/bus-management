@@ -276,6 +276,54 @@ export interface OrganizationSettingsState {
     sendWhatsAppTicketPdf: boolean;
   };
 
+  // 25.1. Custom SMS & WhatsApp Templates
+  smsTemplates: {
+    bookingConfirmation: string;
+    paymentReceipt: string;
+    tripReminder: string;
+  };
+
+  // 25.2. Promotional Coupons & Concessions
+  coupons: Array<{
+    id: string;
+    code: string;
+    discountType: 'FIXED' | 'PERCENTAGE';
+    amount: number;
+    maxUses: number;
+    usedCount: number;
+    validUntil: string;
+    targetUniversity: string;
+    status: 'ACTIVE' | 'EXPIRED';
+  }>;
+
+  // 25.3. Role Permissions Matrix
+  rolePermissions: {
+    bookingStaff: {
+      canBookTickets: boolean;
+      canCancelTickets: boolean;
+      canApplyMaxDiscount50: boolean;
+      canViewReports: boolean;
+      canManageBuses: boolean;
+      canCloseDay: boolean;
+    };
+    manager: {
+      canBookTickets: boolean;
+      canCancelTickets: boolean;
+      canApplyMaxDiscount200: boolean;
+      canViewReports: boolean;
+      canManageBuses: boolean;
+      canCloseDay: boolean;
+    };
+    accountant: {
+      canBookTickets: boolean;
+      canCancelTickets: boolean;
+      canApplyMaxDiscount50: boolean;
+      canViewReports: boolean;
+      canManageBuses: boolean;
+      canCloseDay: boolean;
+    };
+  };
+
   // 26. User Notifications
   notifications: {
     inAppSound: boolean;
@@ -618,6 +666,61 @@ export const DEFAULT_ORGANIZATION_SETTINGS: OrganizationSettingsState = {
     sendSmsOnPaymentReceived: true,
     sendSmsDueReminder: true,
     sendWhatsAppTicketPdf: true
+  },
+  smsTemplates: {
+    bookingConfirmation: 'প্রিয় {student_name}, ATOMS এক্সপ্রেস বাসে আপনার টিকিট নিশ্চিত হয়েছে। বাস: {bus_name}, সিট: {seats}, তারিখ: {trip_date}। ট্র্যাকিং: {tracking_link}',
+    paymentReceipt: 'ধন্যবাদ {student_name}! আপনার {amount} টাকা পেমেন্ট সফল হয়েছে। TrxID: {trx_id}, রসিদ নং: {receipt_no}।',
+    tripReminder: 'রিমাইন্ডার: আজ রাত {departure_time}-এ {bus_name} বাস {boarding_point} কাউন্টার থেকে ছাড়বে। সময়মতো উপস্থিত থাকুন।'
+  },
+  coupons: [
+    {
+      id: 'cp-1',
+      code: 'RU_EXAM_50',
+      discountType: 'FIXED',
+      amount: 50,
+      maxUses: 100,
+      usedCount: 14,
+      validUntil: '2026-10-31',
+      targetUniversity: 'রাজশাহী বিশ্ববিদ্যালয় (RU)',
+      status: 'ACTIVE'
+    },
+    {
+      id: 'cp-2',
+      code: 'GST_EARLYBIRD',
+      discountType: 'PERCENTAGE',
+      amount: 10,
+      maxUses: 50,
+      usedCount: 8,
+      validUntil: '2026-11-15',
+      targetUniversity: 'GST গুচ্ছ পরীক্ষা',
+      status: 'ACTIVE'
+    }
+  ],
+  rolePermissions: {
+    bookingStaff: {
+      canBookTickets: true,
+      canCancelTickets: false,
+      canApplyMaxDiscount50: true,
+      canViewReports: false,
+      canManageBuses: false,
+      canCloseDay: false
+    },
+    manager: {
+      canBookTickets: true,
+      canCancelTickets: true,
+      canApplyMaxDiscount200: true,
+      canViewReports: true,
+      canManageBuses: true,
+      canCloseDay: true
+    },
+    accountant: {
+      canBookTickets: false,
+      canCancelTickets: false,
+      canApplyMaxDiscount50: false,
+      canViewReports: true,
+      canManageBuses: false,
+      canCloseDay: true
+    }
   },
   notifications: {
     inAppSound: true,
