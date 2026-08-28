@@ -7,14 +7,15 @@
 export interface OrganizationSettingsState {
   // 1. General & Localization
   general: {
-    language: 'bn' | 'en';
-    timezone: string;
-    currency: string;
+    language: string; // 'bn' | 'en' | 'ar' | 'hi' | 'fr'
+    timezone: string; // 'Asia/Dhaka' | 'Asia/Kolkata' | 'Asia/Dubai' | 'UTC' | etc.
+    currency: string; // 'BDT' | 'USD' | 'EUR' | 'GBP' | 'INR' | 'SAR' | 'AED'
     currencySymbol: string;
     dateFormat: string;
     timeFormat: '12h' | '24h';
     numberFormat: 'standard' | 'bengali';
     weekStart: 'SUNDAY' | 'MONDAY' | 'SATURDAY';
+    weeklyHolidays: string[]; // ['FRIDAY', 'SATURDAY']
     calendarType: 'GREGORIAN' | 'BANGLA';
   };
 
@@ -100,13 +101,29 @@ export interface OrganizationSettingsState {
     staffEmergencySeats: string[]; // e.g. ['A1', 'A2']
   };
 
-  // 8. Passenger Gender & Relationship Rules
+  // 7.1. Dynamic Seat Fare Zones (Location/Zone-based)
+  fareZones: Array<{
+    id: string;
+    name: string;
+    nameBn: string;
+    basePrice: number;
+    rows: string[];
+    description: string;
+  }>;
+
+  // 8. Passenger Gender & Relationship Rules (Dynamic)
   passengerRules: {
     strictFemaleBusRestricted: boolean;
-    allowedGuardiansForFemaleStudent: string[];
-    allowedGuardiansForMaleStudent: string[];
     requireGuardianPhoneForMinors: boolean;
     maxTicketsPerPhone: number;
+    allowedGuardians: Array<{
+      id: string;
+      nameBn: string;
+      nameEn: string;
+      relationshipCode: string;
+      allowedForFemaleBus: boolean;
+      allowedForMaleBus: boolean;
+    }>;
   };
 
   // 9. Route & Stops
@@ -181,8 +198,8 @@ export interface OrganizationSettingsState {
   // 16. Booking & Hold Policies
   booking: {
     bookingIdPrefix: string;
-    seatHoldMinutesPublic: number;
-    seatHoldMinutesStaff: number;
+    seatHoldMinutesPublic: number; // in Minutes
+    seatHoldMinutesStaff: number; // in Minutes
     allowCancellation: boolean;
     cancellationDeadlineHours: number;
     cancellationFeePercentage: number;
@@ -210,13 +227,22 @@ export interface OrganizationSettingsState {
     requireReferenceAlways: boolean;
   };
 
-  // 19. Payment Gateways & MFS
+  // 19. Dynamic Payment Gateways & Custom Accounts
   paymentGateways: {
     bkash: { enabled: boolean; merchantNumber: string; accountType: 'MERCHANT' | 'PERSONAL' | 'AGENT'; instructions: string };
     nagad: { enabled: boolean; merchantNumber: string; accountType: 'MERCHANT' | 'PERSONAL'; instructions: string };
     rocket: { enabled: boolean; merchantNumber: string; accountType: 'MERCHANT' | 'PERSONAL'; instructions: string };
     handCash: { enabled: boolean; requireReceiptNumber: boolean };
     bankTransfer: { enabled: boolean; bankName: string; accountName: string; accountNumber: string; routingNumber: string };
+    customAccounts: Array<{
+      id: string;
+      name: string;
+      type: 'BKASH' | 'NAGAD' | 'ROCKET' | 'UPAY' | 'BANK' | 'CASH';
+      accountNumber: string;
+      accountType: 'MERCHANT' | 'PERSONAL' | 'AGENT' | 'CURRENT';
+      instructions: string;
+      enabled: boolean;
+    }>;
   };
 
   // 20. Payment Verification
@@ -439,6 +465,7 @@ export const DEFAULT_ORGANIZATION_SETTINGS: OrganizationSettingsState = {
     timeFormat: '12h',
     numberFormat: 'standard',
     weekStart: 'SUNDAY',
+    weeklyHolidays: ['FRIDAY', 'SATURDAY'],
     calendarType: 'GREGORIAN'
   },
   organization: {
@@ -540,12 +567,25 @@ export const DEFAULT_ORGANIZATION_SETTINGS: OrganizationSettingsState = {
     autoLockAdjacentGender: true,
     staffEmergencySeats: ['A1', 'A2']
   },
+  fareZones: [
+    { id: 'fz-1', name: 'Front VIP Rows', nameBn: '১. ফ্রন্ট ভিআইপি সিট (A-E Row)', basePrice: 650, rows: ['A', 'B', 'C', 'D', 'E'], description: 'সর্বোচ্চ আরামদায়ক ও সামনের সারির সিট' },
+    { id: 'fz-2', name: 'Middle Standard Rows', nameBn: '২. মিডল স্ট্যান্ডার্ড সিট (F-H Row)', basePrice: 550, rows: ['F', 'G', 'H'], description: 'স্ট্যান্ডার্ড আরামদায়ক মাঝের সিট' },
+    { id: 'fz-3', name: 'Rear Economy Rows', nameBn: '৩. পেছনের ইকোনমি সিট (I-J Row)', basePrice: 500, rows: ['I', 'J'], description: 'সাশ্রয়ী মূল্যের পেছনের সিট' },
+    { id: 'fz-4', name: 'Last Bench 5-Seats', nameBn: '৪. শেষ সারির ৫ সিটের বেঞ্চ (K Row)', basePrice: 450, rows: ['K'], description: 'একসাথে বসার জন্য বিশেষ ছাড়যুক্ত সিট' }
+  ],
   passengerRules: {
     strictFemaleBusRestricted: true,
-    allowedGuardiansForFemaleStudent: ['FATHER', 'MOTHER', 'BROTHER', 'SISTER', 'SPOUSE'],
-    allowedGuardiansForMaleStudent: ['FATHER', 'MOTHER', 'BROTHER', 'SISTER', 'SPOUSE'],
     requireGuardianPhoneForMinors: true,
-    maxTicketsPerPhone: 4
+    maxTicketsPerPhone: 4,
+    allowedGuardians: [
+      { id: 'g-1', nameBn: 'বাবা (Father)', nameEn: 'Father', relationshipCode: 'FATHER', allowedForFemaleBus: true, allowedForMaleBus: true },
+      { id: 'g-2', nameBn: 'মা (Mother)', nameEn: 'Mother', relationshipCode: 'MOTHER', allowedForFemaleBus: true, allowedForMaleBus: true },
+      { id: 'g-3', nameBn: 'ভাই (Brother)', nameEn: 'Brother', relationshipCode: 'BROTHER', allowedForFemaleBus: true, allowedForMaleBus: true },
+      { id: 'g-4', nameBn: 'বোন (Sister)', nameEn: 'Sister', relationshipCode: 'SISTER', allowedForFemaleBus: true, allowedForMaleBus: true },
+      { id: 'g-5', nameBn: 'স্বামী (Spouse)', nameEn: 'Spouse', relationshipCode: 'SPOUSE', allowedForFemaleBus: true, allowedForMaleBus: true },
+      { id: 'g-6', nameBn: 'মামা / চাচা (Uncle)', nameEn: 'Uncle', relationshipCode: 'UNCLE', allowedForFemaleBus: true, allowedForMaleBus: true },
+      { id: 'g-7', nameBn: 'খালা / ফুফু (Aunt)', nameEn: 'Aunt', relationshipCode: 'AUNT', allowedForFemaleBus: true, allowedForMaleBus: true }
+    ]
   },
   routes: [
     {
@@ -623,7 +663,12 @@ export const DEFAULT_ORGANIZATION_SETTINGS: OrganizationSettingsState = {
     nagad: { enabled: true, merchantNumber: '01812345678', accountType: 'MERCHANT', instructions: 'নগদ অ্যাপ থেকে Merchant Pay করুন।' },
     rocket: { enabled: true, merchantNumber: '019123456789', accountType: 'MERCHANT', instructions: 'রকেট মার্চেন্ট পে করুন।' },
     handCash: { enabled: true, requireReceiptNumber: true },
-    bankTransfer: { enabled: true, bankName: 'Islami Bank Bangladesh Ltd', accountName: 'Dhaka Central Transit Ltd', accountNumber: '20501234567890', routingNumber: '12527182' }
+    bankTransfer: { enabled: true, bankName: 'Islami Bank Bangladesh Ltd', accountName: 'Dhaka Central Transit Ltd', accountNumber: '20501234567890', routingNumber: '12527182' },
+    customAccounts: [
+      { id: 'acc-1', name: 'বিকাশ মার্চেন্ট প্রধান', type: 'BKASH', accountNumber: '01712345678', accountType: 'MERCHANT', instructions: 'বিকাশ পেমেন্ট গেটওয়ে', enabled: true },
+      { id: 'acc-2', name: 'নগদ মার্চেন্ট প্রধান', type: 'NAGAD', accountNumber: '01812345678', accountType: 'MERCHANT', instructions: 'নগদ মার্চেন্ট পে', enabled: true },
+      { id: 'acc-3', name: 'ডাচ বাংলা ব্যাংক (IBBL/DBBL)', type: 'BANK', accountNumber: '20501234567890', accountType: 'CURRENT', instructions: 'ব্যাংক ডিপোজিট / অনলাইন ট্রান্সফার', enabled: true }
+    ]
   },
   paymentVerification: {
     requireTransactionId: true,

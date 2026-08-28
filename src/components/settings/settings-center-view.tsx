@@ -49,6 +49,9 @@ import {
   Tag,
   KeyRound,
   MessageSquare,
+  DollarSign,
+  ToggleLeft,
+  ToggleRight,
   X
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -120,6 +123,37 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
     targetUniversity: 'সকল বিশ্ববিদ্যালয় (All)'
   });
 
+  // Fare Zone CRUD Form State
+  const [isFareZoneModalOpen, setIsFareZoneModalOpen] = useState(false);
+  const [editingFareZoneId, setEditingFareZoneId] = useState<string | null>(null);
+  const [fareZoneForm, setFareZoneForm] = useState({
+    nameBn: '',
+    basePrice: 550,
+    rowsStr: 'A, B, C',
+    description: ''
+  });
+
+  // Payment Account CRUD Form State
+  const [isPaymentAccountModalOpen, setIsPaymentAccountModalOpen] = useState(false);
+  const [editingPaymentAccountId, setEditingPaymentAccountId] = useState<string | null>(null);
+  const [paymentAccountForm, setPaymentAccountForm] = useState({
+    name: '',
+    type: 'BKASH' as 'BKASH' | 'NAGAD' | 'ROCKET' | 'BANK' | 'CASH',
+    accountNumber: '',
+    accountType: 'MERCHANT' as 'MERCHANT' | 'PERSONAL' | 'AGENT' | 'CURRENT',
+    instructions: '',
+    enabled: true
+  });
+
+  // Guardian Add Form State
+  const [isGuardianModalOpen, setIsGuardianModalOpen] = useState(false);
+  const [guardianForm, setGuardianForm] = useState({
+    nameBn: '',
+    relationshipCode: '',
+    allowedForFemaleBus: true,
+    allowedForMaleBus: true
+  });
+
   // Category Tag Add State
   const [newIncomeCategory, setNewIncomeCategory] = useState('');
   const [newExpenseCategory, setNewExpenseCategory] = useState('');
@@ -149,6 +183,21 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+  };
+
+  // --- WEEKLY HOLIDAYS TOGGLE ---
+  const toggleWeeklyHoliday = (day: string) => {
+    const current = orgSettings.general.weeklyHolidays || [];
+    const exists = current.includes(day);
+    const updatedHolidays = exists ? current.filter(d => d !== day) : [...current, day];
+    const updated = {
+      ...orgSettings,
+      general: {
+        ...orgSettings.general,
+        weeklyHolidays: updatedHolidays
+      }
+    };
+    triggerAutoSave(updated, language === 'bn' ? '✓ সাপ্তাহিক ছুটি আপডেট হয়েছে!' : '✓ Weekly holidays updated!');
   };
 
   // --- BRANCH CRUD HANDLERS ---
@@ -259,7 +308,6 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
       });
     }
 
-    // Sort by sequence
     updatedStops.sort((a, b) => a.sequence - b.sequence);
     const updated = { ...orgSettings, stops: updatedStops };
     triggerAutoSave(updated, language === 'bn' ? '✓ বোর্ডিং পয়েন্ট সফলভাবে সেভ হয়েছে!' : '✓ Boarding stop saved successfully!');
@@ -271,6 +319,177 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
     const updatedStops = orgSettings.stops.filter(s => s.id !== id);
     const updated = { ...orgSettings, stops: updatedStops };
     triggerAutoSave(updated, language === 'bn' ? '✓ পয়েন্ট মুছে ফেলা হয়েছে।' : '✓ Stop deleted.');
+  };
+
+  // --- FARE ZONES CRUD HANDLERS ---
+  const handleOpenAddFareZone = () => {
+    setEditingFareZoneId(null);
+    setFareZoneForm({
+      nameBn: '',
+      basePrice: 550,
+      rowsStr: 'A, B',
+      description: ''
+    });
+    setIsFareZoneModalOpen(true);
+  };
+
+  const handleSaveFareZone = () => {
+    if (!fareZoneForm.nameBn.trim()) return;
+    const rowsArray = fareZoneForm.rowsStr.split(',').map(r => r.trim().toUpperCase()).filter(Boolean);
+
+    let updatedZones = [...(orgSettings.fareZones || [])];
+    if (editingFareZoneId) {
+      updatedZones = updatedZones.map(z =>
+        z.id === editingFareZoneId ? { ...z, nameBn: fareZoneForm.nameBn, name: fareZoneForm.nameBn, basePrice: Number(fareZoneForm.basePrice), rows: rowsArray, description: fareZoneForm.description } : z
+      );
+    } else {
+      updatedZones.push({
+        id: `fz-${Date.now()}`,
+        name: fareZoneForm.nameBn,
+        nameBn: fareZoneForm.nameBn,
+        basePrice: Number(fareZoneForm.basePrice),
+        rows: rowsArray,
+        description: fareZoneForm.description
+      });
+    }
+
+    const updated = { ...orgSettings, fareZones: updatedZones };
+    triggerAutoSave(updated, language === 'bn' ? '✓ সিট ফেয়ার জোন সেভ হয়েছে!' : '✓ Seat fare zone saved!');
+    setIsFareZoneModalOpen(false);
+  };
+
+  const handleDeleteFareZone = (id: string) => {
+    if (!confirm(language === 'bn' ? 'আপনি কি এই ফেয়ার জোনটি ডিলিট করতে চান?' : 'Are you sure you want to delete this fare zone?')) return;
+    const updatedZones = (orgSettings.fareZones || []).filter(z => z.id !== id);
+    const updated = { ...orgSettings, fareZones: updatedZones };
+    triggerAutoSave(updated, language === 'bn' ? '✓ ফেয়ার জোন মুছে ফেলা হয়েছে।' : '✓ Fare zone removed.');
+  };
+
+  // --- GUARDIAN RULES CRUD HANDLERS ---
+  const handleOpenAddGuardian = () => {
+    setGuardianForm({
+      nameBn: '',
+      relationshipCode: '',
+      allowedForFemaleBus: true,
+      allowedForMaleBus: true
+    });
+    setIsGuardianModalOpen(true);
+  };
+
+  const handleSaveGuardian = () => {
+    if (!guardianForm.nameBn.trim()) return;
+    const code = (guardianForm.relationshipCode || guardianForm.nameBn).toUpperCase().replace(/\s+/g, '_');
+    const newG = {
+      id: `g-${Date.now()}`,
+      nameBn: guardianForm.nameBn,
+      nameEn: guardianForm.nameBn,
+      relationshipCode: code,
+      allowedForFemaleBus: guardianForm.allowedForFemaleBus,
+      allowedForMaleBus: guardianForm.allowedForMaleBus
+    };
+
+    const currentGuardians = orgSettings.passengerRules.allowedGuardians || [];
+    const updated = {
+      ...orgSettings,
+      passengerRules: {
+        ...orgSettings.passengerRules,
+        allowedGuardians: [...currentGuardians, newG]
+      }
+    };
+    triggerAutoSave(updated, language === 'bn' ? '✓ নতুন অভিভাবক সম্পর্ক যুক্ত হয়েছে!' : '✓ Guardian relation added!');
+    setIsGuardianModalOpen(false);
+  };
+
+  const handleDeleteGuardian = (id: string) => {
+    const currentGuardians = orgSettings.passengerRules.allowedGuardians || [];
+    const updated = {
+      ...orgSettings,
+      passengerRules: {
+        ...orgSettings.passengerRules,
+        allowedGuardians: currentGuardians.filter(g => g.id !== id)
+      }
+    };
+    triggerAutoSave(updated, language === 'bn' ? '✓ সম্পর্ক মুছে ফেলা হয়েছে।' : '✓ Relation removed.');
+  };
+
+  // --- DYNAMIC ROLE PERMISSION TOGGLE ---
+  const toggleRolePermission = (role: 'bookingStaff' | 'manager' | 'accountant', permissionKey: string) => {
+    const currentRolePerms = (orgSettings.rolePermissions as any)?.[role] || {};
+    const updated = {
+      ...orgSettings,
+      rolePermissions: {
+        ...orgSettings.rolePermissions,
+        [role]: {
+          ...currentRolePerms,
+          [permissionKey]: !currentRolePerms[permissionKey]
+        }
+      }
+    };
+    triggerAutoSave(updated, language === 'bn' ? '✓ পারমিশন আপডেট হয়েছে!' : '✓ Permission updated!');
+  };
+
+  // --- PAYMENT ACCOUNTS CRUD HANDLERS ---
+  const handleOpenAddPaymentAccount = () => {
+    setEditingPaymentAccountId(null);
+    setPaymentAccountForm({
+      name: '',
+      type: 'BKASH',
+      accountNumber: '',
+      accountType: 'MERCHANT',
+      instructions: '',
+      enabled: true
+    });
+    setIsPaymentAccountModalOpen(true);
+  };
+
+  const handleSavePaymentAccount = () => {
+    if (!paymentAccountForm.name.trim() || !paymentAccountForm.accountNumber.trim()) return;
+
+    let currentAccounts = orgSettings.paymentGateways.customAccounts || [];
+    if (editingPaymentAccountId) {
+      currentAccounts = currentAccounts.map(a =>
+        a.id === editingPaymentAccountId ? { ...a, ...paymentAccountForm } : a
+      );
+    } else {
+      currentAccounts.push({
+        id: `acc-${Date.now()}`,
+        ...paymentAccountForm
+      });
+    }
+
+    const updated = {
+      ...orgSettings,
+      paymentGateways: {
+        ...orgSettings.paymentGateways,
+        customAccounts: currentAccounts
+      }
+    };
+    triggerAutoSave(updated, language === 'bn' ? '✓ পেমেন্ট একাউন্ট সেভ হয়েছে!' : '✓ Payment account saved!');
+    setIsPaymentAccountModalOpen(false);
+  };
+
+  const handleDeletePaymentAccount = (id: string) => {
+    const currentAccounts = orgSettings.paymentGateways.customAccounts || [];
+    const updated = {
+      ...orgSettings,
+      paymentGateways: {
+        ...orgSettings.paymentGateways,
+        customAccounts: currentAccounts.filter(a => a.id !== id)
+      }
+    };
+    triggerAutoSave(updated, language === 'bn' ? '✓ পেমেন্ট একাউন্ট মুছে ফেলা হয়েছে।' : '✓ Payment account removed.');
+  };
+
+  const togglePaymentAccountStatus = (id: string) => {
+    const currentAccounts = orgSettings.paymentGateways.customAccounts || [];
+    const updated = {
+      ...orgSettings,
+      paymentGateways: {
+        ...orgSettings.paymentGateways,
+        customAccounts: currentAccounts.map(a => a.id === id ? { ...a, enabled: !a.enabled } : a)
+      }
+    };
+    triggerAutoSave(updated, language === 'bn' ? '✓ একাউন্ট স্ট্যাটাস আপডেট হয়েছে!' : '✓ Account status toggled!');
   };
 
   // --- COUPONS CRUD HANDLERS ---
@@ -374,28 +593,27 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
 
   // Operational Settings Categories
   const categories = [
-    { id: 'general', nameBn: '১. সাধারণ ও ভাষা সেটিংস', nameEn: '1. General & Localization', icon: Globe },
+    { id: 'general', nameBn: '১. সাধারণ, ভাষা ও টাইমজোন (Dynamic)', nameEn: '1. General, Language & Timezone', icon: Globe },
     { id: 'organization', nameBn: '২. প্রতিষ্ঠান পরিচিতি ও যোগাযোগ', nameEn: '2. Profile & Contacts', icon: Building2 },
     { id: 'branches', nameBn: '৩. শাখা ও কাউন্টার হাব (Add/Edit/Delete)', nameEn: '3. Branches & Counters', icon: GitBranch },
-    { id: 'transport', nameBn: '৪. পরিবহন পলিসি ও এলাউন্স', nameEn: '4. Transport & Allowances', icon: Activity },
-    { id: 'seat_rules', nameBn: '৫. সিট রুলস ও জেন্ডার লক', nameEn: '5. Seat Rules & Gender Lock', icon: Lock },
-    { id: 'passenger_rules', nameBn: '৬. অভিভাবক ও শিক্ষার্থী রুলস', nameEn: '6. Passenger Eligibility', icon: Users },
-    { id: 'stops', nameBn: '৭. বোর্ডিং ও ড্রপিং পয়েন্ট ড্রপডাউন (Add/Edit/Delete)', nameEn: '7. Boarding & Dropping Points', icon: MapPin },
-    { id: 'coupons', nameBn: '৮. কুপন ও প্রমো কোড ইঞ্জিন (New)', nameEn: '8. Coupons & Promo Engine', icon: Tag },
-    { id: 'role_permissions', nameBn: '৯. স্টাফ রোল পারমিশন ম্যাট্রিক্স (New)', nameEn: '9. Role Permissions Matrix', icon: KeyRound },
-    { id: 'booking', nameBn: '১০. টিকিট বুকিং ও হোল্ড টাইমার', nameEn: '10. Booking & Hold Rules', icon: Receipt },
+    { id: 'fare_zones', nameBn: '৪. জায়গাভেদে সিট ভাড়া ও ফেয়ার জোন (Add/Edit/Delete)', nameEn: '4. Zone Fare Rates', icon: Coins },
+    { id: 'passenger_rules', nameBn: '৫. অভিভাবক সম্পর্ক রুলস (Add/Delete)', nameEn: '5. Guardian Eligibility', icon: Users },
+    { id: 'role_permissions', nameBn: '৬. স্টাফ রোল পারমিশন ম্যাট্রিক্স (Dynamic)', nameEn: '6. Role Permissions Matrix', icon: KeyRound },
+    { id: 'stops', nameBn: '৭. বোর্ডিং ও ড্রপিং পয়েন্ট (Add/Edit/Delete)', nameEn: '7. Boarding & Dropping Points', icon: MapPin },
+    { id: 'coupons', nameBn: '৮. কুপন ও প্রমো কোড ইঞ্জিন (Add/Delete)', nameEn: '8. Coupons & Promo Engine', icon: Tag },
+    { id: 'payments', nameBn: '৯. পেমেন্ট গেটওয়ে ও মার্চেন্ট একাউন্ট (Add/Edit/Delete)', nameEn: '9. Payment Gateways & Accounts', icon: CreditCard },
+    { id: 'booking', nameBn: '১০. টিকিট বুকিং ও হোল্ড টাইমার (Minutes/Seconds)', nameEn: '10. Booking & Hold Rules', icon: Receipt },
     { id: 'discounts', nameBn: '১১. ছাড় ও রোল-ভিত্তিক লিমিট', nameEn: '11. Discounts & Limits', icon: Percent },
-    { id: 'payments', nameBn: '১২. পেমেন্ট গেটওয়ে (বিকাশ/নগদ/রকেট)', nameEn: '12. Payment & MFS Gateways', icon: CreditCard },
-    { id: 'finance', nameBn: '১৩. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং', nameEn: '13. Finance & Day Closing', icon: Coins },
-    { id: 'categories', nameBn: '১৪. আয় ও ব্যয় ক্যাটাগরি (Add/Delete)', nameEn: '14. Income & Expense Tags', icon: Layers },
-    { id: 'documents', nameBn: '১৫. ডকুমেন্ট ও থার্মাল পিওএস প্রিন্ট', nameEn: '15. Documents & Thermal Print', icon: Printer },
-    { id: 'sms_templates', nameBn: '১৬. কাস্টম এসএমএস টেমপ্লেট বিল্ডার (New)', nameEn: '16. SMS Template Builder', icon: MessageSquare },
-    { id: 'fuel', nameBn: '১৭. ফুয়েল ও মাইলেজ ক্যালকুলেটর (New)', nameEn: '17. Fuel & Mileage Rules', icon: Fuel },
-    { id: 'communication', nameBn: '১৮. এসএমএস ও হোয়াটসঅ্যাপ গেটওয়ে', nameEn: '18. SMS & WhatsApp API', icon: Send },
-    { id: 'security', nameBn: '১৯. নিরাপত্তা, পাসওয়ার্ড ও সেশন', nameEn: '19. Security & Session', icon: ShieldCheck },
-    { id: 'appearance', nameBn: '২০. থিম ও কালার কাস্টমাইজেশন', nameEn: '20. Appearance & Themes', icon: Sparkles },
-    { id: 'payment_logos', nameBn: '২১. পেমেন্ট ব্র্যান্ড লোগো সেটিংস', nameEn: '21. Payment Brand Logos', icon: CreditCard },
-    { id: 'database_backup', nameBn: '২২. ডাটাবেজ ব্যাকআপ ও মাইগ্রেশন', nameEn: '22. Database Backup & Restore', icon: Database }
+    { id: 'finance', nameBn: '১২. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং', nameEn: '12. Finance & Day Closing', icon: Coins },
+    { id: 'categories', nameBn: '১৩. আয় ও ব্যয় ক্যাটাগরি (Add/Delete)', nameEn: '13. Income & Expense Tags', icon: Layers },
+    { id: 'documents', nameBn: '১৪. ডকুমেন্ট ও থার্মাল পিওএস প্রিন্ট', nameEn: '14. Documents & Thermal Print', icon: Printer },
+    { id: 'sms_templates', nameBn: '১৫. কাস্টম এসএমএস টেমপ্লেট বিল্ডার', nameEn: '15. SMS Template Builder', icon: MessageSquare },
+    { id: 'fuel', nameBn: '১৬. ফুয়েল ও মাইলেজ ক্যালকুলেটর', nameEn: '16. Fuel & Mileage Rules', icon: Fuel },
+    { id: 'communication', nameBn: '১৭. এসএমএস ও হোয়াটসঅ্যাপ গেটওয়ে', nameEn: '17. SMS & WhatsApp API', icon: Send },
+    { id: 'security', nameBn: '১৮. নিরাপত্তা, পাসওয়ার্ড ও সেশন (Minutes)', nameEn: '18. Security & Session', icon: ShieldCheck },
+    { id: 'appearance', nameBn: '১৯. থিম ও কালার কাস্টমাইজেশন', nameEn: '19. Appearance & Themes', icon: Sparkles },
+    { id: 'payment_logos', nameBn: '২০. পেমেন্ট ব্র্যান্ড লোগো সেটিংস', nameEn: '20. Payment Brand Logos', icon: CreditCard },
+    { id: 'database_backup', nameBn: '২১. ডাটাবেজ ব্যাকআপ ও মাইগ্রেশন', nameEn: '21. Database Backup & Restore', icon: Database }
   ];
 
   // Filter Categories by Search Query
@@ -420,8 +638,8 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 {language === 'bn'
-                  ? 'কাউন্টার, বোর্ডিং পয়েন্ট, কুপন ইঞ্জিন, রোল পারমিশন ও এসএমএস টেমপ্লেট নিয়ন্ত্রণ'
-                  : 'Master control for counters, stops, promo coupons, role permissions, and SMS templates'}
+                  ? 'ডাইনামিক রোল পারমিশন, জোনভিত্তিক সিট ভাড়া, পেমেন্ট মার্চেন্ট, ভাষা ও টাইমজোন নিয়ন্ত্রণ কক্ষ'
+                  : 'Dynamic configuration for role permissions, zone fares, merchant accounts, and multi-language controls'}
               </p>
             </div>
           </div>
@@ -457,7 +675,7 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={language === 'bn' ? 'সেটিংস খুঁজুন (e.g. coupon, sms, branch)...' : 'Search settings...'}
+              placeholder={language === 'bn' ? 'সেটিংস খুঁজুন (e.g. fare, permission, bKash)...' : 'Search settings...'}
               className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 shadow-2xs"
             />
           </div>
@@ -489,60 +707,123 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
 
         {/* Right Active Settings Content Module */}
         <div className="lg:col-span-8 space-y-6">
-          {/* SECTION 1: General & Localization */}
+          {/* SECTION 1: General & Localization (DYNAMIC LANGUAGES & TIMEZONES) */}
           {activeSection === 'general' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Globe className="w-5 h-5 text-blue-600" />
-                  <span>{language === 'bn' ? '১. সাধারণ ও লোকালাইজেশন সেটিংস' : '1. General & Localization'}</span>
+                  <span>{language === 'bn' ? '১. সাধারণ, বহুভাষা, টাইমজোন ও ছুটির দিন সেটিংস' : '1. General, Languages, Timezone & Holidays'}</span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-6 space-y-4 text-xs">
+              <CardContent className="p-6 space-y-5 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Language Selector */}
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">ডিফল্ট ভাষা (Language)</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">সিস্টেম ভাষা (System Language)</label>
                     <select
                       value={orgSettings.general.language}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, general: { ...orgSettings.general, language: e.target.value as any } })}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, general: { ...orgSettings.general, language: e.target.value } })}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
                     >
-                      <option value="bn">বাংলা (Bengali - Official)</option>
-                      <option value="en">English (US)</option>
+                      <option value="bn">বাংলা (Bengali - Official Default)</option>
+                      <option value="en">English (US - English)</option>
+                      <option value="ar">العربية (Arabic)</option>
+                      <option value="hi">हिन्दी (Hindi)</option>
+                      <option value="fr">Français (French)</option>
+                      <option value="es">Español (Spanish)</option>
                     </select>
                   </div>
 
+                  {/* Timezone Selector */}
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">টাইমজোন (Timezone)</label>
-                    <input
-                      type="text"
-                      disabled
-                      value="Asia/Dhaka (BST +06:00)"
-                      className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-500"
-                    />
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">টাইমজোন (Timezone Selector)</label>
+                    <select
+                      value={orgSettings.general.timezone}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, general: { ...orgSettings.general, timezone: e.target.value } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
+                    >
+                      <option value="Asia/Dhaka">Asia/Dhaka (BST +06:00 - Bangladesh)</option>
+                      <option value="Asia/Kolkata">Asia/Kolkata (IST +05:30 - India)</option>
+                      <option value="Asia/Dubai">Asia/Dubai (GST +04:00 - UAE)</option>
+                      <option value="Asia/Riyadh">Asia/Riyadh (AST +03:00 - Saudi Arabia)</option>
+                      <option value="UTC">UTC (Coordinated Universal Time)</option>
+                      <option value="Europe/London">Europe/London (GMT/BST - UK)</option>
+                      <option value="America/New_York">America/New_York (EST - USA)</option>
+                    </select>
                   </div>
 
+                  {/* Currency Selector */}
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">মুদ্রা ও প্রতীক (Currency)</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">মুদ্রা (Currency Selection)</label>
+                    <select
+                      value={orgSettings.general.currency}
+                      onChange={(e) => {
+                        const cur = e.target.value;
+                        const symbolMap: Record<string, string> = { BDT: '৳', USD: '$', EUR: '€', GBP: '£', INR: '₹', SAR: '﷼', AED: 'د.إ' };
+                        setOrgSettings({
+                          ...orgSettings,
+                          general: {
+                            ...orgSettings.general,
+                            currency: cur,
+                            currencySymbol: symbolMap[cur] || '৳'
+                          }
+                        });
+                      }}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
+                    >
+                      <option value="BDT">BDT (৳ - বাংলাদেশী টাকা)</option>
+                      <option value="USD">USD ($ - US Dollar)</option>
+                      <option value="EUR">EUR (€ - Euro)</option>
+                      <option value="GBP">GBP (£ - British Pound)</option>
+                      <option value="INR">INR (₹ - Indian Rupee)</option>
+                      <option value="SAR">SAR (﷼ - Saudi Riyal)</option>
+                      <option value="AED">AED (د.إ - UAE Dirham)</option>
+                    </select>
+                  </div>
+
+                  {/* Currency Symbol Custom Input */}
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">মুদ্রার প্রতীক (Currency Symbol)</label>
                     <input
                       type="text"
                       value={orgSettings.general.currencySymbol}
                       onChange={(e) => setOrgSettings({ ...orgSettings, general: { ...orgSettings.general, currencySymbol: e.target.value } })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-bold font-mono"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-bold font-mono text-center text-base"
                     />
                   </div>
+                </div>
 
-                  <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">সপ্তাহের শুরুর দিন (Week Start)</label>
-                    <select
-                      value={orgSettings.general.weekStart}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, general: { ...orgSettings.general, weekStart: e.target.value as any } })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
-                    >
-                      <option value="SUNDAY">রবিবার (Sunday)</option>
-                      <option value="SATURDAY">শনিবার (Saturday)</option>
-                      <option value="MONDAY">সোমবার (Monday)</option>
-                    </select>
+                {/* Weekly Holidays Selection */}
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800 dark:text-slate-200">সাপ্তাহিক ছুটির দিন নির্বাচন (Weekly Off-Days):</span>
+                    <span className="text-[11px] text-slate-500">ক্লিক করে সক্রিয়/নিষ্ক্রিয় করুন</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {[
+                      { code: 'FRIDAY', nameBn: 'শুক্রবার (Friday)' },
+                      { code: 'SATURDAY', nameBn: 'শনিবার (Saturday)' },
+                      { code: 'SUNDAY', nameBn: 'রবিবার (Sunday)' },
+                      { code: 'THURSDAY', nameBn: 'বৃহস্পতিবার (Thursday)' }
+                    ].map((d) => {
+                      const isSelected = (orgSettings.general.weeklyHolidays || []).includes(d.code);
+                      return (
+                        <button
+                          key={d.code}
+                          type="button"
+                          onClick={() => toggleWeeklyHoliday(d.code)}
+                          className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer border ${
+                            isSelected
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-blue-400'
+                          }`}
+                        >
+                          {isSelected ? <Check className="w-3.5 h-3.5" /> : null}
+                          <span>{d.nameBn}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </CardContent>
@@ -647,118 +928,172 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 4: Transport Master */}
-          {activeSection === 'transport' && (
+          {/* SECTION 4: Dynamic Fare by Seat Zones (NEW FULL CRUD) */}
+          {activeSection === 'fare_zones' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
-              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
                 <CardTitle className="text-base font-black flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-emerald-600" />
-                  <span>{language === 'bn' ? '৪. পরিবহন পলিসি ও এলাউন্স' : '4. Transport Master Policy'}</span>
+                  <Coins className="w-5 h-5 text-amber-600" />
+                  <span>{language === 'bn' ? '৪. জায়গাভেদে ও জোনভিত্তিক সিট ভাড়া কনফিগারেশন' : '4. Zone Fare Rates'}</span>
                 </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
-                    <span className="font-bold block mb-1">ড্রাইভার ট্রিপ এলাউন্স (প্রতি ট্রিপ)</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-base font-bold text-blue-600">৳</span>
-                      <input
-                        type="number"
-                        value={orgSettings.transport.defaultDriverAllowance}
-                        onChange={(e) => setOrgSettings({ ...orgSettings, transport: { ...orgSettings.transport, defaultDriverAllowance: Number(e.target.value) } })}
-                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-950 border rounded-xl font-bold font-mono"
-                      />
-                    </div>
-                  </div>
-                  <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
-                    <span className="font-bold block mb-1">হেল্পার ট্রিপ এলাউন্স (প্রতি ট্রিপ)</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-base font-bold text-indigo-600">৳</span>
-                      <input
-                        type="number"
-                        value={orgSettings.transport.defaultHelperAllowance}
-                        onChange={(e) => setOrgSettings({ ...orgSettings, transport: { ...orgSettings.transport, defaultHelperAllowance: Number(e.target.value) } })}
-                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-950 border rounded-xl font-bold font-mono"
-                      />
-                    </div>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="primary">{(orgSettings.fareZones || []).length} টি ফেয়ার জোন</Badge>
+                  <Button size="sm" variant="primary" onClick={handleOpenAddFareZone} className="font-bold rounded-xl text-xs">
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    {language === 'bn' ? 'নতুন জোন তৈরি' : 'Add Fare Zone'}
+                  </Button>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* SECTION 5: Seat Rules & Locks */}
-          {activeSection === 'seat_rules' && (
-            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
-              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
-                <CardTitle className="text-base font-black flex items-center gap-2">
-                  <Lock className="w-5 h-5 text-amber-600" />
-                  <span>{language === 'bn' ? '৫. সিট রুলস, ভিআইপি ফেয়ার ও এমার্জেন্সি লক পলিসি' : '5. Seat Rules & Locking Policies'}</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block font-bold mb-1.5">ডিফল্ট স্ট্যান্ডার্ড সিট ভাড়া (৳)</label>
-                    <input
-                      type="number"
-                      value={orgSettings.seatSettings.standardFareDefault}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, seatSettings: { ...orgSettings.seatSettings, standardFareDefault: Number(e.target.value) } })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold mb-1.5">ডিফল্ট ভিআইপি (A-E Row) সিট ভাড়া (৳)</label>
-                    <input
-                      type="number"
-                      value={orgSettings.seatSettings.vipFareDefault}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, seatSettings: { ...orgSettings.seatSettings, vipFareDefault: Number(e.target.value) } })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
-                    />
-                  </div>
-                  <div className="sm:col-span-2 p-4 bg-amber-50/50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-900 flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-amber-900 dark:text-amber-200 block">জেন্ডার সংলগ্ন সিট অটো-লক (Strict Gender Validation)</span>
-                      <span className="text-[11px] text-amber-700 dark:text-amber-400">ছাত্রী কোচে ও সাধারণ বাসে নারী যাত্রীর পাশে অপরিচিত পুরুষ টিকিট কাটা রোধ করে</span>
-                    </div>
-                    <Badge variant="warning">সক্রিয় (Active)</Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* SECTION 6: Passenger Eligibility */}
-          {activeSection === 'passenger_rules' && (
-            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
-              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
-                <CardTitle className="text-base font-black flex items-center gap-2">
-                  <Users className="w-5 h-5 text-purple-600" />
-                  <span>{language === 'bn' ? '৬. যাত্রী যোগ্যতা ও অভিভাবক সম্পর্ক পলিসি' : '6. Passenger Eligibility Rules'}</span>
-                </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
                 <div className="space-y-3">
-                  <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
-                    <span className="font-bold block text-slate-900 dark:text-white">অনুমোদিত অভিভাবক সম্পর্ক (ছাত্রী বাস):</span>
-                    <div className="flex flex-wrap gap-2">
-                      {['বাবা (Father)', 'মা (Mother)', 'ভাই (Brother)', 'বোন (Sister)', 'স্বামী (Spouse)'].map((rel, i) => (
-                        <span key={i} className="px-3 py-1 rounded-xl bg-pink-100 dark:bg-pink-950 text-pink-700 dark:text-pink-300 font-bold text-xs flex items-center gap-1">
-                          <Check className="w-3.5 h-3.5" /> {rel}
-                        </span>
-                      ))}
+                  {(orgSettings.fareZones || []).map((fz, idx) => (
+                    <div key={fz.id || idx} className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">{fz.nameBn}</span>
+                          <span className="font-mono text-xs font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded-lg border border-amber-200 dark:border-amber-900">
+                            ৳{fz.basePrice}
+                          </span>
+                        </div>
+                        <div className="text-slate-500 mt-1 font-mono text-[11px] flex items-center gap-2">
+                          <span>প্রযোজ্য রো: {fz.rows.join(', ')}</span>
+                          {fz.description && <span>• {fz.description}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <Button size="sm" variant="danger" onClick={() => handleDeleteFareZone(fz.id)} className="h-8 px-2.5 font-bold rounded-xl">
+                          <Trash2 className="w-3.5 h-3.5 mr-1" />
+                          {language === 'bn' ? 'মুছে ফেলুন' : 'Delete'}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <label className="block font-bold mb-1.5">এক মোবাইল নম্বর থেকে সর্বোচ্চ টিকিট লিমিট</label>
-                    <input
-                      type="number"
-                      value={orgSettings.passengerRules.maxTicketsPerPhone}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, passengerRules: { ...orgSettings.passengerRules, maxTicketsPerPhone: Number(e.target.value) } })}
-                      className="w-32 px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
-                    />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 5: Dynamic Guardian Eligibility (NEW FULL CRUD) */}
+          {activeSection === 'passenger_rules' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <Users className="w-5 h-5 text-purple-600" />
+                  <span>{language === 'bn' ? '৫. অনুমোদিত অভিভাবক সম্পর্ক ও সিটিং রুলস' : '5. Guardian Eligibility Rules'}</span>
+                </CardTitle>
+                <Button size="sm" variant="primary" onClick={handleOpenAddGuardian} className="font-bold rounded-xl text-xs">
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  {language === 'bn' ? 'নতুন সম্পর্ক যোগ' : 'Add Relationship'}
+                </Button>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="space-y-3">
+                  <span className="font-bold text-slate-800 dark:text-slate-200 block text-xs">ছাত্রী কোচে অনুমোদিত অভিভাবক তালিকা:</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {(orgSettings.passengerRules.allowedGuardians || []).map((g, idx) => (
+                      <div key={g.id || idx} className="p-3 bg-pink-50/60 dark:bg-pink-950/20 border border-pink-200 dark:border-pink-900 rounded-xl flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Check className="w-4 h-4 text-pink-600" />
+                          <span className="font-bold text-pink-900 dark:text-pink-200">{g.nameBn}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteGuardian(g.id)}
+                          className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 6: Dynamic Role Permissions Matrix (NEW INTERACTIVE TOGGLES) */}
+          {activeSection === 'role_permissions' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-amber-600" />
+                  <span>{language === 'bn' ? '৬. ডাইনামিক স্টাফ ও রোল পারমিশন ম্যাট্রিক্স (Interactive Switch)' : '6. Interactive Role Permissions Matrix'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs overflow-x-auto">
+                <p className="text-slate-500 dark:text-slate-400">
+                  নিচের সুইচগুলোতে ক্লিক করে সরাসরি স্টাফ, ম্যানেজার এবং একাউন্ট্যান্টদের ক্ষমতা চালু বা বন্ধ করতে পারেন:
+                </p>
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-bold">
+                      <th className="p-3">অনুমোদিত ফিচার / অ্যাকশন</th>
+                      <th className="p-3 text-center">বুকিং স্টাফ</th>
+                      <th className="p-3 text-center">কাউন্টার ম্যানেজার</th>
+                      <th className="p-3 text-center">একাউন্ট্যান্ট</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                    {[
+                      { key: 'canBookTickets', label: 'টিকিট কাটা ও বুকিং করা' },
+                      { key: 'canCancelTickets', label: 'টিকিট বাতিল ও রিফান্ড অনুমোদন' },
+                      { key: 'canApplyMaxDiscount50', label: 'সর্বোচ্চ ৫০ টাকা ছাড় দেওয়া' },
+                      { key: 'canApplyMaxDiscount200', label: 'সর্বোচ্চ ২০০ টাকা ছাড় অনুমোদন' },
+                      { key: 'canViewReports', label: 'দৈনিক লাভ/ক্ষতি ও সেলস রিপোর্ট দেখা' },
+                      { key: 'canManageBuses', label: 'বাস ও রুট ম্যানেজ করা' },
+                      { key: 'canCloseDay', label: 'ডে ক্লোজিং সম্পন্ন ও লেনদেন লক করা' }
+                    ].map((row) => {
+                      const staffPerm = !!(orgSettings.rolePermissions?.bookingStaff as any)?.[row.key];
+                      const mgrPerm = !!(orgSettings.rolePermissions?.manager as any)?.[row.key];
+                      const accPerm = !!(orgSettings.rolePermissions?.accountant as any)?.[row.key];
+
+                      return (
+                        <tr key={row.key} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                          <td className="p-3 font-bold text-slate-900 dark:text-white">{row.label}</td>
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => toggleRolePermission('bookingStaff', row.key)}
+                              className="cursor-pointer inline-flex items-center"
+                            >
+                              {staffPerm ? (
+                                <Badge variant="success" className="cursor-pointer">✓ সক্রিয়</Badge>
+                              ) : (
+                                <Badge variant="default" className="cursor-pointer opacity-50">✕ বন্ধ</Badge>
+                              )}
+                            </button>
+                          </td>
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => toggleRolePermission('manager', row.key)}
+                              className="cursor-pointer inline-flex items-center"
+                            >
+                              {mgrPerm ? (
+                                <Badge variant="success" className="cursor-pointer">✓ সক্রিয়</Badge>
+                              ) : (
+                                <Badge variant="default" className="cursor-pointer opacity-50">✕ বন্ধ</Badge>
+                              )}
+                            </button>
+                          </td>
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => toggleRolePermission('accountant', row.key)}
+                              className="cursor-pointer inline-flex items-center"
+                            >
+                              {accPerm ? (
+                                <Badge variant="success" className="cursor-pointer">✓ সক্রিয়</Badge>
+                              ) : (
+                                <Badge variant="default" className="cursor-pointer opacity-50">✕ বন্ধ</Badge>
+                              )}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </CardContent>
             </Card>
           )}
@@ -807,7 +1142,7 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 8: Coupons & Promo Engine (NEW FULL CRUD) */}
+          {/* SECTION 8: Coupons & Promo Engine */}
           {activeSection === 'coupons' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
@@ -856,98 +1191,89 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 9: Role Permissions Matrix (NEW) */}
-          {activeSection === 'role_permissions' && (
+          {/* SECTION 9: Dynamic Payment Gateways & Custom Accounts (NEW FULL CRUD & TOGGLE) */}
+          {activeSection === 'payments' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
-              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
                 <CardTitle className="text-base font-black flex items-center gap-2">
-                  <KeyRound className="w-5 h-5 text-amber-600" />
-                  <span>{language === 'bn' ? '৯. স্টাফ ও ইউজার রোল পারমিশন ম্যাট্রিক্স' : '9. Role Permissions Matrix'}</span>
+                  <CreditCard className="w-5 h-5 text-emerald-600" />
+                  <span>{language === 'bn' ? '৯. পেমেন্ট গেটওয়ে ও মার্চেন্ট একাউন্ট কনফিগ (Add/Edit/Delete)' : '9. Payment Gateways & Accounts'}</span>
                 </CardTitle>
+                <Button size="sm" variant="primary" onClick={handleOpenAddPaymentAccount} className="font-bold rounded-xl text-xs">
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  {language === 'bn' ? 'নতুন একাউন্ট যোগ' : 'Add Account'}
+                </Button>
               </CardHeader>
-              <CardContent className="p-6 space-y-4 text-xs overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-bold">
-                      <th className="p-3">অনুমোদিত অ্যাকশন / ফিচার</th>
-                      <th className="p-3 text-center">বুকিং স্টাফ</th>
-                      <th className="p-3 text-center">কাউন্টার ম্যানেজার</th>
-                      <th className="p-3 text-center">একাউন্ট্যান্ট</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                    <tr>
-                      <td className="p-3 font-bold">টিকিট কাটা ও বুকিং করা</td>
-                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
-                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
-                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
-                    </tr>
-                    <tr>
-                      <td className="p-3 font-bold">টিকিট বাতিল ও রিফান্ড অনুমোদন</td>
-                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
-                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
-                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
-                    </tr>
-                    <tr>
-                      <td className="p-3 font-bold">সর্বোচ্চ ৫০ টাকা ছাড় দেওয়া</td>
-                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
-                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
-                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
-                    </tr>
-                    <tr>
-                      <td className="p-3 font-bold">সর্বোচ্চ ২০০ টাকা ছাড় অনুমোদন</td>
-                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
-                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
-                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
-                    </tr>
-                    <tr>
-                      <td className="p-3 font-bold">দৈনিক লাভ/ক্ষতি ও সেলস রিপোর্ট দেখা</td>
-                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
-                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
-                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
-                    </tr>
-                    <tr>
-                      <td className="p-3 font-bold">ডে ক্লোজিং হিসাব সম্পন্ন ও লক করা</td>
-                      <td className="p-3 text-center"><Badge variant="default">✕ বন্ধ</Badge></td>
-                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
-                      <td className="p-3 text-center"><Badge variant="success">✓ সক্রিয়</Badge></td>
-                    </tr>
-                  </tbody>
-                </table>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="space-y-3">
+                  {(orgSettings.paymentGateways.customAccounts || []).map((acc, idx) => (
+                    <div key={acc.id || idx} className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">{acc.name}</span>
+                          <span className="font-mono text-xs px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 font-bold">{acc.type}</span>
+                          <span className="font-mono text-xs text-slate-500 font-bold">[{acc.accountType}]</span>
+                        </div>
+                        <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-1">
+                          নম্বর/একাউন্ট: <span className="text-blue-600 dark:text-blue-400">{acc.accountNumber}</span>
+                        </div>
+                        {acc.instructions && <p className="text-slate-500 text-[11px] mt-0.5">{acc.instructions}</p>}
+                      </div>
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => togglePaymentAccountStatus(acc.id)}
+                          className="cursor-pointer"
+                        >
+                          {acc.enabled ? <Badge variant="success">সক্রিয় (Active)</Badge> : <Badge variant="default">নিষ্ক্রিয় (Off)</Badge>}
+                        </button>
+                        <Button size="sm" variant="danger" onClick={() => handleDeletePaymentAccount(acc.id)} className="h-7 px-2 font-bold rounded-lg">
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           )}
 
-          {/* SECTION 10: Booking & Hold Policies */}
+          {/* SECTION 10: Booking & Hold Policies (EXPLICIT TIME UNITS) */}
           {activeSection === 'booking' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Receipt className="w-5 h-5 text-blue-600" />
-                  <span>{language === 'bn' ? '১০. টিকিট বুকিং ও সিট হোল্ড টাইমার' : '10. Booking & Hold Rules'}</span>
+                  <span>{language === 'bn' ? '১০. টিকিট বুকিং ও সিট হোল্ড টাইমার (মিনিট / সেকেন্ড উল্লেখ)' : '10. Booking & Hold Rules'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block font-bold mb-1.5">অনলাইন পাবলিক সিট হোল্ড উইন্ডো (মিনিট)</label>
-                    <input
-                      type="number"
-                      value={orgSettings.booking.seatHoldMinutesPublic}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, booking: { ...orgSettings.booking, seatHoldMinutesPublic: Number(e.target.value) } })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
-                    />
-                    <span className="text-[10px] text-slate-400 mt-1 block">শিক্ষার্থী টিকিট কাটার সময় সর্বোচ্চ ৫ মিনিট লক থাকবে</span>
+                    <label className="block font-bold mb-1.5">অনলাইন পাবলিক সিট হোল্ড উইন্ডো (মিনিট / Minutes)</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={orgSettings.booking.seatHoldMinutesPublic}
+                        onChange={(e) => setOrgSettings({ ...orgSettings, booking: { ...orgSettings.booking, seatHoldMinutesPublic: Number(e.target.value) } })}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                      />
+                      <span className="font-bold text-slate-500 shrink-0">মিনিট (Min)</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-1 block">শিক্ষার্থী অনলাইনে সিট সিলেক্ট করলে সর্বোচ্চ ৫ মিনিট লক থাকবে</span>
                   </div>
 
                   <div>
-                    <label className="block font-bold mb-1.5">কাউন্টার স্টাফ সিট হোল্ড উইন্ডো (মিনিট)</label>
-                    <input
-                      type="number"
-                      value={orgSettings.booking.seatHoldMinutesStaff}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, booking: { ...orgSettings.booking, seatHoldMinutesStaff: Number(e.target.value) } })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
-                    />
+                    <label className="block font-bold mb-1.5">কাউন্টার স্টাফ সিট হোল্ড উইন্ডো (মিনিট / Minutes)</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={orgSettings.booking.seatHoldMinutesStaff}
+                        onChange={(e) => setOrgSettings({ ...orgSettings, booking: { ...orgSettings.booking, seatHoldMinutesStaff: Number(e.target.value) } })}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                      />
+                      <span className="font-bold text-slate-500 shrink-0">মিনিট (Min)</span>
+                    </div>
                     <span className="text-[10px] text-slate-400 mt-1 block">কাউন্টার বুকিংয়ের সময় সর্বোচ্চ ১৫ মিনিট হোল্ড থাকবে</span>
                   </div>
                 </div>
@@ -1012,58 +1338,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 12: Payment Gateways & MFS */}
-          {activeSection === 'payments' && (
-            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
-              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
-                <CardTitle className="text-base font-black flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-emerald-600" />
-                  <span>{language === 'bn' ? '১২. পেমেন্ট গেটওয়ে ও বিকাশ/নগদ মার্চেন্ট কনফিগ' : '12. Payment Gateways & MFS'}</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* bKash */}
-                  <div className="p-4 bg-pink-50/50 dark:bg-pink-950/20 rounded-2xl border border-pink-200 dark:border-pink-900 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-pink-700 dark:text-pink-300">বিকাশ (bKash Merchant)</span>
-                      <Badge variant="danger">ACTIVE</Badge>
-                    </div>
-                    <input
-                      type="text"
-                      value={orgSettings.paymentGateways.bkash.merchantNumber}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, paymentGateways: { ...orgSettings.paymentGateways, bkash: { ...orgSettings.paymentGateways.bkash, merchantNumber: e.target.value } } })}
-                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border rounded-xl font-mono font-bold"
-                      placeholder="বিকাশ মার্চেন্ট নম্বর"
-                    />
-                  </div>
-
-                  {/* Nagad */}
-                  <div className="p-4 bg-amber-50/50 dark:bg-amber-950/20 rounded-2xl border border-amber-200 dark:border-amber-900 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-amber-700 dark:text-amber-300">নগদ (Nagad Merchant)</span>
-                      <Badge variant="warning">ACTIVE</Badge>
-                    </div>
-                    <input
-                      type="text"
-                      value={orgSettings.paymentGateways.nagad.merchantNumber}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, paymentGateways: { ...orgSettings.paymentGateways, nagad: { ...orgSettings.paymentGateways.nagad, merchantNumber: e.target.value } } })}
-                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border rounded-xl font-mono font-bold"
-                      placeholder="নগদ মার্চেন্ট নম্বর"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* SECTION 13: Finance & Day Closing */}
+          {/* SECTION 12: Finance & Day Closing */}
           {activeSection === 'finance' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Coins className="w-5 h-5 text-amber-600" />
-                  <span>{language === 'bn' ? '১৩. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং হিসাব' : '13. Finance & Day Closing'}</span>
+                  <span>{language === 'bn' ? '১২. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং হিসাব' : '12. Finance & Day Closing'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -1089,13 +1370,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 14: Income & Expense Categories (FULL CRUD) */}
+          {/* SECTION 13: Income & Expense Categories */}
           {activeSection === 'categories' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Layers className="w-5 h-5 text-indigo-600" />
-                  <span>{language === 'bn' ? '১৪. আয় ও ব্যয় ক্যাটাগরি ব্যবস্থাপনা (Add / Delete Tags)' : '14. Income & Expense Categories'}</span>
+                  <span>{language === 'bn' ? '১৩. আয় ও ব্যয় ক্যাটাগরি ব্যবস্থাপনা (Add / Delete Tags)' : '13. Income & Expense Categories'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-6 text-xs">
@@ -1103,8 +1384,6 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
                   {/* Income Categories */}
                   <div className="space-y-3">
                     <span className="font-bold text-emerald-600 dark:text-emerald-400 block text-sm">আয় ক্যাটাগরি (Income Tags):</span>
-                    
-                    {/* Add Tag Input */}
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -1137,8 +1416,6 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
                   {/* Expense Categories */}
                   <div className="space-y-3">
                     <span className="font-bold text-rose-600 dark:text-rose-400 block text-sm">ব্যয় ক্যাটাগরি (Expense Tags):</span>
-                    
-                    {/* Add Tag Input */}
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -1172,13 +1449,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 15: Documents & Thermal Printing */}
+          {/* SECTION 14: Documents & Thermal Printing */}
           {activeSection === 'documents' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Printer className="w-5 h-5 text-blue-600" />
-                  <span>{language === 'bn' ? '১৫. ডকুমেন্ট ও থার্মাল পিওএস প্রিন্ট সেটিংস' : '15. Documents & Thermal Print'}</span>
+                  <span>{language === 'bn' ? '১৪. ডকুমেন্ট ও থার্মাল পিওএস প্রিন্ট সেটিংস' : '14. Documents & Thermal Print'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -1222,13 +1499,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 16: SMS Template Builder (NEW) */}
+          {/* SECTION 15: SMS Template Builder */}
           {activeSection === 'sms_templates' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <MessageSquare className="w-5 h-5 text-emerald-600" />
-                  <span>{language === 'bn' ? '১৬. কাস্টম এসএমএস ও হোয়াটসঅ্যাপ টেমপ্লেট বিল্ডার' : '16. SMS Template Builder'}</span>
+                  <span>{language === 'bn' ? '১৫. কাস্টম এসএমএস ও হোয়াটসঅ্যাপ টেমপ্লেট বিল্ডার' : '15. SMS Template Builder'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -1275,13 +1552,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 17: Fuel & Mileage Rules (NEW) */}
+          {/* SECTION 16: Fuel & Mileage Rules */}
           {activeSection === 'fuel' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Fuel className="w-5 h-5 text-amber-600" />
-                  <span>{language === 'bn' ? '১৭. ফুয়েল ও ট্রিপ মাইলেজ অটো-ক্যালকুলেটর' : '17. Fuel & Mileage Rules'}</span>
+                  <span>{language === 'bn' ? '১৬. ফুয়েল ও ট্রিপ মাইলেজ অটো-ক্যালকুলেটর' : '16. Fuel & Mileage Rules'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -1311,13 +1588,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 18: SMS & WhatsApp Gateways */}
+          {/* SECTION 17: SMS & WhatsApp Gateways */}
           {activeSection === 'communication' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Send className="w-5 h-5 text-emerald-600" />
-                  <span>{language === 'bn' ? '১৮. এসএমএস ও হোয়াটসঅ্যাপ অটোমেশন গেটওয়ে' : '18. SMS & WhatsApp Automation'}</span>
+                  <span>{language === 'bn' ? '১৭. এসএমএস ও হোয়াটসঅ্যাপ অটোমেশন গেটওয়ে' : '17. SMS & WhatsApp Automation'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -1342,25 +1619,28 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 19: Security & Session */}
+          {/* SECTION 18: Security & Session (EXPLICIT MINUTES) */}
           {activeSection === 'security' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-rose-600" />
-                  <span>{language === 'bn' ? '১৯. নিরাপত্তা, পাসওয়ার্ড ও সেশন ম্যানেজমেন্ট' : '19. Security & Session Management'}</span>
+                  <span>{language === 'bn' ? '১৮. নিরাপত্তা, পাসওয়ার্ড ও সেশন ম্যানেজমেন্ট' : '18. Security & Session Management'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block font-bold mb-1.5">সেশন টাইমআউট (মিনিট)</label>
-                    <input
-                      type="number"
-                      value={orgSettings.security.sessionTimeoutMinutes}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, security: { ...orgSettings.security, sessionTimeoutMinutes: Number(e.target.value) } })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
-                    />
+                    <label className="block font-bold mb-1.5">সেশন টাইমআউট (মিনিট / Minutes)</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={orgSettings.security.sessionTimeoutMinutes}
+                        onChange={(e) => setOrgSettings({ ...orgSettings, security: { ...orgSettings.security, sessionTimeoutMinutes: Number(e.target.value) } })}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                      />
+                      <span className="font-bold text-slate-500 shrink-0">মিনিট (Min)</span>
+                    </div>
                   </div>
                   <div>
                     <label className="block font-bold mb-1.5">সর্বোচ্চ ভুল পাসওয়ার্ড লিমিট (Login Attempts)</label>
@@ -1376,21 +1656,21 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 20: Appearance & Themes */}
+          {/* SECTION 19: Appearance & Themes */}
           {activeSection === 'appearance' && (
             <div className="space-y-6">
               <AppearanceSettingsClient />
             </div>
           )}
 
-          {/* SECTION 21: Payment Brand Logos */}
+          {/* SECTION 20: Payment Brand Logos */}
           {activeSection === 'payment_logos' && (
             <div className="space-y-6">
               <PaymentLogosSettingsClient />
             </div>
           )}
 
-          {/* SECTION 22: Database Backup & Hosting Migration */}
+          {/* SECTION 21: Database Backup & Hosting Migration */}
           {activeSection === 'database_backup' && (
             <div className="space-y-6">
               <DatabaseBackupClient />
@@ -1544,6 +1824,197 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               </Button>
               <Button variant="primary" size="sm" onClick={handleSaveStop} className="font-bold">
                 {language === 'bn' ? 'পয়েন্ট সেভ করুন' : 'Save Stop'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* --- FARE ZONE MODAL (ADD & EDIT) --- */}
+      {isFareZoneModalOpen && (
+        <Modal
+          isOpen={isFareZoneModalOpen}
+          onClose={() => setIsFareZoneModalOpen(false)}
+          title={language === 'bn' ? 'নতুন ফেয়ার জোন তৈরি' : 'Create Fare Zone'}
+        >
+          <div className="space-y-4 p-2 text-xs">
+            <div>
+              <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">জোনের নাম (বাংলা) *</label>
+              <input
+                type="text"
+                value={fareZoneForm.nameBn}
+                onChange={(e) => setFareZoneForm({ ...fareZoneForm, nameBn: e.target.value })}
+                placeholder="e.g. মিডল স্ট্যান্ডার্ড সিট (F-H Row)"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">ভাড়ার পরিমাণ (৳) *</label>
+                <input
+                  type="number"
+                  value={fareZoneForm.basePrice}
+                  onChange={(e) => setFareZoneForm({ ...fareZoneForm, basePrice: Number(e.target.value) })}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                />
+              </div>
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">প্রযোজ্য সিট রো (কমা দিয়ে)</label>
+                <input
+                  type="text"
+                  value={fareZoneForm.rowsStr}
+                  onChange={(e) => setFareZoneForm({ ...fareZoneForm, rowsStr: e.target.value })}
+                  placeholder="e.g. F, G, H"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">বিবরণ / সুবিধা</label>
+              <input
+                type="text"
+                value={fareZoneForm.description}
+                onChange={(e) => setFareZoneForm({ ...fareZoneForm, description: e.target.value })}
+                placeholder="e.g. সাধারণ আরামদায়ক আসন"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-medium"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setIsFareZoneModalOpen(false)}>
+                {language === 'bn' ? 'বাতিল' : 'Cancel'}
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleSaveFareZone} className="font-bold">
+                {language === 'bn' ? 'জোন সেভ করুন' : 'Save Zone'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* --- GUARDIAN MODAL (ADD) --- */}
+      {isGuardianModalOpen && (
+        <Modal
+          isOpen={isGuardianModalOpen}
+          onClose={() => setIsGuardianModalOpen(false)}
+          title={language === 'bn' ? 'নতুন অভিভাবক সম্পর্ক যোগ' : 'Add Guardian Relationship'}
+        >
+          <div className="space-y-4 p-2 text-xs">
+            <div>
+              <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">সম্পর্কের নাম (বাংলা) *</label>
+              <input
+                type="text"
+                value={guardianForm.nameBn}
+                onChange={(e) => setGuardianForm({ ...guardianForm, nameBn: e.target.value })}
+                placeholder="e.g. মামা / চাচা (Uncle)"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+              />
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={guardianForm.allowedForFemaleBus}
+                  onChange={(e) => setGuardianForm({ ...guardianForm, allowedForFemaleBus: e.target.checked })}
+                  className="w-4 h-4 rounded text-pink-600"
+                />
+                <span className="font-bold text-pink-900 dark:text-pink-200">ছাত্রী কোচে সিট বরাদ্দ অনুমতি পাবে</span>
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setIsGuardianModalOpen(false)}>
+                {language === 'bn' ? 'বাতিল' : 'Cancel'}
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleSaveGuardian} className="font-bold">
+                {language === 'bn' ? 'সম্পর্ক যুক্ত করুন' : 'Add Relationship'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* --- PAYMENT ACCOUNT MODAL (ADD & EDIT) --- */}
+      {isPaymentAccountModalOpen && (
+        <Modal
+          isOpen={isPaymentAccountModalOpen}
+          onClose={() => setIsPaymentAccountModalOpen(false)}
+          title={language === 'bn' ? 'পেমেন্ট / ব্যাংক একাউন্ট কনফিগ' : 'Configure Payment Account'}
+        >
+          <div className="space-y-4 p-2 text-xs">
+            <div>
+              <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">একাউন্টের নাম *</label>
+              <input
+                type="text"
+                value={paymentAccountForm.name}
+                onChange={(e) => setPaymentAccountForm({ ...paymentAccountForm, name: e.target.value })}
+                placeholder="e.g. বিকাশ মার্চেন্ট ২ / ডাচ বাংলা ব্যাংক"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">পদ্ধতি (Method)</label>
+                <select
+                  value={paymentAccountForm.type}
+                  onChange={(e) => setPaymentAccountForm({ ...paymentAccountForm, type: e.target.value as any })}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+                >
+                  <option value="BKASH">বিকাশ (bKash)</option>
+                  <option value="NAGAD">নগদ (Nagad)</option>
+                  <option value="ROCKET">রকেট (Rocket)</option>
+                  <option value="BANK">ব্যাংক (Bank Account)</option>
+                  <option value="CASH">হাতে নগদ (Cash Counter)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">একাউন্টের ধরণ</label>
+                <select
+                  value={paymentAccountForm.accountType}
+                  onChange={(e) => setPaymentAccountForm({ ...paymentAccountForm, accountType: e.target.value as any })}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+                >
+                  <option value="MERCHANT">মার্চেন্ট (Merchant)</option>
+                  <option value="PERSONAL">পার্সোনাল (Personal)</option>
+                  <option value="AGENT">এজেন্ট (Agent)</option>
+                  <option value="CURRENT">কারেন্ট একাউন্ট (Bank Current)</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">একাউন্ট / মোবাইল নম্বর *</label>
+              <input
+                type="text"
+                value={paymentAccountForm.accountNumber}
+                onChange={(e) => setPaymentAccountForm({ ...paymentAccountForm, accountNumber: e.target.value })}
+                placeholder="01712345678 বা 20501234567890"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">পেমেন্ট নির্দেশনা (Instructions)</label>
+              <input
+                type="text"
+                value={paymentAccountForm.instructions}
+                onChange={(e) => setPaymentAccountForm({ ...paymentAccountForm, instructions: e.target.value })}
+                placeholder="e.g. বিকাশ অ্যাপ থেকে Make Payment করুন"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-medium"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setIsPaymentAccountModalOpen(false)}>
+                {language === 'bn' ? 'বাতিল' : 'Cancel'}
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleSavePaymentAccount} className="font-bold">
+                {language === 'bn' ? 'একাউন্ট সেভ করুন' : 'Save Account'}
               </Button>
             </div>
           </div>
