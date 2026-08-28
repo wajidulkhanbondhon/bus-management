@@ -182,42 +182,42 @@ export function OfficeAIAssistant() {
   };
 
   return (
-    <div className="flex flex-col h-[780px] bg-slate-900/95 text-slate-100 rounded-3xl border border-indigo-500/20 shadow-2xl overflow-hidden backdrop-blur-xl">
-      {/* Top Header */}
-      <div className="p-4 md:p-5 border-b border-indigo-500/20 bg-gradient-to-r from-indigo-950/80 via-slate-900/90 to-blue-950/80 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className="flex flex-col h-[780px] bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden backdrop-blur-xl transition-colors duration-200">
+      {/* Top Header (Light & Dark Dual Mode) */}
+      <div className="p-4 md:p-5 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-transparent dark:from-indigo-950/60 dark:via-slate-900/80 dark:to-blue-950/60 flex items-center justify-between">
+        <div className="flex items-center gap-3.5">
           <AIAvatar variant="office" size="md" isThinking={isLoading} />
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-black text-white tracking-tight">
+              <h2 className="text-base font-black text-slate-900 dark:text-white tracking-tight">
                 {language === 'bn' ? 'অফিস এআই বিজনেস কো-পাইলট' : 'Office AI Business Copilot'}
               </h2>
-              <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-cyan-300 text-[10px] font-mono font-bold">
+              <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-indigo-500/20 border border-blue-200 dark:border-indigo-400/30 text-blue-700 dark:text-cyan-300 text-[10px] font-mono font-bold">
                 ENTERPRISE
               </span>
             </div>
-            <p className="text-xs text-indigo-200/70 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
               {language === 'bn' ? 'ডাটাবেজ ভিত্তিক লাইভ সেলস, প্রফিট-মার্জিন ও পরিচালনা অডিট' : 'Live Verified Financials, Fleet Profitability & Audit Engine'}
             </p>
           </div>
         </div>
 
         <div className="hidden sm:flex items-center gap-2">
-          <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1.5 shadow-xs">
+          <span className="px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs font-bold flex items-center gap-1.5 shadow-2xs">
             <CheckCircle2 className="w-3.5 h-3.5" />
             Zero-Hallucination Safe
           </span>
         </div>
       </div>
 
-      {/* Quick Prompts Bar */}
-      <div className="px-4 py-3 bg-slate-950/60 border-b border-indigo-500/10 flex gap-2 overflow-x-auto scrollbar-none">
+      {/* Quick Prompts Bar (Light & Dark Dual Mode) */}
+      <div className="px-4 py-3 bg-slate-50/90 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 flex gap-2 overflow-x-auto scrollbar-none">
         {quickPrompts.map((qp, i) => (
           <button
             key={i}
             onClick={() => handleSend(qp.prompt)}
             disabled={isLoading}
-            className="px-3.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-indigo-600/30 text-slate-200 hover:text-cyan-300 border border-slate-700 hover:border-indigo-500/50 text-xs font-bold shrink-0 transition-all cursor-pointer shadow-sm hover:shadow-indigo-500/20 active:scale-95"
+            className="px-3.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-indigo-600/30 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-cyan-300 border border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-indigo-500/50 text-xs font-bold shrink-0 transition-all cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
           >
             {language === 'bn' ? qp.labelBn : qp.labelEn}
           </button>
@@ -225,7 +225,7 @@ export function OfficeAIAssistant() {
       </div>
 
       {/* Messages Stream */}
-      <div className="flex-1 p-4 md:p-6 overflow-y-auto space-y-4 bg-gradient-to-b from-transparent via-slate-950/20 to-slate-950/50">
+      <div className="flex-1 p-4 md:p-6 overflow-y-auto space-y-4 bg-slate-50/40 dark:bg-slate-950/40">
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -237,21 +237,21 @@ export function OfficeAIAssistant() {
 
             <div className={`max-w-[88%] sm:max-w-[78%] space-y-2 ${msg.sender === 'user' ? 'text-right' : 'text-left'}`}>
               <div
-                className={`p-4 md:p-5 rounded-2xl text-xs md:text-sm leading-relaxed inline-block shadow-lg ${
+                className={`p-4 md:p-5 rounded-2xl text-xs md:text-sm leading-relaxed inline-block shadow-sm ${
                   msg.sender === 'user'
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-xs font-medium border border-blue-400/30 shadow-blue-600/20'
-                    : 'bg-slate-800/90 text-slate-100 border border-indigo-500/30 rounded-tl-xs backdrop-blur-md'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-xs font-medium border border-blue-400/20 shadow-blue-600/20'
+                    : 'bg-white dark:bg-slate-800/95 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700/80 rounded-tl-xs backdrop-blur-md'
                 }`}
               >
                 {/* Confidence Badge for AI Responses */}
                 {msg.sender === 'ai' && msg.confidence && (
-                  <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-indigo-500/20">
-                    <span className="font-mono text-[10px] font-black uppercase text-cyan-300 flex items-center gap-1">
-                      <Activity className="w-3 h-3 text-cyan-400" />
+                  <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-200 dark:border-slate-700">
+                    <span className="font-mono text-[10px] font-black uppercase text-blue-600 dark:text-cyan-300 flex items-center gap-1">
+                      <Activity className="w-3 h-3 text-blue-500 dark:text-cyan-400" />
                       CONFIDENCE: {msg.confidence}
                     </span>
                     {msg.toolsUsed && msg.toolsUsed.length > 0 && (
-                      <span className="font-mono text-[9px] text-slate-400">
+                      <span className="font-mono text-[9px] text-slate-400 dark:text-slate-500">
                         Tools: {msg.toolsUsed.join(', ')}
                       </span>
                     )}
@@ -265,11 +265,11 @@ export function OfficeAIAssistant() {
 
                 {/* Data Cards if present */}
                 {msg.dataCards && msg.dataCards.length > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-4 pt-3 border-t border-indigo-500/20">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
                     {msg.dataCards.map((card, idx) => (
-                      <div key={idx} className="p-3 bg-slate-900/90 rounded-xl border border-indigo-500/30 shadow-inner">
-                        <span className="text-[10px] text-indigo-300/80 font-bold block">{card.title}</span>
-                        <span className="text-base font-black text-white font-mono">{card.value}</span>
+                      <div key={idx} className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-2xs">
+                        <span className="text-[10px] text-slate-500 dark:text-indigo-300/80 font-bold block">{card.title}</span>
+                        <span className="text-base font-black text-slate-900 dark:text-white font-mono">{card.value}</span>
                       </div>
                     ))}
                   </div>
@@ -277,9 +277,9 @@ export function OfficeAIAssistant() {
 
                 {/* Action Confirmation Preview Button */}
                 {msg.actionPreview && (
-                  <div className="mt-4 p-3.5 bg-amber-950/40 rounded-2xl border border-amber-500/40 text-left space-y-2">
-                    <span className="font-bold text-amber-200 block text-xs">{msg.actionPreview.summary}</span>
-                    <span className="text-[11px] text-amber-300/80 block">{msg.actionPreview.impact}</span>
+                  <div className="mt-4 p-3.5 bg-amber-50 dark:bg-amber-950/40 rounded-2xl border border-amber-200 dark:border-amber-500/40 text-left space-y-2">
+                    <span className="font-bold text-amber-900 dark:text-amber-200 block text-xs">{msg.actionPreview.summary}</span>
+                    <span className="text-[11px] text-amber-800 dark:text-amber-300/80 block">{msg.actionPreview.impact}</span>
                     <Button
                       size="sm"
                       variant="primary"
@@ -294,7 +294,7 @@ export function OfficeAIAssistant() {
               </div>
 
               {/* Message Footer: Timestamp, Copy, Feedback */}
-              <div className="flex items-center gap-2 text-[10px] text-slate-400 px-1">
+              <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500 px-1">
                 <span>{msg.timestamp}</span>
                 {msg.sender === 'ai' && (
                   <>
@@ -302,9 +302,9 @@ export function OfficeAIAssistant() {
                     <button
                       type="button"
                       onClick={() => handleCopy(msg.id, msg.text)}
-                      className="hover:text-cyan-300 transition-colors flex items-center gap-1 cursor-pointer"
+                      className="hover:text-blue-600 dark:hover:text-cyan-300 transition-colors flex items-center gap-1 cursor-pointer"
                     >
-                      {copiedId === msg.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      {copiedId === msg.id ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                       {copiedId === msg.id ? 'কপি হয়েছে' : 'কপি'}
                     </button>
                     <span>•</span>
@@ -312,8 +312,8 @@ export function OfficeAIAssistant() {
                       <button
                         type="button"
                         onClick={() => handleFeedback(msg.id, true)}
-                        className={`p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer ${
-                          feedbackGiven[msg.id] === 'up' ? 'text-emerald-400 font-bold' : ''
+                        className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer ${
+                          feedbackGiven[msg.id] === 'up' ? 'text-emerald-600 dark:text-emerald-400 font-bold' : ''
                         }`}
                       >
                         <ThumbsUp className="w-3 h-3" />
@@ -321,8 +321,8 @@ export function OfficeAIAssistant() {
                       <button
                         type="button"
                         onClick={() => handleFeedback(msg.id, false)}
-                        className={`p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer ${
-                          feedbackGiven[msg.id] === 'down' ? 'text-rose-400 font-bold' : ''
+                        className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer ${
+                          feedbackGiven[msg.id] === 'down' ? 'text-rose-600 dark:text-rose-400 font-bold' : ''
                         }`}
                       >
                         <ThumbsDown className="w-3 h-3" />
@@ -334,7 +334,7 @@ export function OfficeAIAssistant() {
             </div>
 
             {msg.sender === 'user' && (
-              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-md mt-1">
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-1">
                 <User className="w-4 h-4" />
               </div>
             )}
@@ -342,11 +342,11 @@ export function OfficeAIAssistant() {
         ))}
 
         {isLoading && (
-          <div className="flex gap-3 justify-start items-center text-xs text-slate-300">
+          <div className="flex gap-3 justify-start items-center text-xs text-slate-500 dark:text-slate-300">
             <AIAvatar variant="office" size="sm" isThinking={true} />
-            <div className="flex items-center gap-2.5 p-3.5 bg-slate-800/90 rounded-2xl border border-indigo-500/30 shadow-lg">
-              <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" />
-              <span className="font-medium text-slate-200">ডাটাবেজ ও টুলস থেকে রিয়েল-টাইম তথ্য বিশ্লেষণ হচ্ছে...</span>
+            <div className="flex items-center gap-2.5 p-3.5 bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-indigo-500/30 shadow-md">
+              <RefreshCw className="w-4 h-4 animate-spin text-blue-600 dark:text-cyan-400" />
+              <span className="font-medium text-slate-700 dark:text-slate-200">ডাটাবেজ ও টুলস থেকে রিয়েল-টাইম তথ্য বিশ্লেষণ হচ্ছে...</span>
             </div>
           </div>
         )}
@@ -354,21 +354,21 @@ export function OfficeAIAssistant() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Box Bar */}
-      <div className="p-3 md:p-4 border-t border-indigo-500/20 bg-slate-950/90 flex gap-2">
+      {/* Input Box Bar (Light & Dark Dual Mode) */}
+      <div className="p-3 md:p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/90 flex gap-2">
         <input
           type="text"
           value={inputPrompt}
           onChange={(e) => setInputPrompt(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           placeholder={language === 'bn' ? 'অফিস এআই-কে জিজ্ঞাসা করুন (e.g. আজকের সেলস কত?)...' : 'Ask Office AI...'}
-          className="flex-1 px-4 py-3 bg-slate-900 border border-indigo-500/30 rounded-2xl text-xs md:text-sm font-bold text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 shadow-inner"
+          className="flex-1 px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs md:text-sm font-bold text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:focus:ring-indigo-500/50 shadow-inner"
         />
         <Button
           variant="primary"
           onClick={() => handleSend()}
           disabled={isLoading || !inputPrompt.trim()}
-          className="px-5 font-black rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-indigo-600/30"
+          className="px-5 font-black rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/25"
         >
           <Send className="w-4 h-4" />
         </Button>
@@ -382,11 +382,11 @@ export function OfficeAIAssistant() {
           title="অপারেশন কনফার্মেশন ও নিরাপত্তা অনুমোদন"
         >
           <div className="space-y-4 p-2 text-xs">
-            <div className="p-4 bg-amber-950/40 rounded-2xl border border-amber-500/40 space-y-2">
-              <span className="font-bold text-amber-200 block text-sm">
+            <div className="p-4 bg-amber-50 dark:bg-amber-950/40 rounded-2xl border border-amber-200 dark:border-amber-500/40 space-y-2">
+              <span className="font-bold text-amber-900 dark:text-amber-200 block text-sm">
                 {actionConfirmModal.confirmation_prompt}
               </span>
-              <p className="text-slate-300">
+              <p className="text-slate-700 dark:text-slate-300">
                 {actionConfirmModal.impact}
               </p>
             </div>

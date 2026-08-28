@@ -36,10 +36,10 @@ export function AIFloatingTrigger() {
               setActiveContext(isStudentPage ? 'STUDENT' : 'OFFICE');
               setIsOpen(true);
             }}
-            className={`group flex items-center gap-3 pl-2.5 pr-4 py-2 text-white rounded-full font-black text-xs shadow-2xl hover:scale-105 active:scale-95 transition-all cursor-pointer border backdrop-blur-md ${
+            className={`group flex items-center gap-3 pl-2.5 pr-4 py-2 rounded-full font-black text-xs shadow-2xl hover:scale-105 active:scale-95 transition-all cursor-pointer border backdrop-blur-md ${
               isStudentPage
-                ? 'bg-gradient-to-r from-slate-950 via-teal-950 to-emerald-950 hover:from-slate-900 hover:to-emerald-900 border-emerald-500/40 shadow-emerald-500/30'
-                : 'bg-gradient-to-r from-slate-950 via-indigo-950 to-blue-950 hover:from-slate-900 hover:to-indigo-900 border-indigo-500/40 shadow-indigo-500/30'
+                ? 'bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-emerald-300 dark:border-emerald-500/40 shadow-emerald-500/25 hover:border-emerald-400'
+                : 'bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-indigo-300 dark:border-indigo-500/40 shadow-indigo-500/25 hover:border-indigo-400'
             }`}
           >
             <AIAvatar
@@ -51,16 +51,16 @@ export function AIFloatingTrigger() {
               <span
                 className={`font-extrabold text-[11px] bg-clip-text text-transparent ${
                   isStudentPage
-                    ? 'bg-gradient-to-r from-emerald-300 via-teal-200 to-white'
-                    : 'bg-gradient-to-r from-cyan-300 via-indigo-200 to-white'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-700 dark:from-emerald-300 dark:via-teal-200 dark:to-white'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-700 dark:from-cyan-300 dark:via-indigo-200 dark:to-white'
                 }`}
               >
                 {isStudentPage
                   ? (language === 'bn' ? 'ভর্তি বাস এআই সহকারী' : 'Student Bus AI')
                   : (language === 'bn' ? 'অফিস এআই কো-পাইলট' : 'Office AI Copilot')}
               </span>
-              <span className="text-[9px] text-slate-400 font-mono font-medium flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono font-medium flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 {isStudentPage ? 'সিট ও শিডিউল সাপোর্ট' : 'রিয়েল-টাইম বিজনেস এআই'}
               </span>
             </div>
