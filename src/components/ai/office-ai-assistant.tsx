@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useApp } from '@/lib/context';
+import { AIAvatar } from './ai-avatar';
 
 interface Message {
   id: string;
@@ -184,9 +185,7 @@ export function OfficeAIAssistant() {
       {/* Top Header */}
       <div className="p-4 md:p-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-blue-900/10 via-indigo-900/10 to-transparent flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black shadow-md shadow-blue-500/25">
-            <Sparkles className="w-5 h-5" />
-          </div>
+          <AIAvatar variant="office" size="md" />
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-black text-slate-900 dark:text-white">
@@ -230,9 +229,7 @@ export function OfficeAIAssistant() {
             className={`flex gap-3 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {msg.sender === 'ai' && (
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-1">
-                <Bot className="w-4 h-4" />
-              </div>
+              <AIAvatar variant="office" size="sm" />
             )}
 
             <div className={`max-w-[85%] sm:max-w-[75%] space-y-3 ${msg.sender === 'user' ? 'text-right' : 'text-left'}`}>
@@ -342,11 +339,9 @@ export function OfficeAIAssistant() {
 
         {isLoading && (
           <div className="flex gap-3 justify-start items-center text-xs text-slate-500">
-            <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 animate-pulse">
-              <Sparkles className="w-4 h-4" />
-            </div>
+            <AIAvatar variant="office" size="sm" isThinking={true} />
             <div className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
               <span>ডাটাবেজ ও টুলস থেকে রিয়েল-টাইম তথ্য বিশ্লেষণ হচ্ছে...</span>
             </div>
           </div>

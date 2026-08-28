@@ -24,6 +24,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useApp } from '@/lib/context';
+import { AIAvatar } from './ai-avatar';
 
 interface Message {
   id: string;
@@ -127,9 +128,7 @@ export function StudentAIAssistant() {
       {/* Header */}
       <div className="p-4 md:p-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-emerald-900/10 via-teal-900/10 to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white flex items-center justify-center font-black shadow-md shadow-emerald-500/25">
-            <Ticket className="w-5 h-5" />
-          </div>
+          <AIAvatar variant="student" size="md" />
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-black text-slate-900 dark:text-white">
@@ -178,9 +177,7 @@ export function StudentAIAssistant() {
             className={`flex gap-3 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {msg.sender === 'ai' && (
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-1">
-                <Bot className="w-4 h-4" />
-              </div>
+              <AIAvatar variant="student" size="sm" />
             )}
 
             <div className={`max-w-[85%] sm:max-w-[75%] space-y-2 ${msg.sender === 'user' ? 'text-right' : 'text-left'}`}>
@@ -224,9 +221,7 @@ export function StudentAIAssistant() {
 
         {isLoading && (
           <div className="flex gap-3 justify-start items-center text-xs text-slate-500">
-            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 animate-pulse">
-              <Sparkles className="w-4 h-4" />
-            </div>
+            <AIAvatar variant="student" size="sm" isThinking={true} />
             <div className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700">
               <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
               <span>আপনার বাস ও সিট তথ্য অনুসন্ধান করা হচ্ছে...</span>

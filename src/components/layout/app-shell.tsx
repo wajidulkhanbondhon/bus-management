@@ -164,6 +164,9 @@ export function AppShell({ children, currentUser }: AppShellProps) {
             </p>
           </div>
         </footer>
+
+        {/* Global Floating AI Trigger visible on all public & student views */}
+        <AIFloatingTrigger />
       </div>
     );
   }

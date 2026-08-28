@@ -65,6 +65,8 @@ import {
   lookupPassengerByPhone,
   checkHasExistingBookings
 } from '@/services/passenger-directory.service';
+import { StudentAIAssistant } from '@/components/ai/student-ai-assistant';
+import { AIAvatar } from '@/components/ai/ai-avatar';
 
 // ═══════════════════════════════════════════════════════════════
 // 1. OFFICIAL BRAND SVG ICONS (WHATSAPP, SMS, ROCKET)
@@ -198,7 +200,7 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
   const [loading, setLoading] = useState(false);
 
   // Dashboard Tab
-  const [activeTab, setActiveTab] = useState<'tickets' | 'accommodation' | 'payment_gateway' | 'circulars' | 'support'>('tickets');
+  const [activeTab, setActiveTab] = useState<'tickets' | 'accommodation' | 'payment_gateway' | 'circulars' | 'support' | 'ai_assistant'>('tickets');
 
   // Modals
   const [ticketModalOpen, setTicketModalOpen] = useState(false);
@@ -1082,6 +1084,36 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
               </CardContent>
             </Card>
           )}
+
+          {/* Quick AI Assistant Card for Candidates & Guardians */}
+          <div className="p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-emerald-950 to-teal-950 border border-emerald-500/30 text-white shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <AIAvatar variant="student" size="md" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-black text-white">
+                    {language === 'bn' ? 'ভর্তি বাস এআই ট্রান্সপোর্ট হেল্পার' : 'Admission AI Transport Helper'}
+                  </h3>
+                  <Badge variant="success" className="text-[9px] font-bold">24/7 AI</Badge>
+                </div>
+                <p className="text-[11px] text-emerald-200/80 mt-0.5">
+                  {language === 'bn'
+                    ? 'বাস শিডিউল, সিট নম্বর, ড্রপিং পয়েন্ট ও অভিভাবক পলিসি জানতে এআই-কে জিজ্ঞাসা করুন'
+                    : 'Ask AI for departure times, seat allocation, dropping point, and female coach rules.'}
+                </p>
+              </div>
+            </div>
+            <Link href="/ai/student">
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-xs px-4 rounded-xl shadow-lg shadow-emerald-500/30 shrink-0"
+              >
+                {language === 'bn' ? 'এআই ওপেন করুন' : 'Chat with AI'}
+                <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+            </Link>
+          </div>
         </motion.div>
       )}
 
@@ -1216,6 +1248,19 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
             >
               <OfficialWhatsAppIcon className="w-4 h-4" />
               {language === 'bn' ? 'সুপারভাইজার ও হেল্পডেস্ক' : 'Supervisor Desk'}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('ai_assistant')}
+              className={`pb-3 px-2.5 rounded-t-xl flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeTab === 'ai_assistant'
+                  ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500 bg-emerald-500/10 font-black'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-emerald-600 hover:bg-emerald-500/5'
+              }`}
+            >
+              <AIAvatar variant="student" size="xs" showStatusBadge={false} />
+              <span>{language === 'bn' ? 'স্টুডেন্ট এআই সহকারী' : 'Student AI Assistant'}</span>
+              <Badge variant="success" className="text-[9px] py-0 px-1.5 font-bold animate-pulse">LIVE</Badge>
             </button>
           </div>
 
@@ -1592,6 +1637,17 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
                   </div>
                 </div>
               </Card>
+            </motion.div>
+          )}
+
+          {/* TAB 6: STUDENT AI PERSONAL ASSISTANT */}
+          {activeTab === 'ai_assistant' && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4"
+            >
+              <StudentAIAssistant />
             </motion.div>
           )}
         </div>

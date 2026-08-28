@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Sparkles, Bot, X, Maximize2, Building2, Ticket } from 'lucide-react';
 import { OfficeAIAssistant } from './office-ai-assistant';
 import { StudentAIAssistant } from './student-ai-assistant';
+import { AIAvatar } from './ai-avatar';
 import { useApp } from '@/lib/context';
 
 export function AIFloatingTrigger() {
@@ -18,11 +19,16 @@ export function AIFloatingTrigger() {
         <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-5">
           <button
             onClick={() => setIsOpen(true)}
-            className="flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full font-black text-xs shadow-xl shadow-indigo-500/30 hover:scale-105 active:scale-95 transition-all cursor-pointer border border-white/20"
+            className="group flex items-center gap-3 pl-2 pr-4 py-2 bg-gradient-to-r from-slate-950 via-indigo-950 to-blue-950 hover:from-slate-900 hover:to-indigo-900 text-white rounded-full font-black text-xs shadow-2xl shadow-indigo-500/40 hover:scale-105 active:scale-95 transition-all cursor-pointer border border-indigo-500/30 backdrop-blur-md"
           >
-            <Sparkles className="w-4 h-4 animate-spin-slow" />
-            <span>{language === 'bn' ? 'ATOMS AI সহকারী' : 'ATOMS AI Assistant'}</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <AIAvatar variant="office" size="xs" showStatusBadge={false} />
+            <div className="flex flex-col items-start leading-tight">
+              <span className="font-extrabold text-[11px] bg-gradient-to-r from-cyan-300 via-indigo-200 to-white bg-clip-text text-transparent">
+                {language === 'bn' ? 'ATOMS এআই সহকারী' : 'ATOMS AI Copilot'}
+              </span>
+              <span className="text-[9px] text-cyan-400/80 font-mono font-medium">Online • 24/7 Support</span>
+            </div>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping ml-1" />
           </button>
         </div>
       )}
