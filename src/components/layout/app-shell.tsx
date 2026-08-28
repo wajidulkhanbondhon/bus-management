@@ -9,6 +9,7 @@ import { Bus, PhoneCall, LayoutDashboard, Clock, Menu, X, Sun, Moon, Globe, Pale
 import { Button } from '@/components/ui/button';
 import { useApp, colorThemesList, ColorTheme } from '@/lib/context';
 import { cn } from '@/lib/utils';
+import { AIFloatingTrigger } from '@/components/ai/ai-floating-trigger';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -224,6 +225,9 @@ export function AppShell({ children, currentUser }: AppShellProps) {
           {children}
         </main>
       </div>
+
+      {/* Global Floating AI Trigger & Dialog Widget */}
+      <AIFloatingTrigger />
     </div>
   );
 }

@@ -33,6 +33,8 @@ import {
   GraduationCap,
   Smartphone,
   Wallet,
+  Sparkles,
+  Bot,
   LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -61,6 +63,13 @@ export function Sidebar({ onNavigate }: SidebarProps = {}) {
   const { t, language, navFontSize, currentColor } = useApp();
 
   const navGroups: NavGroup[] = [
+    {
+      label: language === 'bn' ? 'এআই কো-পাইলট ও অ্যানালিটিক্স' : 'AI COPILOT & INTELLIGENCE',
+      items: [
+        { href: '/ai/office', label: language === 'bn' ? 'অফিস এআই বিজনেস কো-পাইলট' : 'Office AI Copilot', icon: Sparkles, badge: 'AI', highlight: true },
+        { href: '/ai/student', label: language === 'bn' ? 'স্টুডেন্ট এআই সহকারী' : 'Student AI Assistant', icon: Bot, badge: 'AI' }
+      ]
+    },
     {
       label: language === 'bn' ? 'ড্যাশবোর্ড' : 'OVERVIEW',
       items: [
