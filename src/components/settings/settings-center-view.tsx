@@ -40,7 +40,15 @@ import {
   AlertTriangle,
   RefreshCw,
   Save,
-  HelpCircle
+  Plus,
+  Trash2,
+  HelpCircle,
+  Clock,
+  Eye,
+  Key,
+  Smartphone,
+  Check,
+  X
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -66,7 +74,7 @@ interface Props {
 
 export function SettingsCenterView({ initialSettings, currentUser }: Props) {
   const { language, t } = useApp();
-  const isSuperAdmin = currentUser?.role?.name === 'SUPER_ADMIN' || !currentUser; // Allow super admin in demo
+  const isSuperAdmin = currentUser?.role?.name === 'SUPER_ADMIN' || !currentUser;
 
   // Active Tier: ORGANIZATION or PLATFORM
   const [activeTier, setActiveTier] = useState<'ORGANIZATION' | 'PLATFORM'>('ORGANIZATION');
@@ -81,6 +89,12 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
   const [orgSettings, setOrgSettings] = useState<OrganizationSettingsState>(DEFAULT_ORGANIZATION_SETTINGS);
   const [platformSettings, setPlatformSettings] = useState<PlatformSuperAdminState>(DEFAULT_PLATFORM_SUPER_ADMIN_SETTINGS);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  // Quick state helpers for new items
+  const [newStopName, setNewStopName] = useState('');
+  const [newStopArea, setNewStopArea] = useState('');
+  const [newIncomeCat, setNewIncomeCat] = useState('');
+  const [newExpenseCat, setNewExpenseCat] = useState('');
 
   useEffect(() => {
     setOrgSettings(getStoredOrganizationSettings());
@@ -448,6 +462,191 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
+          {/* SECTION 4: Transport Master */}
+          {activeSection === 'transport' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-emerald-600" />
+                  <span>{language === 'bn' ? '৪. পরিবহন মাস্টার পলিসি ও এলাউন্স' : '4. Transport Master Policy'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+                    <span className="font-bold block mb-1">ড্রাইভার ট্রিপ এলাউন্স (প্রতি ট্রিপ)</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-base font-bold text-blue-600">৳</span>
+                      <input
+                        type="number"
+                        value={orgSettings.transport.defaultDriverAllowance}
+                        onChange={(e) => setOrgSettings({ ...orgSettings, transport: { ...orgSettings.transport, defaultDriverAllowance: Number(e.target.value) } })}
+                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-950 border rounded-xl font-bold font-mono"
+                      />
+                    </div>
+                  </div>
+                  <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+                    <span className="font-bold block mb-1">হেল্পার ট্রিপ এলাউন্স (প্রতি ট্রিপ)</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-base font-bold text-indigo-600">৳</span>
+                      <input
+                        type="number"
+                        value={orgSettings.transport.defaultHelperAllowance}
+                        onChange={(e) => setOrgSettings({ ...orgSettings, transport: { ...orgSettings.transport, defaultHelperAllowance: Number(e.target.value) } })}
+                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-950 border rounded-xl font-bold font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 7: Seat Rules & Locks */}
+          {activeSection === 'seat_rules' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <Lock className="w-5 h-5 text-amber-600" />
+                  <span>{language === 'bn' ? '৭. সিট রুলস, ভিআইপি ফেয়ার ও এমার্জেন্সি লক পলিসি' : '7. Seat Rules & Locking Policies'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-bold mb-1.5">ডিফল্ট স্ট্যান্ডার্ড সিট ভাড়া (৳)</label>
+                    <input
+                      type="number"
+                      value={orgSettings.seatSettings.standardFareDefault}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, seatSettings: { ...orgSettings.seatSettings, standardFareDefault: Number(e.target.value) } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold mb-1.5">ডিফল্ট ভিআইপি (A-E Row) সিট ভাড়া (৳)</label>
+                    <input
+                      type="number"
+                      value={orgSettings.seatSettings.vipFareDefault}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, seatSettings: { ...orgSettings.seatSettings, vipFareDefault: Number(e.target.value) } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                    />
+                  </div>
+                  <div className="sm:col-span-2 p-4 bg-amber-50/50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-900 flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-amber-900 dark:text-amber-200 block">জেন্ডার সংলগ্ন সিট অটো-লক (Strict Gender Validation)</span>
+                      <span className="text-[11px] text-amber-700 dark:text-amber-400">ছাত্রী কোচে ও সাধারণ বাসে নারী যাত্রীর পাশে অপরিচিত পুরুষ টিকিট কাটা রোধ করে</span>
+                    </div>
+                    <Badge variant="warning">সক্রিয় (Active)</Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 8: Passenger Eligibility */}
+          {activeSection === 'passenger_rules' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <Users className="w-5 h-5 text-purple-600" />
+                  <span>{language === 'bn' ? '৮. যাত্রী যোগ্যতা ও অভিভাবক সম্পর্ক পলিসি' : '8. Passenger Eligibility Rules'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="space-y-3">
+                  <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                    <span className="font-bold block text-slate-900 dark:text-white">অনুমোদিত অভিভাবক সম্পর্ক (ছাত্রী বাস):</span>
+                    <div className="flex flex-wrap gap-2">
+                      {['বাবা (Father)', 'মা (Mother)', 'ভাই (Brother)', 'বোন (Sister)', 'স্বামী (Spouse)'].map((rel, i) => (
+                        <span key={i} className="px-3 py-1 rounded-xl bg-pink-100 dark:bg-pink-950 text-pink-700 dark:text-pink-300 font-bold text-xs flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" /> {rel}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-bold mb-1.5">এক মোবাইল নম্বর থেকে সর্বোচ্চ টিকিট লিমিট</label>
+                    <input
+                      type="number"
+                      value={orgSettings.passengerRules.maxTicketsPerPhone}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, passengerRules: { ...orgSettings.passengerRules, maxTicketsPerPhone: Number(e.target.value) } })}
+                      className="w-32 px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 10: Stops & Boarding Points */}
+          {activeSection === 'stops' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-blue-600" />
+                  <span>{language === 'bn' ? '১০. বোর্ডিং ও ড্রপিং পয়েন্ট ড্রপডাউন' : '10. Boarding & Dropping Points'}</span>
+                </CardTitle>
+                <Badge variant="primary">{orgSettings.stops.length} টি পয়েন্ট নিবন্ধিত</Badge>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="space-y-2">
+                  {orgSettings.stops.map((st, i) => (
+                    <div key={st.id || i} className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono font-bold w-6 text-center text-blue-600">{st.sequence}.</span>
+                        <div>
+                          <span className="font-bold text-slate-900 dark:text-white">{st.nameBn}</span>
+                          <span className="text-[11px] text-slate-500 ml-2">({st.area})</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {st.pickupEnabled && <Badge variant="primary">PICKUP</Badge>}
+                        {st.dropEnabled && <Badge variant="success">DROP</Badge>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 16: Booking & Hold Policies */}
+          {activeSection === 'booking' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-blue-600" />
+                  <span>{language === 'bn' ? '১৬. টিকিট বুকিং ও সিট হোল্ড টাইমার' : '16. Booking & Hold Rules'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-bold mb-1.5">অনলাইন পাবলিক সিট হোল্ড উইন্ডো (মিনিট)</label>
+                    <input
+                      type="number"
+                      value={orgSettings.booking.seatHoldMinutesPublic}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, booking: { ...orgSettings.booking, seatHoldMinutesPublic: Number(e.target.value) } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">শিক্ষার্থী টিকিট কাটার সময় সর্বোচ্চ ৫ মিনিট লক থাকবে</span>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1.5">কাউন্টার স্টাফ সিট হোল্ড উইন্ডো (মিনিট)</label>
+                    <input
+                      type="number"
+                      value={orgSettings.booking.seatHoldMinutesStaff}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, booking: { ...orgSettings.booking, seatHoldMinutesStaff: Number(e.target.value) } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">কাউন্টার বুকিংয়ের সময় সর্বোচ্চ ১৫ মিনিট হোল্ড থাকবে</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* SECTION 18: Discounts & Caps */}
           {activeSection === 'discounts' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
@@ -550,6 +749,79 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
+          {/* SECTION 21: Finance & Day Closing */}
+          {activeSection === 'finance' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <Coins className="w-5 h-5 text-amber-600" />
+                  <span>{language === 'bn' ? '২১. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং হিসাব' : '21. Finance & Day Closing'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-bold mb-1.5">দৈনিক হিসাব ক্লোজিং টাইম (Business Closing Time)</label>
+                    <input
+                      type="time"
+                      value={orgSettings.finance.businessDayClosingTime}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, finance: { ...orgSettings.finance, businessDayClosingTime: e.target.value } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                    />
+                  </div>
+                  <div className="p-4 bg-blue-50 dark:bg-blue-950/40 rounded-2xl border border-blue-200 dark:border-blue-800 flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-blue-900 dark:text-blue-200 block">ক্লোজিং-পরবর্তী এডিট লক</span>
+                      <span className="text-[11px] text-blue-700 dark:text-blue-400">ডে ক্লোজিং সম্পন্ন হলে স্টাফরা আর পুরনো দিনের লেনদেন সংশোধন করতে পারবে না</span>
+                    </div>
+                    <Badge variant="primary">লক সক্রিয়</Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 22: Income & Expense Categories */}
+          {activeSection === 'categories' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-indigo-600" />
+                  <span>{language === 'bn' ? '২২. আয় ও ব্যয় ক্যাটাগরি ব্যবস্থাপনা' : '22. Income & Expense Categories'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Income Categories */}
+                  <div className="space-y-3">
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 block text-sm">আয় ক্যাটাগরি (Income Tags):</span>
+                    <div className="space-y-1.5">
+                      {orgSettings.categories.income.map((cat, idx) => (
+                        <div key={idx} className="p-2.5 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 rounded-xl font-bold text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
+                          <span>{cat}</span>
+                          <span className="text-[10px] text-emerald-600 font-mono">ACTIVE</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Expense Categories */}
+                  <div className="space-y-3">
+                    <span className="font-bold text-rose-600 dark:text-rose-400 block text-sm">ব্যয় ক্যাটাগরি (Expense Tags):</span>
+                    <div className="space-y-1.5">
+                      {orgSettings.categories.expense.map((cat, idx) => (
+                        <div key={idx} className="p-2.5 bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 rounded-xl font-bold text-rose-900 dark:text-rose-200 flex items-center justify-between">
+                          <span>{cat}</span>
+                          <span className="text-[10px] text-rose-600 font-mono">ACTIVE</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* SECTION 23: Documents & Thermal Printing */}
           {activeSection === 'documents' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
@@ -593,6 +865,108 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
                       value={orgSettings.documents.termsAndConditionsText}
                       onChange={(e) => setOrgSettings({ ...orgSettings, documents: { ...orgSettings.documents, termsAndConditionsText: e.target.value } })}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-medium"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 25: SMS & WhatsApp Gateways */}
+          {activeSection === 'communication' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <Send className="w-5 h-5 text-emerald-600" />
+                  <span>{language === 'bn' ? '২৫. এসএমএস ও হোয়াটসঅ্যাপ অটোমেশন গেটওয়ে' : '25. SMS & WhatsApp Automation'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-200 dark:border-emerald-900 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-800 dark:text-emerald-300">Greenweb SMS Gateway</span>
+                      <Badge variant="success">CONNECTED</Badge>
+                    </div>
+                    <span className="text-[11px] text-slate-500 block">বুকিং নিশ্চিত হলে পরীক্ষার্থীর মোবাইলে তৎক্ষণাৎ SMS পৌঁছে যায়।</span>
+                  </div>
+
+                  <div className="p-4 bg-green-50/50 dark:bg-green-950/20 rounded-2xl border border-green-200 dark:border-green-900 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-green-800 dark:text-green-300">WhatsApp Cloud API</span>
+                      <Badge variant="success">ACTIVE</Badge>
+                    </div>
+                    <span className="text-[11px] text-slate-500 block">শিক্ষার্থীর হোয়াটসঅ্যাপে সরাসরি টিকিট PDF এবং লাইভ বাস ট্র্যাকিং লিংক প্রদান।</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 30: Security & 2FA */}
+          {activeSection === 'security' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <Lock className="w-5 h-5 text-rose-600" />
+                  <span>{language === 'bn' ? '৩০. নিরাপত্তা, ২FA ও সেশন ম্যানেজমেন্ট' : '30. Security & 2FA'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-bold mb-1.5">সেশন টাইমআউট (মিনিট)</label>
+                    <input
+                      type="number"
+                      value={orgSettings.security.sessionTimeoutMinutes}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, security: { ...orgSettings.security, sessionTimeoutMinutes: Number(e.target.value) } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold mb-1.5">সর্বোচ্চ ভুল পাসওয়ার্ড লিমিট (Login Attempts)</label>
+                    <input
+                      type="number"
+                      value={orgSettings.security.maxFailedLoginAttempts}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, security: { ...orgSettings.security, maxFailedLoginAttempts: Number(e.target.value) } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SECTION 31: Branding & White-Label */}
+          {activeSection === 'branding' && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardTitle className="text-base font-black flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-indigo-600" />
+                  <span>{language === 'bn' ? '৩১. ব্র্যান্ডিং ও হোয়াইট লেবেল পোর্টাল' : '31. Branding & White Label'}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-bold mb-1.5">প্রাইমারি ব্র্যান্ড কালার (HEX)</label>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl border border-slate-300" style={{ backgroundColor: orgSettings.branding.primaryColorHex }} />
+                      <input
+                        type="text"
+                        value={orgSettings.branding.primaryColorHex}
+                        onChange={(e) => setOrgSettings({ ...orgSettings, branding: { ...orgSettings.branding, primaryColorHex: e.target.value } })}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-bold mb-1.5">পোর্টাল হেডার টাইটেল</label>
+                    <input
+                      type="text"
+                      value={orgSettings.branding.portalTitle}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, branding: { ...orgSettings.branding, portalTitle: e.target.value } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
                     />
                   </div>
                 </div>
@@ -666,7 +1040,25 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
           )}
 
           {/* FALLBACK FOR OTHER CATEGORIES: Interactive Config Form */}
-          {!['general', 'organization', 'branches', 'discounts', 'payments', 'documents', 'database_backup'].includes(activeSection) && !activeSection.startsWith('saas_') && (
+          {![
+            'general',
+            'organization',
+            'branches',
+            'transport',
+            'seat_rules',
+            'passenger_rules',
+            'stops',
+            'booking',
+            'discounts',
+            'payments',
+            'finance',
+            'categories',
+            'documents',
+            'communication',
+            'security',
+            'branding',
+            'database_backup'
+          ].includes(activeSection) && !activeSection.startsWith('saas_') && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
