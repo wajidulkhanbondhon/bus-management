@@ -227,7 +227,22 @@ export function Sidebar({ onNavigate }: SidebarProps = {}) {
             <div className="space-y-0.5">
               {group.items.map((item, iIdx) => {
                 const Icon = item.icon;
-                const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href) && item.href !== '/buses' && item.href !== '/trips' && item.href !== '/bookings' && item.href !== '/payments' && item.href !== '/reports');
+                const isExactRoot = [
+                  '/dashboard',
+                  '/buses',
+                  '/trips',
+                  '/bookings',
+                  '/payments',
+                  '/reports',
+                  '/staff',
+                  '/universities',
+                  '/settings',
+                  '/passenger'
+                ].includes(item.href);
+
+                const isActive = isExactRoot
+                  ? pathname === item.href
+                  : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
                 return (
                   <Link

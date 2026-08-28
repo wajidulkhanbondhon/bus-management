@@ -153,8 +153,9 @@ export function Header({ currentUser, onMobileMenuToggle }: HeaderProps) {
           <Menu className="w-4 h-4" />
         </button>
 
+        {/* Desktop / Tablet Date & Time Clock */}
         <div className={cn(
-          'flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 px-3 py-1.5 rounded-xl shadow-2xs transition-colors',
+          'hidden sm:flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 px-3 py-1.5 rounded-xl shadow-2xs transition-colors',
           fontStyles.clockText
         )} suppressHydrationWarning>
           <Calendar
@@ -166,7 +167,13 @@ export function Header({ currentUser, onMobileMenuToggle }: HeaderProps) {
           <span className="text-slate-300 dark:text-slate-600">|</span>
           <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-400 shrink-0" />
           <span suppressHydrationWarning className="font-mono text-slate-700 dark:text-slate-300 font-bold">{timeStr || '--:--:--'}</span>
-          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono hidden sm:inline">(BST)</span>
+          <span className="text-xs font-bold text-slate-400 dark:text-slate-500 font-mono hidden md:inline">(BST)</span>
+        </div>
+
+        {/* Mobile Mini Time Badge */}
+        <div className="flex sm:hidden items-center gap-1.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 px-2.5 py-1 rounded-xl text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
+          <Clock className="w-3 h-3 text-blue-500" />
+          <span>{timeStr?.slice(0, 8) || '--:--'}</span>
         </div>
 
         <div className={cn(
