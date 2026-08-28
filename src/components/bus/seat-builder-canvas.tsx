@@ -880,15 +880,19 @@ export function SeatBuilderCanvas({
   const totalMainSeats = cells.filter(c => c.type === 'SEAT').length;
   const totalAllSeats = totalMainSeats + extraSeats.length;
 
-  const filteredSavedLayouts = savedLayouts.filter(l => {
-    const matchesSearch = l.name.toLowerCase().includes(gallerySearch.toLowerCase()) || (l.description && l.description.toLowerCase().includes(gallerySearch.toLowerCase()));
+  const filteredSavedLayouts = (savedLayouts || []).filter(l => {
+    const name = l?.name || '';
+    const desc = l?.description || '';
+    const q = (gallerySearch || '').toLowerCase();
+    const matchesSearch = name.toLowerCase().includes(q) || desc.toLowerCase().includes(q);
     let matchesUni = true;
-    if (galleryUniFilter !== 'ALL') {
-      const text = `${l.name} ${l.description || ''}`.toLowerCase();
+    if (galleryUniFilter && galleryUniFilter !== 'ALL') {
+      const text = `${name} ${desc}`.toLowerCase();
       matchesUni = text.includes(galleryUniFilter.toLowerCase());
     }
     return matchesSearch && matchesUni;
   });
+
 
   // Luxury High-Contrast Full-Page Print Seat Renderer with Large Fonts & Generous Gap Separation
   function renderPrintSeat(cell?: SeatCell, defaultFare = 500, segment?: FareRangeSegment) {
@@ -2205,9 +2209,9 @@ export function SeatBuilderCanvas({
     </div>
   );
 
-  // REALISTIC LUXURY COACH SEAT RENDERER WITH MAXIMUM VISIBILITY & LARGE AMOUNT BADGES
+  // REALISTIC LUXURY COACH SEAT RENDERER WITH FIXED UNIFORM SIZING & FULL SOLID COLOR ON SELECTION
   function renderRealisticSeat(cell?: SeatCell, isMiddleSeat = false, segment?: FareRangeSegment) {
-    if (!cell) return <div className="min-w-[4.25rem] min-h-[4.25rem]" />;
+    if (!cell) return <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0" />;
 
     const isSelected =
       selectedCell?.rowIndex === cell.rowIndex &&
@@ -2219,7 +2223,7 @@ export function SeatBuilderCanvas({
         <button
           type="button"
           onClick={() => handleCellClick(cell)}
-          className={`min-w-[4.25rem] min-h-[4.25rem] rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-center text-[10px] font-black text-slate-400 dark:text-slate-600 ${
+          className={`w-14 h-14 sm:w-16 sm:h-16 shrink-0 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-center text-[10px] font-black text-slate-400 dark:text-slate-600 ${
             isSelected ? 'ring-2 ring-blue-500' : ''
           }`}
         >
@@ -2233,7 +2237,7 @@ export function SeatBuilderCanvas({
         <button
           type="button"
           onClick={() => handleCellClick(cell)}
-          className="min-w-[4.25rem] min-h-[4.25rem] rounded-2xl border-2 border-dashed border-transparent hover:border-slate-200 dark:hover:border-slate-800 flex items-center justify-center text-xs text-slate-300 dark:text-slate-700"
+          className="min-w-[4.25rem] min-h-[4.25rem] sm:min-w-[4.75rem] sm:min-h-[4.75rem] rounded-2xl border-2 border-dashed border-transparent hover:border-slate-200 dark:hover:border-slate-800 flex items-center justify-center text-xs text-slate-300 dark:text-slate-700"
         >
           ·
         </button>
@@ -2247,52 +2251,62 @@ export function SeatBuilderCanvas({
       <button
         type="button"
         onClick={() => handleCellClick(cell)}
-        className={`min-w-[4.25rem] min-h-[4.25rem] sm:min-w-[4.75rem] sm:min-h-[4.75rem] p-1.5 rounded-2xl flex flex-col items-center justify-between text-base font-black transition-all relative shadow-sm ${
-          cell.isExtra
-            ? 'bg-gradient-to-b from-purple-100 via-purple-150 to-purple-200 dark:from-purple-950/80 dark:to-purple-900/80 text-purple-950 dark:text-purple-100 border-2 border-purple-500 dark:border-purple-400'
+        className={`w-[4.25rem] h-[4.25rem] sm:w-[4.75rem] sm:h-[4.75rem] shrink-0 p-1.5 rounded-2xl flex flex-col items-center justify-between text-base font-black transition-all duration-200 ease-out relative select-none cursor-pointer ${
+          isSelected
+            ? 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 text-white border-2 border-blue-300 shadow-xl shadow-blue-500/40 ring-4 ring-blue-400/40 -translate-y-1 z-10'
+            : cell.isExtra
+            ? 'bg-gradient-to-b from-purple-50 via-purple-100 to-purple-200 dark:from-purple-950/80 dark:to-purple-900/80 text-purple-950 dark:text-purple-100 border-2 border-purple-400 dark:border-purple-500 shadow-sm hover:shadow-lg hover:shadow-purple-500/25 hover:-translate-y-1 active:translate-y-0.5 active:scale-95'
             : cell.genderRule === 'FEMALE_ONLY'
-            ? 'bg-gradient-to-b from-pink-100 via-pink-150 to-pink-200 dark:from-pink-950/80 dark:to-pink-900/80 text-pink-950 dark:text-pink-100 border-2 border-pink-500 dark:border-pink-400 shadow-pink-500/20'
+            ? 'bg-gradient-to-b from-pink-50 via-pink-100 to-pink-200 dark:from-pink-950/80 dark:to-pink-900/80 text-pink-950 dark:text-pink-100 border-2 border-pink-400 dark:border-pink-500 shadow-sm shadow-pink-500/10 hover:shadow-lg hover:shadow-pink-500/30 hover:border-pink-500 hover:-translate-y-1 active:translate-y-0.5 active:scale-95'
             : cell.genderRule === 'MALE_ONLY'
-            ? 'bg-gradient-to-b from-blue-100 via-blue-150 to-blue-200 dark:from-blue-950/80 dark:to-blue-900/80 text-blue-950 dark:text-blue-100 border-2 border-blue-500 dark:border-blue-400 shadow-blue-500/20'
+            ? 'bg-gradient-to-b from-blue-50 via-blue-100 to-blue-200 dark:from-blue-950/80 dark:to-blue-900/80 text-blue-950 dark:text-blue-100 border-2 border-blue-400 dark:border-blue-500 shadow-sm shadow-blue-500/10 hover:shadow-lg hover:shadow-blue-500/30 hover:border-blue-500 hover:-translate-y-1 active:translate-y-0.5 active:scale-95'
             : isMiddleSeat
-            ? 'bg-gradient-to-b from-amber-100 to-amber-200 dark:from-amber-950/80 dark:to-amber-900/80 text-amber-950 dark:text-amber-100 border-2 border-amber-500 dark:border-amber-400 shadow-md'
+            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/80 dark:to-amber-900/80 text-amber-950 dark:text-amber-100 border-2 border-amber-400 dark:border-amber-500 shadow-sm hover:shadow-lg hover:shadow-amber-500/25 hover:-translate-y-1 active:translate-y-0.5 active:scale-95'
             : segColorCfg
-            ? `bg-gradient-to-b ${segColorCfg.bgClass} ${segColorCfg.textClass} border-2 ${segColorCfg.borderClass}`
-            : 'bg-gradient-to-b from-white to-slate-100 dark:from-slate-800 dark:to-slate-900 text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-600'
-        } ${isSelected ? 'ring-4 ring-blue-600 scale-110 shadow-2xl z-20' : 'hover:scale-105'}`}
+            ? `bg-gradient-to-b ${segColorCfg.bgClass} ${segColorCfg.textClass} border-2 ${segColorCfg.borderClass} shadow-sm hover:shadow-lg hover:-translate-y-1 active:translate-y-0.5 active:scale-95`
+            : 'bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-850 dark:to-slate-900 text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-600 shadow-sm hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-1 active:translate-y-0.5 active:scale-95'
+        }`}
       >
-        {/* Headrest Cushion Detail */}
+        {/* Ergonomic Headrest Cushion Detail */}
         <div
-          className={`w-9 h-1.5 rounded-full opacity-80 ${
-            cell.genderRule === 'FEMALE_ONLY'
-              ? 'bg-pink-600'
+          className={`w-10 h-1.5 rounded-full shadow-inner transition-all ${
+            isSelected
+              ? 'bg-white/95 shadow-white/40'
+              : cell.genderRule === 'FEMALE_ONLY'
+              ? 'bg-pink-500'
               : cell.genderRule === 'MALE_ONLY'
-              ? 'bg-blue-600'
+              ? 'bg-blue-500'
               : cell.isExtra
-              ? 'bg-purple-600'
+              ? 'bg-purple-500'
               : segColorCfg
               ? segColorCfg.dotClass
               : 'bg-slate-400'
           }`}
         />
 
-        {/* EXTRA LARGE SEAT NUMBER */}
-        <span className="text-base sm:text-lg font-black tracking-tight leading-none font-mono">
+        {/* EXTRA LARGE CRISP SEAT NUMBER */}
+        <span className={`text-base sm:text-lg font-black tracking-tight leading-none font-mono drop-shadow-xs ${isSelected ? 'text-white' : ''}`}>
           {cell.seatNumber}
         </span>
 
         {/* PROMINENT HIGH-CONTRAST AMOUNT BADGE */}
-        <div className="w-full flex items-center justify-center gap-1 bg-black/10 dark:bg-white/10 px-1 py-0.5 rounded-md">
+        <div
+          className={`w-full flex items-center justify-center gap-1 px-1 py-0.5 rounded-lg overflow-hidden backdrop-blur-xs transition-colors ${
+            isSelected
+              ? 'bg-black/25 text-white border border-white/20'
+              : 'bg-black/5 dark:bg-white/10 border border-black/5 dark:border-white/5'
+          }`}
+        >
           <span className="text-xs sm:text-sm font-black font-mono leading-none tracking-tight">
             ৳{seatPrice}
           </span>
-          {cell.genderRule === 'FEMALE_ONLY' && (
+          {!isSelected && cell.genderRule === 'FEMALE_ONLY' && (
             <span className="text-[9px] text-pink-800 dark:text-pink-300 font-black leading-none">F</span>
           )}
-          {cell.genderRule === 'MALE_ONLY' && (
+          {!isSelected && cell.genderRule === 'MALE_ONLY' && (
             <span className="text-[9px] text-blue-800 dark:text-blue-300 font-black leading-none">M</span>
           )}
-          {isMiddleSeat && !cell.isExtra && (
+          {!isSelected && isMiddleSeat && !cell.isExtra && (
             <span className="text-[8px] text-amber-800 dark:text-amber-200 font-black leading-none">MID</span>
           )}
         </div>

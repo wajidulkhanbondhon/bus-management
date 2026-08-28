@@ -4,15 +4,30 @@ import React from 'react';
 import { Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export function PrintTicketButton() {
+interface PrintTicketButtonProps {
+  booking?: any;
+  className?: string;
+}
+
+export function PrintTicketButton({ booking, className }: PrintTicketButtonProps) {
   const handlePrint = () => {
-    window.print();
+    if (booking?.id) {
+      window.open(`/bookings/${booking.id}`, '_blank');
+    } else {
+      window.print();
+    }
   };
 
   return (
-    <Button variant="primary" size="md" onClick={handlePrint} className="font-bold shadow-md shadow-blue-500/20">
+    <Button
+      variant="primary"
+      size="md"
+      onClick={handlePrint}
+      className={className || "font-bold shadow-md shadow-blue-500/20 text-xs"}
+    >
       <Printer className="w-4 h-4 mr-1.5" />
-      Print Ticket / PDF
+      ডিজিটাল টিকিট প্রিন্ট / ভিউ করুন
     </Button>
   );
 }
+

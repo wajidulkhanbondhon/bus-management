@@ -43,12 +43,13 @@ interface InteractiveDashboardAnalyticsProps {
 }
 
 export function InteractiveDashboardAnalytics({
-  progressiveSales,
-  routeBreakdown,
-  paymentBreakdown,
-  passengerDemographics,
-  busPerformance
+  progressiveSales = [],
+  routeBreakdown = [],
+  paymentBreakdown = [],
+  passengerDemographics = [],
+  busPerformance = []
 }: InteractiveDashboardAnalyticsProps) {
+
   const { t, language } = useApp();
   const [chartType, setChartType] = useState<ChartType>('area');
   const [selectedMetric, setSelectedMetric] = useState<MetricType>('sales');

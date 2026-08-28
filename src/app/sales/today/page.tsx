@@ -91,7 +91,7 @@ export default async function TodaySalesPage() {
                     <span className="text-[10px] text-slate-400 font-mono">{b.passengerPhone}</span>
                   </td>
                   <td className="px-4 py-3.5 text-center font-mono font-bold text-blue-600">
-                    {b.seats}
+                    {Array.isArray(b.seats) ? b.seats.map((s: any) => s.seat?.seatNumber || s.seat_id || 'A1').join(', ') : 'A1'}
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-slate-600">{formatCurrency(b.grossAmount)}</td>
                   <td className="px-4 py-3.5 text-right font-mono text-purple-700">

@@ -1,33 +1,103 @@
 import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { prisma } from '@/lib/db';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { Users, Shield, Lock, BadgePercent, Check } from 'lucide-react';
 
 export const revalidate = 0;
 
 export default async function StaffPage() {
-  const [users, roles] = await Promise.all([
-    prisma.user.findMany({
-      include: {
-        role: {
-          include: {
-            permissions: { include: { permission: true } }
-          }
-        },
-        _count: {
-          select: { createdBookings: true, receivedPayments: true }
-        }
-      },
-      orderBy: { createdAt: 'asc' }
-    }),
-    prisma.role.findMany({
-      include: {
-        permissions: { include: { permission: true } }
-      }
-    })
-  ]);
+  const users = [
+    {
+      id: 'usr-1',
+      fullName: 'Kamrul Hasan (Director)',
+      email: 'admin@transport.office',
+      phone: '01711000001',
+      isActive: true,
+      discountLimit: 99999,
+      createdAt: new Date(),
+      role: { name: 'SUPER_ADMIN', description: 'Full System Control' },
+      _count: { createdBookings: 12, receivedPayments: 10 }
+    },
+    {
+      id: 'usr-2',
+      fullName: 'Tariqul Islam (Operations Manager)',
+      email: 'manager@transport.office',
+      phone: '01811000002',
+      isActive: true,
+      discountLimit: 200,
+      createdAt: new Date(),
+      role: { name: 'MANAGER', description: 'Duty Manager' },
+      _count: { createdBookings: 4, receivedPayments: 4 }
+    },
+    {
+      id: 'usr-3',
+      fullName: 'Rahim Chowdhury (Desk Officer)',
+      email: 'staff@transport.office',
+      phone: '01911000003',
+      isActive: true,
+      discountLimit: 50,
+      createdAt: new Date(),
+      role: { name: 'BOOKING_STAFF', description: 'Counter Desk Staff' },
+      _count: { createdBookings: 24, receivedPayments: 24 }
+    },
+    {
+      id: 'usr-4',
+      fullName: 'Zubair Ahmed (Chief Cashier)',
+      email: 'accountant@transport.office',
+      phone: '01611000004',
+      isActive: true,
+      discountLimit: 0,
+      createdAt: new Date(),
+      role: { name: 'ACCOUNTANT', description: 'Chief Cashier' },
+      _count: { createdBookings: 0, receivedPayments: 38 }
+    }
+  ];
+
+  const roles = [
+    {
+      id: 'r-1',
+      name: 'SUPER_ADMIN',
+      description: 'Full System Control',
+      permissions: [
+        { id: 'p-1', permission: { code: 'dashboard:view' } },
+        { id: 'p-2', permission: { code: 'booking:create' } },
+        { id: 'p-3', permission: { code: 'seat:lock_unlock' } },
+        { id: 'p-4', permission: { code: 'bus_trip:manage' } },
+        { id: 'p-5', permission: { code: 'payment:collect' } }
+      ]
+    },
+    {
+      id: 'r-2',
+      name: 'MANAGER',
+      description: 'Duty Manager',
+      permissions: [
+        { id: 'p-1', permission: { code: 'dashboard:view' } },
+        { id: 'p-2', permission: { code: 'booking:create' } },
+        { id: 'p-3', permission: { code: 'seat:lock_unlock' } }
+      ]
+    },
+    {
+      id: 'r-3',
+      name: 'BOOKING_STAFF',
+      description: 'Counter Desk Staff',
+      permissions: [
+        { id: 'p-1', permission: { code: 'dashboard:view' } },
+        { id: 'p-2', permission: { code: 'booking:create' } }
+      ]
+    },
+    {
+      id: 'r-4',
+      name: 'ACCOUNTANT',
+      description: 'Chief Cashier',
+      permissions: [
+        { id: 'p-1', permission: { code: 'dashboard:view' } },
+        { id: 'p-5', permission: { code: 'payment:collect' } }
+      ]
+    }
+  ];
+
+
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">

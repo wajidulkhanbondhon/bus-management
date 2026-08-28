@@ -344,7 +344,87 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
       <Card className="shadow-lg border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden">
         <CardContent className="p-6 sm:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
-            
+            {/* 1-Click Fast Configuration Presets */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-blue-950/30 dark:via-indigo-950/30 dark:to-purple-950/30 border-2 border-blue-200 dark:border-blue-900/50 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-blue-950 dark:text-blue-200 flex items-center gap-1.5 font-mono">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <span>{language === 'bn' ? '১-ক্লিক ফাস্ট কোচ প্রিসেট (1-Click Presets)' : '1-Click Coach Presets'}</span>
+                </span>
+                <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+                  {language === 'bn' ? 'স্বয়ংক্রিয় ক্যাপাসিটি ও সিট কনফিগারেশন' : 'Auto-sets capacity & seat configuration'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCapacity(40);
+                    const standardLayout = layouts.find(l => l.totalSeats === 40);
+                    if (standardLayout) setSeatLayoutId(standardLayout.id);
+                  }}
+                  className={`p-3 rounded-xl border-2 text-left transition-all flex flex-col justify-between ${
+                    capacity === 40
+                      ? 'border-blue-600 bg-white dark:bg-slate-800 shadow-md ring-2 ring-blue-400/40'
+                      : 'border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-850 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-900 dark:text-white">40-Seat Luxury AC</span>
+                    <Badge variant="primary" className="text-[10px] font-bold">40 Seats</Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    {language === 'bn' ? 'স্ট্যান্ডার্ড ২x২ লাক্সারি এসি কোচ (VIP ফ্রন্ট রো)' : 'Standard 2x2 AC Luxury (VIP front rows)'}
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCapacity(45);
+                    const layout45 = layouts.find(l => l.totalSeats === 45);
+                    if (layout45) setSeatLayoutId(layout45.id);
+                  }}
+                  className={`p-3 rounded-xl border-2 text-left transition-all flex flex-col justify-between ${
+                    capacity === 45
+                      ? 'border-blue-600 bg-white dark:bg-slate-800 shadow-md ring-2 ring-blue-400/40'
+                      : 'border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-850 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-900 dark:text-white">45-Seat High-Deck</span>
+                    <Badge variant="purple" className="text-[10px] font-bold">45 Seats</Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    {language === 'bn' ? 'হাই-ডেক এক্সপ্রেস (২x২ + ৫-সিট রিয়ার বেঞ্চ)' : 'High-Deck Coach (2x2 + 5-seat rear bench)'}
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCapacity(28);
+                    const layout28 = layouts.find(l => l.totalSeats === 28);
+                    if (layout28) setSeatLayoutId(layout28.id);
+                  }}
+                  className={`p-3 rounded-xl border-2 text-left transition-all flex flex-col justify-between ${
+                    capacity === 28
+                      ? 'border-blue-600 bg-white dark:bg-slate-800 shadow-md ring-2 ring-blue-400/40'
+                      : 'border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-850 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-900 dark:text-white">28-Seat Business</span>
+                    <Badge variant="success" className="text-[10px] font-bold">28 Seats</Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    {language === 'bn' ? 'রয়েল বিজনেস ক্লাস (২x১ লাক্সারি রিক্লাইনার)' : 'Royal Business Class (2x1 Luxury Recliner)'}
+                  </p>
+                </button>
+              </div>
+            </div>
+
             {/* Section 1: Bus Fleet & Unique Numbering */}
             <div className="space-y-4">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">

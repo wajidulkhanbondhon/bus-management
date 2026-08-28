@@ -1,5 +1,4 @@
-import { prisma } from '@/lib/db';
-import { logAudit } from './audit.service';
+import { fastApiClient } from '@/lib/api-client';
 
 export interface CreateTripInput {
   busId: string;
@@ -19,153 +18,57 @@ export async function getAllTrips(filters?: {
   busId?: string;
   routeId?: string;
 }) {
-  const where: any = {};
-  if (filters?.status) where.status = filters.status;
-  if (filters?.busId) where.busId = filters.busId;
-  if (filters?.routeId) where.routeId = filters.routeId;
-  
-  if (filters?.date) {
-    const d = new Date(filters.date);
-    const startOfDay = new Date(d.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(d.setHours(23, 59, 59, 999));
-    where.departureDate = {
-      gte: startOfDay,
-      lte: endOfDay
-    };
-  }
+  const queryParams = new URLSearchParams();
+  if (filters?.status) queryParams.append('status', filters.status);
+  if (filters?.busId) queryParams.append('bus_id', filters.busId);
+  if (filters?.routeId) queryParams.append('route_id', filters.routeId);
+  if (filters?.date) queryParams.append('date', new Date(filters.date).toISOString());
 
-  return prisma.trip.findMany({
-    where,
-    include: {
-      bus: {
-        include: { seatLayout: true }
-      },
-      route: true,
-      fareRules: { include: { fareZone: true } },
-      bookings: {
-        where: { bookingStatus: { in: ['CONFIRMED', 'COMPLETED'] } },
-        include: { seats: true, payments: true }
-      },
-      seatLocks: { where: { isActive: true } },
-      seatHolds: {
-        where: { expiresAt: { gt: new Date() } }
-      }
-    },
-    orderBy: [{ departureDate: 'asc' }, { departureTime: 'asc' }]
-  });
+  const res = await fastApiClient.getTrips(queryParams.toString());
+  if (res.success && res.data) {
+    return res.data;
+  }
+  return [];
 }
 
 export async function getTodayTrips() {
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  return prisma.trip.findMany({
-    where: {
-      departureDate: {
-        gte: today,
-        lt: tomorrow
-      }
-    },
-    include: {
-      bus: { include: { seatLayout: true } },
-      route: true,
-      bookings: {
-        where: { bookingStatus: { in: ['CONFIRMED', 'COMPLETED'] } },
-        include: { seats: true, payments: true }
-      },
-      seatLocks: { where: { isActive: true } }
-    },
-    orderBy: { departureTime: 'asc' }
-  });
+  return getAllTrips({ date: today });
 }
 
 export async function getTripById(id: string) {
-  return prisma.trip.findUnique({
-    where: { id },
-    include: {
-      bus: {
-        include: {
-          seatLayout: {
-            include: {
-              seats: {
-                include: { fareZone: true },
-                orderBy: [{ rowIndex: 'asc' }, { colIndex: 'asc' }]
-              }
-            }
-          }
-        }
-      },
-      route: {
-        include: { stops: { orderBy: { sequenceNo: 'asc' } } }
-      },
-      fareRules: { include: { fareZone: true } },
-      bookings: {
-        include: {
-          seats: true,
-          passengers: true,
-          payments: true,
-          discounts: true,
-          createdBy: { select: { fullName: true } }
-        }
-      },
-      seatLocks: {
-        where: { isActive: true }
-      },
-      seatHolds: {
-        where: { expiresAt: { gt: new Date() } }
-      }
-    }
-  });
+  const res = await fastApiClient.getTripById(id);
+  if (res.success && res.data) {
+    return res.data;
+  }
+  const all = await getAllTrips();
+  return all.find((t: any) => t.id === id) || null;
 }
 
-export async function createTrip(input: CreateTripInput, userId?: string) {
-  const dateObj = new Date(input.departureDate);
-  const timeObj = new Date(input.departureTime);
+export async function createTrip(input: CreateTripInput, staffId?: string) {
+  const depDate = new Date(input.departureDate);
+  const depTime = new Date(input.departureTime);
+  const tripCode = `TRIP-${Math.floor(1000 + Math.random() * 9000)}-${Date.now().toString().slice(-4)}`;
 
-  // Generate Trip Code TRIP-YYYYMMDD-XXX
-  const dateStr = dateObj.toISOString().slice(0, 10).replace(/-/g, '');
-  const count = await prisma.trip.count({
-    where: {
-      departureDate: {
-        gte: new Date(new Date(input.departureDate).setHours(0, 0, 0, 0)),
-        lte: new Date(new Date(input.departureDate).setHours(23, 59, 59, 999)),
-      }
-    }
-  });
-  const tripCode = `TRIP-${dateStr}-${String(count + 1).padStart(3, '0')}`;
-
-  const trip = await prisma.trip.create({
-    data: {
-      tripCode,
-      busId: input.busId,
-      routeId: input.routeId,
-      departureDate: dateObj,
-      departureTime: timeObj,
-      arrivalEst: input.arrivalEst ? new Date(input.arrivalEst) : null,
-      tripBusType: input.tripBusType || null,
-      basePrice: input.basePrice,
-      notes: input.notes,
-      fareRules: input.fareZoneOverrides ? {
-        create: input.fareZoneOverrides.map(f => ({
-          fareZoneId: f.fareZoneId,
-          customPrice: f.customPrice
-        }))
-      } : undefined
-    },
-    include: { bus: true, route: true }
+  const res = await fastApiClient.createTrip({
+    trip_code: tripCode,
+    bus_id: input.busId,
+    route_id: input.routeId,
+    departure_date: depDate.toISOString(),
+    departure_time: depTime.toISOString(),
+    arrival_est: input.arrivalEst ? new Date(input.arrivalEst).toISOString() : null,
+    trip_bus_type: input.tripBusType || 'MIXED',
+    status: 'SCHEDULED',
+    base_price: Number(input.basePrice),
+    notes: input.notes
   });
 
-  if (userId) {
-    await logAudit({
-      userId,
-      action: 'TRIP_CREATED',
-      entity: 'Trip',
-      entityId: trip.id,
-      newValue: { tripCode: trip.tripCode, date: trip.departureDate, bus: trip.bus.busNumber }
-    });
+  if (res.success && res.data) {
+    return res.data;
   }
 
-  return trip;
+  if (res.error) {
+    throw new Error(res.error);
+  }
+  return { success: true, id: tripCode };
 }

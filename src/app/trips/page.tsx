@@ -21,8 +21,8 @@ export default async function TripsPage() {
             <Badge variant="primary">Schedule Management</Badge>
             <span className="text-xs font-mono text-slate-500">TRIP & DEPARTURE LOG</span>
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-1">Bus Trips & Daily Schedules</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight mt-1">Bus Trips & Daily Schedules</h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Monitor real-time passenger loads, departure timelines, and open interactive seat maps.
           </p>
         </div>
@@ -39,7 +39,7 @@ export default async function TripsPage() {
       <Card>
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-mono text-[11px] uppercase">
+            <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-mono text-[11px] uppercase">
               <tr>
                 <th className="px-5 py-3">Trip Code & Bus</th>
                 <th className="px-4 py-3">Route Details</th>
@@ -50,33 +50,40 @@ export default async function TripsPage() {
                 <th className="px-5 py-3 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-              {trips.map((trip) => {
-                const totalSeats = trip.bus.seatLayout?.totalSeats || trip.bus.capacity || 40;
-                const bookedSeats = trip.bookings.reduce((sum, b) => sum + b.seats.length, 0);
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-slate-700 dark:text-slate-200">
+              {trips.map((trip: any) => {
+                const totalSeats = trip.bus?.seatLayout?.totalSeats || trip.bus?.capacity || 40;
+                const bookedSeats = (trip.bookings || []).reduce((sum: number, b: any) => sum + (b.seats?.length || 1), 0);
                 const occupancy = totalSeats > 0 ? Math.round((bookedSeats / totalSeats) * 100) : 0;
+                const busType = trip.tripBusType || trip.bus?.busType || trip.bus?.bus_type || 'MIXED';
+                const busName = trip.bus?.busName || trip.bus?.bus_name || 'Express Coach';
+                const routeName = trip.route?.routeName || trip.route?.route_name || 'Dhaka to University';
+                const origin = trip.route?.origin || 'Dhaka';
+                const destination = trip.route?.destination || 'Destination';
 
                 return (
-                  <tr key={trip.id} className="hover:bg-slate-50/80 transition-colors">
+                  <tr key={trip.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                     <td className="px-5 py-4">
-                      <span className="font-mono font-bold text-blue-600 block">{trip.tripCode}</span>
-                      <span className="font-bold text-slate-900 text-xs mt-0.5 block">{trip.bus.busName}</span>
+                      <span className="font-mono font-bold text-blue-600 dark:text-blue-400 block">{trip.tripCode || trip.trip_code}</span>
+                      <span className="font-bold text-slate-900 dark:text-white text-xs mt-0.5 block">{busName}</span>
+
                       <div className="flex items-center gap-1.5 mt-1">
-                        <Badge variant={trip.tripBusType === 'FEMALE' ? 'danger' : (trip.tripBusType === 'MALE' ? 'primary' : 'default')}>
-                          {trip.tripBusType || trip.bus.busType} Only
+                        <Badge variant={busType === 'FEMALE' ? 'danger' : (busType === 'MALE' ? 'primary' : 'default')}>
+                          {busType} Only
                         </Badge>
                       </div>
                     </td>
 
                     <td className="px-4 py-4 max-w-xs">
-                      <div className="font-semibold text-slate-900 flex items-center gap-1">
+                      <div className="font-semibold text-slate-900 dark:text-white flex items-center gap-1">
                         <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>{trip.route.routeName}</span>
+                        <span>{routeName}</span>
                       </div>
-                      <div className="text-[11px] text-slate-500 mt-1">
-                        {trip.route.origin} ➔ {trip.route.destination}
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        {origin} ➔ {destination}
                       </div>
                     </td>
+
 
                     <td className="px-4 py-4">
                       <div className="font-bold text-slate-900">{formatDate(trip.departureDate)}</div>

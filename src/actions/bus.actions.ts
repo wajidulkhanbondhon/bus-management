@@ -16,7 +16,11 @@ export async function createBusAction(data: CreateBusInput) {
   try {
     const user = await requirePermission('bus_trip:manage');
     const bus = await createBus(data, user.id);
+    revalidatePath('/');
     revalidatePath('/buses');
+    revalidatePath('/buses/create');
+    revalidatePath('/trips');
+    revalidatePath('/trips/create');
     revalidatePath('/dashboard');
     return { success: true, bus };
   } catch (error: any) {

@@ -99,19 +99,27 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
   };
 
   // Filter buses
-  const filteredBuses = buses.filter((bus) => {
+  const filteredBuses = buses.filter((bus: any) => {
+    const busName = bus.busName || bus.bus_name || '';
+    const busNumber = bus.busNumber || bus.bus_number || '';
+    const operator = bus.operator || '';
+    const regNumber = bus.regNumber || bus.reg_number || '';
+    const notes = bus.notes || '';
+    const q = (searchFilter || '').toLowerCase();
+
     const matchesSearch =
-      bus.busName.toLowerCase().includes(searchFilter.toLowerCase()) ||
-      bus.busNumber.toLowerCase().includes(searchFilter.toLowerCase()) ||
-      (bus.operator && bus.operator.toLowerCase().includes(searchFilter.toLowerCase())) ||
-      (bus.regNumber && bus.regNumber.toLowerCase().includes(searchFilter.toLowerCase())) ||
-      (bus.notes && bus.notes.toLowerCase().includes(searchFilter.toLowerCase()));
+      busName.toLowerCase().includes(q) ||
+      busNumber.toLowerCase().includes(q) ||
+      operator.toLowerCase().includes(q) ||
+      regNumber.toLowerCase().includes(q) ||
+      notes.toLowerCase().includes(q);
     
-    const matchesGender = selectedGender === 'ALL' || bus.busType === selectedGender;
+    const busType = bus.busType || bus.bus_type || 'MIXED';
+    const matchesGender = selectedGender === 'ALL' || busType === selectedGender;
 
     let matchesUniversity = true;
     if (selectedUniversity !== 'ALL') {
-      const busText = `${bus.busName} ${bus.notes || ''} ${bus.operator || ''}`.toLowerCase();
+      const busText = `${busName} ${notes} ${operator}`.toLowerCase();
       if (selectedUniversity === 'RU') {
         matchesUniversity = busText.includes('rajshahi') || busText.includes('রাবি') || busText.includes('রাজশাহী') || busText.includes('ru');
       } else if (selectedUniversity === 'DU') {
@@ -128,6 +136,7 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
         matchesUniversity = busText.includes('sust') || busText.includes('সাস্ট') || busText.includes('sylhet');
       }
     }
+
 
     return matchesSearch && matchesGender && matchesUniversity;
   });

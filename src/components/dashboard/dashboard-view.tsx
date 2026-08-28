@@ -39,15 +39,16 @@ interface Props {
 export function DashboardView({ data, currentUser }: Props) {
   const { t, language } = useApp();
   const {
-    kpis,
-    progressiveSales,
-    busPerformance,
-    paymentBreakdown,
-    routeBreakdown,
-    passengerDemographics,
-    recentTransactions,
-    activityFeed
-  } = data;
+    kpis = {},
+    progressiveSales = [],
+    busPerformance = [],
+    paymentBreakdown = {},
+    routeBreakdown = [],
+    passengerDemographics = {},
+    recentTransactions = [],
+    activityFeed = []
+  } = data || {};
+
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
@@ -169,24 +170,31 @@ export function DashboardView({ data, currentUser }: Props) {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {busPerformance.map((bus: any) => (
-            <Card key={bus.tripId} className="hover:shadow-lg transition-all border-slate-200 dark:border-slate-800 flex flex-col justify-between group">
+          {busPerformance.map((bus: any, index: number) => (
+            <Card key={bus.tripId || bus.busId || bus.id || `bus-perf-${index}`} className="hover:shadow-lg transition-all border-slate-200 dark:border-slate-800 flex flex-col justify-between group">
               <CardContent className="p-5 space-y-4">
+
                 {/* Bus Header */}
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
-                        {bus.tripCode}
+                        {bus.tripCode || bus.trip_code}
                       </span>
-                      <Badge variant={bus.busType === 'FEMALE' ? 'danger' : (bus.busType === 'MALE' ? 'primary' : 'default')}>
-                        {bus.busType === 'FEMALE' ? t.femaleBus : (bus.busType === 'MALE' ? t.maleBus : t.mixedBus)}
-                      </Badge>
+                      {(() => {
+                        const type = bus.busType || bus.bus_type || 'MIXED';
+                        return (
+                          <Badge variant={type === 'FEMALE' ? 'danger' : (type === 'MALE' ? 'primary' : 'default')}>
+                            {type === 'FEMALE' ? t.femaleBus : (type === 'MALE' ? t.maleBus : t.mixedBus)}
+                          </Badge>
+                        );
+                      })()}
                     </div>
                     <h3 className="font-bold text-slate-900 dark:text-white text-base mt-1 group-hover:text-blue-600 transition-colors">
-                      {bus.busName}
+                      {bus.busName || bus.bus_name || 'Express Coach'}
                     </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{bus.busNumber} • {bus.routeName}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{bus.busNumber || bus.bus_number} • {bus.routeName || bus.route_name}</p>
+
                   </div>
 
                   <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-700 dark:text-slate-200">
@@ -365,13 +373,14 @@ export function DashboardView({ data, currentUser }: Props) {
                 <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-slate-800 dark:text-slate-200 truncate">
-                    {act.action}: <span className="font-normal text-slate-600 dark:text-slate-400">{act.entity} ({act.entityId.slice(0, 8)}...)</span>
+                    {act.action || 'ACTIVITY'}: <span className="font-normal text-slate-600 dark:text-slate-400">{act.entity || 'System'} {act.entityId ? `(${String(act.entityId).slice(0, 8)}...)` : ''}</span>
                   </p>
                   <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono mt-0.5">
                     <span>{act.user?.fullName || 'System'}</span>
                     <span>•</span>
-                    <span>{formatTime(act.createdAt)}</span>
+                    <span>{formatTime(act.createdAt || act.timestamp || new Date())}</span>
                   </div>
+
                 </div>
               </div>
             ))}

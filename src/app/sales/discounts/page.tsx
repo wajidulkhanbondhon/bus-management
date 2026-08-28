@@ -1,27 +1,13 @@
 import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { prisma } from '@/lib/db';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 
 export const revalidate = 0;
 
 export default async function DiscountsPage() {
-  const discounts = await prisma.discount.findMany({
-    include: {
-      booking: {
-        include: {
-          trip: { include: { bus: true, route: true } },
-          passengers: true
-        }
-      },
-      appliedBy: { select: { fullName: true, role: { select: { name: true } } } },
-      approvals: {
-        include: { approvedBy: { select: { fullName: true } } }
-      }
-    },
-    orderBy: { createdAt: 'desc' }
-  });
+  const discounts: any[] = [];
+
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">

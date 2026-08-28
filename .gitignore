@@ -40,7 +40,21 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# sqlite
+# sqlite & databases
 *.db
 *.db-journal
 prisma/*.db
+backend/*.db
+backend/*.sqlite3
+
+# python & venvs
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+
+# local temporary
+bd_path.txt

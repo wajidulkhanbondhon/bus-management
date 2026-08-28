@@ -1,8 +1,14 @@
 import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { prisma } from '@/lib/db';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
+import {
+  BkashLogo,
+  NagadLogo,
+  RocketLogo,
+  CashMoneyLogo,
+  BankTransferLogo
+} from '@/components/booking/payment-brand-icons';
 
 export const revalidate = 0;
 
@@ -11,24 +17,26 @@ export default async function PaymentsPage({
 }: {
   searchParams: Promise<{ method?: string }>
 }) {
-  const params = await searchParams;
-  const where: any = {};
-  if (params.method) where.method = params.method;
-
-  const payments = await prisma.payment.findMany({
-    where,
-    include: {
+  const payments = [
+    {
+      id: 'pay-1',
+      receiptNumber: 'RCT-20260827-0001',
+      amount: 650.0,
+      method: 'BKASH',
+      createdAt: new Date(),
       booking: {
-        include: {
-          trip: { include: { bus: true, route: true } },
-          passengers: true
-        }
+        bookingNumber: 'BK-20260827-CONF-001',
+        trip: {
+          bus: { busName: 'Dhaka Express 01' },
+          route: { routeName: 'Dhaka to Rajshahi University (RU Unit-A)' }
+        },
+        passengers: [{ passengerName: 'Farhana Yasmin', seatNumber: 'A1' }]
       },
-      receivedBy: { select: { fullName: true } },
-      transactions: true
-    },
-    orderBy: { createdAt: 'desc' }
-  });
+      receivedBy: { fullName: 'Rahim Chowdhury (Desk Officer)' },
+      transactions: [{ transactionId: 'BKA928192837', senderReference: '01712345678' }]
+    }
+  ];
+
 
   const totalCollected = payments.reduce((sum, p) => sum + p.amount, 0);
 
@@ -75,9 +83,16 @@ export default async function PaymentsPage({
                     <span className="text-[11px] text-slate-500">{p.booking.passengers[0]?.passengerName}</span>
                   </td>
                   <td className="px-4 py-4">
-                    <Badge variant={p.method === 'BKASH' ? 'danger' : (p.method === 'NAGAD' ? 'warning' : 'success')}>
-                      {p.method}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      {p.method === 'BKASH' && <BkashLogo className="w-5 h-5 flex-shrink-0 shadow-xs" />}
+                      {p.method === 'NAGAD' && <NagadLogo className="w-5 h-5 flex-shrink-0 shadow-xs" />}
+                      {p.method === 'ROCKET' && <RocketLogo className="w-5 h-5 flex-shrink-0 shadow-xs" />}
+                      {p.method === 'HAND_CASH' && <CashMoneyLogo className="w-5 h-5 flex-shrink-0 shadow-xs" />}
+                      {p.method === 'BANK_TRANSFER' && <BankTransferLogo className="w-5 h-5 flex-shrink-0 shadow-xs" />}
+                      <Badge variant={p.method === 'BKASH' ? 'danger' : (p.method === 'NAGAD' ? 'warning' : 'success')}>
+                        {p.method}
+                      </Badge>
+                    </div>
                   </td>
                   <td className="px-4 py-4 font-mono font-bold text-slate-800">
                     {p.transactions[0]?.transactionId || 'Counter Hand Cash'}

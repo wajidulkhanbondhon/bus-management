@@ -34,12 +34,13 @@ export function DayClosingForm({ summary, currentUser }: Props) {
 
   // State for actual amounts entered by cashier
   const [actualValues, setActualValues] = useState<Record<string, number>>({
-    BKASH: existingClosing?.summaries.find((s: any) => s.method === 'BKASH')?.actualAmount ?? methodSummaries.BKASH?.expectedAmount ?? 0,
-    NAGAD: existingClosing?.summaries.find((s: any) => s.method === 'NAGAD')?.actualAmount ?? methodSummaries.NAGAD?.expectedAmount ?? 0,
-    ROCKET: existingClosing?.summaries.find((s: any) => s.method === 'ROCKET')?.actualAmount ?? methodSummaries.ROCKET?.expectedAmount ?? 0,
-    HAND_CASH: existingClosing?.summaries.find((s: any) => s.method === 'HAND_CASH')?.actualAmount ?? methodSummaries.HAND_CASH?.expectedAmount ?? 0,
-    BANK_TRANSFER: existingClosing?.summaries.find((s: any) => s.method === 'BANK_TRANSFER')?.actualAmount ?? methodSummaries.BANK_TRANSFER?.expectedAmount ?? 0
+    BKASH: existingClosing?.summaries?.find((s: any) => s.method === 'BKASH')?.actualAmount ?? methodSummaries?.BKASH?.expectedAmount ?? 0,
+    NAGAD: existingClosing?.summaries?.find((s: any) => s.method === 'NAGAD')?.actualAmount ?? methodSummaries?.NAGAD?.expectedAmount ?? 0,
+    ROCKET: existingClosing?.summaries?.find((s: any) => s.method === 'ROCKET')?.actualAmount ?? methodSummaries?.ROCKET?.expectedAmount ?? 0,
+    HAND_CASH: existingClosing?.summaries?.find((s: any) => s.method === 'HAND_CASH')?.actualAmount ?? methodSummaries?.HAND_CASH?.expectedAmount ?? 0,
+    BANK_TRANSFER: existingClosing?.summaries?.find((s: any) => s.method === 'BANK_TRANSFER')?.actualAmount ?? methodSummaries?.BANK_TRANSFER?.expectedAmount ?? 0
   });
+
 
   const [closingNotes, setClosingNotes] = useState(existingClosing?.notes || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
