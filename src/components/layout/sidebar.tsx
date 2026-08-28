@@ -66,8 +66,7 @@ export function Sidebar({ onNavigate }: SidebarProps = {}) {
     {
       label: language === 'bn' ? 'এআই কো-পাইলট ও অ্যানালিটিক্স' : 'AI COPILOT & INTELLIGENCE',
       items: [
-        { href: '/ai/office', label: language === 'bn' ? 'অফিস এআই বিজনেস কো-পাইলট' : 'Office AI Copilot', icon: Sparkles, badge: 'AI', highlight: true },
-        { href: '/ai/student', label: language === 'bn' ? 'স্টুডেন্ট এআই সহকারী' : 'Student AI Assistant', icon: Bot, badge: 'AI' }
+        { href: '/ai/office', label: language === 'bn' ? 'অফিস এআই বিজনেস কো-পাইলট' : 'Office AI Copilot', icon: Sparkles, badge: 'AI', highlight: true }
       ]
     },
     {
