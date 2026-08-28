@@ -42,12 +42,17 @@ import {
   Check,
   Clock,
   Phone,
-  Smartphone
+  Smartphone,
+  Plus,
+  Edit2,
+  Trash2,
+  X
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Modal } from '@/components/ui/modal';
 import {
   OrganizationSettingsState,
   DEFAULT_ORGANIZATION_SETTINGS,
@@ -77,9 +82,43 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
   const [orgSettings, setOrgSettings] = useState<OrganizationSettingsState>(DEFAULT_ORGANIZATION_SETTINGS);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
+  // Branch CRUD Modals & Form State
+  const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
+  const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
+  const [branchForm, setBranchForm] = useState({
+    name: '',
+    code: '',
+    address: '',
+    phone: '',
+    managerName: '',
+    status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE'
+  });
+
+  // Stop / Boarding Point CRUD Form State
+  const [isStopModalOpen, setIsStopModalOpen] = useState(false);
+  const [editingStopId, setEditingStopId] = useState<string | null>(null);
+  const [stopForm, setStopForm] = useState({
+    nameBn: '',
+    area: '',
+    sequence: 1,
+    pickupEnabled: true,
+    dropEnabled: true
+  });
+
+  // Category Tag Add State
+  const [newIncomeCategory, setNewIncomeCategory] = useState('');
+  const [newExpenseCategory, setNewExpenseCategory] = useState('');
+
   useEffect(() => {
     setOrgSettings(getStoredOrganizationSettings());
   }, []);
+
+  const triggerAutoSave = (updated: OrganizationSettingsState, message?: string) => {
+    setOrgSettings(updated);
+    saveStoredOrganizationSettings(updated);
+    setSaveMessage(message || (language === 'bn' ? '✓ সেটিংস সংরক্ষিত হয়েছে!' : '✓ Settings saved!'));
+    setTimeout(() => setSaveMessage(null), 3000);
+  };
 
   const handleSaveAll = () => {
     saveStoredOrganizationSettings(orgSettings);
@@ -97,20 +136,193 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
     downloadAnchor.remove();
   };
 
+  // --- BRANCH CRUD HANDLERS ---
+  const handleOpenAddBranch = () => {
+    setEditingBranchId(null);
+    setBranchForm({
+      name: '',
+      code: '',
+      address: '',
+      phone: '',
+      managerName: '',
+      status: 'ACTIVE'
+    });
+    setIsBranchModalOpen(true);
+  };
+
+  const handleOpenEditBranch = (branch: any) => {
+    setEditingBranchId(branch.id);
+    setBranchForm({
+      name: branch.name,
+      code: branch.code,
+      address: branch.address,
+      phone: branch.phone,
+      managerName: branch.managerName,
+      status: branch.status || 'ACTIVE'
+    });
+    setIsBranchModalOpen(true);
+  };
+
+  const handleSaveBranch = () => {
+    if (!branchForm.name.trim() || !branchForm.code.trim()) return;
+
+    let updatedBranches = [...orgSettings.branches];
+    if (editingBranchId) {
+      updatedBranches = updatedBranches.map(b =>
+        b.id === editingBranchId ? { ...b, ...branchForm } : b
+      );
+    } else {
+      updatedBranches.push({
+        id: `br-${Date.now()}`,
+        ...branchForm,
+        email: '',
+        openingDate: new Date().toISOString().slice(0, 10),
+        notes: ''
+      });
+    }
+
+    const updated = { ...orgSettings, branches: updatedBranches };
+    triggerAutoSave(updated, language === 'bn' ? '✓ শাখা সফলভাবে আপডেট করা হয়েছে!' : '✓ Branch updated successfully!');
+    setIsBranchModalOpen(false);
+  };
+
+  const handleDeleteBranch = (id: string) => {
+    if (orgSettings.branches.length <= 1) {
+      alert(language === 'bn' ? 'কমপক্ষে একটি প্রধান শাখা থাকতে হবে।' : 'At least one main branch is required.');
+      return;
+    }
+    if (!confirm(language === 'bn' ? 'আপনি কি নিশ্চিত এই শাখাটি মুছে ফেলতে চান?' : 'Are you sure you want to delete this branch?')) return;
+
+    const updatedBranches = orgSettings.branches.filter(b => b.id !== id);
+    const updated = { ...orgSettings, branches: updatedBranches };
+    triggerAutoSave(updated, language === 'bn' ? '✓ শাখা মুছে ফেলা হয়েছে।' : '✓ Branch deleted.');
+  };
+
+  // --- STOP / BOARDING POINT CRUD HANDLERS ---
+  const handleOpenAddStop = () => {
+    setEditingStopId(null);
+    setStopForm({
+      nameBn: '',
+      area: '',
+      sequence: orgSettings.stops.length + 1,
+      pickupEnabled: true,
+      dropEnabled: true
+    });
+    setIsStopModalOpen(true);
+  };
+
+  const handleOpenEditStop = (stop: any) => {
+    setEditingStopId(stop.id);
+    setStopForm({
+      nameBn: stop.nameBn || stop.name,
+      area: stop.area || '',
+      sequence: stop.sequence || 1,
+      pickupEnabled: !!stop.pickupEnabled,
+      dropEnabled: !!stop.dropEnabled
+    });
+    setIsStopModalOpen(true);
+  };
+
+  const handleSaveStop = () => {
+    if (!stopForm.nameBn.trim()) return;
+
+    let updatedStops = [...orgSettings.stops];
+    if (editingStopId) {
+      updatedStops = updatedStops.map(s =>
+        s.id === editingStopId ? { ...s, name: stopForm.nameBn, nameBn: stopForm.nameBn, area: stopForm.area, sequence: Number(stopForm.sequence), pickupEnabled: stopForm.pickupEnabled, dropEnabled: stopForm.dropEnabled } : s
+      );
+    } else {
+      updatedStops.push({
+        id: `st-${Date.now()}`,
+        name: stopForm.nameBn,
+        nameBn: stopForm.nameBn,
+        area: stopForm.area,
+        sequence: Number(stopForm.sequence),
+        pickupEnabled: stopForm.pickupEnabled,
+        dropEnabled: stopForm.dropEnabled,
+        status: 'ACTIVE'
+      });
+    }
+
+    // Sort by sequence
+    updatedStops.sort((a, b) => a.sequence - b.sequence);
+    const updated = { ...orgSettings, stops: updatedStops };
+    triggerAutoSave(updated, language === 'bn' ? '✓ বোর্ডিং পয়েন্ট সফলভাবে সেভ হয়েছে!' : '✓ Boarding stop saved successfully!');
+    setIsStopModalOpen(false);
+  };
+
+  const handleDeleteStop = (id: string) => {
+    if (!confirm(language === 'bn' ? 'আপনি কি এই বোর্ডিং পয়েন্টটি ডিলিট করতে চান?' : 'Are you sure you want to delete this stop?')) return;
+    const updatedStops = orgSettings.stops.filter(s => s.id !== id);
+    const updated = { ...orgSettings, stops: updatedStops };
+    triggerAutoSave(updated, language === 'bn' ? '✓ পয়েন্ট মুছে ফেলা হয়েছে।' : '✓ Stop deleted.');
+  };
+
+  // --- INCOME & EXPENSE TAGS CRUD ---
+  const handleAddIncomeCategory = () => {
+    if (!newIncomeCategory.trim()) return;
+    if (orgSettings.categories.income.includes(newIncomeCategory.trim())) return;
+    const updated = {
+      ...orgSettings,
+      categories: {
+        ...orgSettings.categories,
+        income: [...orgSettings.categories.income, newIncomeCategory.trim()]
+      }
+    };
+    triggerAutoSave(updated, language === 'bn' ? '✓ নতুন আয় ক্যাটাগরি যোগ হয়েছে!' : '✓ New income tag added!');
+    setNewIncomeCategory('');
+  };
+
+  const handleDeleteIncomeCategory = (tag: string) => {
+    const updated = {
+      ...orgSettings,
+      categories: {
+        ...orgSettings.categories,
+        income: orgSettings.categories.income.filter(t => t !== tag)
+      }
+    };
+    triggerAutoSave(updated, language === 'bn' ? '✓ আয় ক্যাটাগরি ডিলিট হয়েছে।' : '✓ Income tag removed.');
+  };
+
+  const handleAddExpenseCategory = () => {
+    if (!newExpenseCategory.trim()) return;
+    if (orgSettings.categories.expense.includes(newExpenseCategory.trim())) return;
+    const updated = {
+      ...orgSettings,
+      categories: {
+        ...orgSettings.categories,
+        expense: [...orgSettings.categories.expense, newExpenseCategory.trim()]
+      }
+    };
+    triggerAutoSave(updated, language === 'bn' ? '✓ নতুন ব্যয় ক্যাটাগরি যোগ হয়েছে!' : '✓ New expense tag added!');
+    setNewExpenseCategory('');
+  };
+
+  const handleDeleteExpenseCategory = (tag: string) => {
+    const updated = {
+      ...orgSettings,
+      categories: {
+        ...orgSettings.categories,
+        expense: orgSettings.categories.expense.filter(t => t !== tag)
+      }
+    };
+    triggerAutoSave(updated, language === 'bn' ? '✓ ব্যয় ক্যাটাগরি ডিলিট হয়েছে।' : '✓ Expense tag removed.');
+  };
+
   // Operational Settings Categories
   const categories = [
     { id: 'general', nameBn: '১. সাধারণ ও ভাষা সেটিংস', nameEn: '1. General & Localization', icon: Globe },
     { id: 'organization', nameBn: '২. প্রতিষ্ঠান পরিচিতি ও যোগাযোগ', nameEn: '2. Profile & Contacts', icon: Building2 },
-    { id: 'branches', nameBn: '৩. শাখা ও কাউন্টার হাব', nameEn: '3. Branches & Counters', icon: GitBranch },
+    { id: 'branches', nameBn: '৩. শাখা ও কাউন্টার হাব (Add/Edit/Delete)', nameEn: '3. Branches & Counters', icon: GitBranch },
     { id: 'transport', nameBn: '৪. পরিবহন পলিসি ও এলাউন্স', nameEn: '4. Transport & Allowances', icon: Activity },
     { id: 'seat_rules', nameBn: '৫. সিট রুলস ও জেন্ডার লক', nameEn: '5. Seat Rules & Gender Lock', icon: Lock },
     { id: 'passenger_rules', nameBn: '৬. অভিভাবক ও শিক্ষার্থী রুলস', nameEn: '6. Passenger Eligibility', icon: Users },
-    { id: 'stops', nameBn: '৭. বোর্ডিং ও ড্রপিং পয়েন্ট ড্রপডাউন', nameEn: '7. Boarding & Dropping Points', icon: MapPin },
+    { id: 'stops', nameBn: '৭. বোর্ডিং ও ড্রপিং পয়েন্ট ড্রপডাউন (Add/Edit/Delete)', nameEn: '7. Boarding & Dropping Points', icon: MapPin },
     { id: 'booking', nameBn: '৮. টিকিট বুকিং ও হোল্ড টাইমার', nameEn: '8. Booking & Hold Rules', icon: Receipt },
     { id: 'discounts', nameBn: '৯. ছাড় ও রোল-ভিত্তিক লিমিট', nameEn: '9. Discounts & Limits', icon: Percent },
     { id: 'payments', nameBn: '১০. পেমেন্ট গেটওয়ে (বিকাশ/নগদ/রকেট)', nameEn: '10. Payment & MFS Gateways', icon: CreditCard },
     { id: 'finance', nameBn: '১১. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং', nameEn: '11. Finance & Day Closing', icon: Coins },
-    { id: 'categories', nameBn: '১২. আয় ও ব্যয় ক্যাটাগরি', nameEn: '12. Income & Expense Tags', icon: Layers },
+    { id: 'categories', nameBn: '১২. আয় ও ব্যয় ক্যাটাগরি (Add/Delete)', nameEn: '12. Income & Expense Tags', icon: Layers },
     { id: 'documents', nameBn: '১৩. ডকুমেন্ট ও থার্মাল পিওএস প্রিন্ট', nameEn: '13. Documents & Thermal Print', icon: Printer },
     { id: 'communication', nameBn: '১৪. এসএমএস ও হোয়াটসঅ্যাপ এলার্ট', nameEn: '14. SMS & WhatsApp API', icon: Send },
     { id: 'security', nameBn: '১৫. নিরাপত্তা, পাসওয়ার্ড ও সেশন', nameEn: '15. Security & Session', icon: ShieldCheck },
@@ -141,8 +353,8 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 {language === 'bn'
-                  ? 'ভর্তি স্পেশাল বাস বহর, সিট রুলস, বোর্ডিং পয়েন্ট, পেমেন্ট ও ব্যাকআপ নিয়ন্ত্রণ কক্ষ'
-                  : 'Master configuration for admission express fleet, seat policies, stops, and financial ledgers'}
+                  ? 'কাউন্টার, বোর্ডিং পয়েন্ট, সিট পলিসি, পেমেন্ট নম্বর ও ব্যাকআপ ম্যানেজমেন্ট'
+                  : 'Full CRUD configuration for counters, boarding points, fare rules, and system backups'}
               </p>
             </div>
           </div>
@@ -178,7 +390,7 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={language === 'bn' ? 'সেটিংস খুঁজুন (e.g. bKash, discount, hold)...' : 'Search settings...'}
+              placeholder={language === 'bn' ? 'সেটিংস খুঁজুন (e.g. bKash, discount, branch)...' : 'Search settings...'}
               className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 shadow-2xs"
             />
           </div>
@@ -325,7 +537,7 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 3: Branches */}
+          {/* SECTION 3: Branches (FULL CRUD) */}
           {activeSection === 'branches' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
@@ -333,20 +545,34 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
                   <GitBranch className="w-5 h-5 text-blue-600" />
                   <span>{language === 'bn' ? '৩. কাউন্টার ও ব্রাঞ্চ হাব' : '3. Branch Management'}</span>
                 </CardTitle>
-                <Badge variant="primary">{orgSettings.branches.length} টি কাউন্টার সক্রিয়</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="primary">{orgSettings.branches.length} টি কাউন্টার</Badge>
+                  <Button size="sm" variant="primary" onClick={handleOpenAddBranch} className="font-bold rounded-xl text-xs">
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    {language === 'bn' ? 'নতুন কাউন্টার যোগ করুন' : 'Add Counter'}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
                 <div className="space-y-3">
                   {orgSettings.branches.map((br, idx) => (
-                    <div key={br.id || idx} className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <div key={br.id || idx} className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
                         <div className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
                           <span>{br.name}</span>
                           <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-600 font-bold">{br.code}</span>
                         </div>
-                        <p className="text-slate-500 mt-1 font-mono">{br.address} • ম্যানেজার: {br.managerName} ({br.phone})</p>
+                        <p className="text-slate-500 mt-1 font-mono text-xs">{br.address} • ম্যানেজার: {br.managerName} ({br.phone})</p>
                       </div>
-                      <Badge variant="success">ACTIVE</Badge>
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <Button size="sm" variant="outline" onClick={() => handleOpenEditBranch(br)} className="h-8 px-2.5 font-bold rounded-xl">
+                          <Edit2 className="w-3.5 h-3.5 mr-1" />
+                          {language === 'bn' ? 'সম্পাদনা' : 'Edit'}
+                        </Button>
+                        <Button size="sm" variant="danger" onClick={() => handleDeleteBranch(br.id)} className="h-8 px-2.5 font-bold rounded-xl">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -470,7 +696,7 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 7: Stops & Boarding Points */}
+          {/* SECTION 7: Stops & Boarding Points (FULL CRUD) */}
           {activeSection === 'stops' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
@@ -478,7 +704,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
                   <MapPin className="w-5 h-5 text-blue-600" />
                   <span>{language === 'bn' ? '৭. বোর্ডিং ও ড্রপিং পয়েন্ট ড্রপডাউন' : '7. Boarding & Dropping Points'}</span>
                 </CardTitle>
-                <Badge variant="primary">{orgSettings.stops.length} টি পয়েন্ট নিবন্ধিত</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="primary">{orgSettings.stops.length} টি পয়েন্ট নিবন্ধিত</Badge>
+                  <Button size="sm" variant="primary" onClick={handleOpenAddStop} className="font-bold rounded-xl text-xs">
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    {language === 'bn' ? 'নতুন পয়েন্ট যোগ করুন' : 'Add Stop'}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
                 <div className="space-y-2">
@@ -494,6 +726,12 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
                       <div className="flex items-center gap-2">
                         {st.pickupEnabled && <Badge variant="primary">PICKUP</Badge>}
                         {st.dropEnabled && <Badge variant="success">DROP</Badge>}
+                        <Button size="sm" variant="outline" onClick={() => handleOpenEditStop(st)} className="h-7 px-2 font-bold rounded-lg ml-2">
+                          <Edit2 className="w-3 h-3" />
+                        </Button>
+                        <Button size="sm" variant="danger" onClick={() => handleDeleteStop(st.id)} className="h-7 px-2 font-bold rounded-lg">
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -673,25 +911,46 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 12: Income & Expense Categories */}
+          {/* SECTION 12: Income & Expense Categories (FULL CRUD) */}
           {activeSection === 'categories' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Layers className="w-5 h-5 text-indigo-600" />
-                  <span>{language === 'bn' ? '১২. আয় ও ব্যয় ক্যাটাগরি ব্যবস্থাপনা' : '12. Income & Expense Categories'}</span>
+                  <span>{language === 'bn' ? '১২. আয় ও ব্যয় ক্যাটাগরি ব্যবস্থাপনা (Add / Delete Tags)' : '12. Income & Expense Categories'}</span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-6 space-y-4 text-xs">
+              <CardContent className="p-6 space-y-6 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Income Categories */}
                   <div className="space-y-3">
                     <span className="font-bold text-emerald-600 dark:text-emerald-400 block text-sm">আয় ক্যাটাগরি (Income Tags):</span>
-                    <div className="space-y-1.5">
+                    
+                    {/* Add Tag Input */}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newIncomeCategory}
+                        onChange={(e) => setNewIncomeCategory(e.target.value)}
+                        placeholder="নতুন আয় ট্যাগ (e.g. পার্সেল বুকিং)..."
+                        className="flex-1 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+                      />
+                      <Button size="sm" variant="primary" onClick={handleAddIncomeCategory} className="font-bold rounded-xl text-xs">
+                        <Plus className="w-3.5 h-3.5 mr-1" /> যোগ
+                      </Button>
+                    </div>
+
+                    <div className="space-y-1.5 max-h-60 overflow-y-auto">
                       {orgSettings.categories.income.map((cat, idx) => (
                         <div key={idx} className="p-2.5 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 rounded-xl font-bold text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
                           <span>{cat}</span>
-                          <span className="text-[10px] text-emerald-600 font-mono">ACTIVE</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteIncomeCategory(cat)}
+                            className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -700,11 +959,32 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
                   {/* Expense Categories */}
                   <div className="space-y-3">
                     <span className="font-bold text-rose-600 dark:text-rose-400 block text-sm">ব্যয় ক্যাটাগরি (Expense Tags):</span>
-                    <div className="space-y-1.5">
+                    
+                    {/* Add Tag Input */}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newExpenseCategory}
+                        onChange={(e) => setNewExpenseCategory(e.target.value)}
+                        placeholder="নতুন ব্যয় ট্যাগ (e.g. রোড ক্লিনার ভাতা)..."
+                        className="flex-1 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+                      />
+                      <Button size="sm" variant="danger" onClick={handleAddExpenseCategory} className="font-bold rounded-xl text-xs">
+                        <Plus className="w-3.5 h-3.5 mr-1" /> যোগ
+                      </Button>
+                    </div>
+
+                    <div className="space-y-1.5 max-h-60 overflow-y-auto">
                       {orgSettings.categories.expense.map((cat, idx) => (
                         <div key={idx} className="p-2.5 bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 rounded-xl font-bold text-rose-900 dark:text-rose-200 flex items-center justify-between">
                           <span>{cat}</span>
-                          <span className="text-[10px] text-rose-600 font-mono">ACTIVE</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteExpenseCategory(cat)}
+                            className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -851,6 +1131,157 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
           )}
         </div>
       </div>
+
+      {/* --- BRANCH MODAL (ADD & EDIT) --- */}
+      {isBranchModalOpen && (
+        <Modal
+          isOpen={isBranchModalOpen}
+          onClose={() => setIsBranchModalOpen(false)}
+          title={editingBranchId ? (language === 'bn' ? 'শাখা / কাউন্টার সম্পাদনা করুন' : 'Edit Branch Counter') : (language === 'bn' ? 'নতুন কাউন্টার যোগ করুন' : 'Add New Counter Branch')}
+        >
+          <div className="space-y-4 p-2 text-xs">
+            <div>
+              <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">শাখার নাম *</label>
+              <input
+                type="text"
+                value={branchForm.name}
+                onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })}
+                placeholder="e.g. গাবতলী প্রধান কাউন্টার"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">শাখা কোড *</label>
+                <input
+                  type="text"
+                  value={branchForm.code}
+                  onChange={(e) => setBranchForm({ ...branchForm, code: e.target.value.toUpperCase() })}
+                  placeholder="e.g. GAB"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                />
+              </div>
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">মোবাইল নম্বর *</label>
+                <input
+                  type="text"
+                  value={branchForm.phone}
+                  onChange={(e) => setBranchForm({ ...branchForm, phone: e.target.value })}
+                  placeholder="01711223344"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">কাউন্টার ম্যানেজার নাম</label>
+              <input
+                type="text"
+                value={branchForm.managerName}
+                onChange={(e) => setBranchForm({ ...branchForm, managerName: e.target.value })}
+                placeholder="e.g. রফিকুল ইসলাম"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">কাউন্টার ঠিকানা</label>
+              <input
+                type="text"
+                value={branchForm.address}
+                onChange={(e) => setBranchForm({ ...branchForm, address: e.target.value })}
+                placeholder="e.g. কাউন্টার নং ১২, গাবতলী আন্তঃজেলা টার্মিনাল"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-medium"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setIsBranchModalOpen(false)}>
+                {language === 'bn' ? 'বাতিল' : 'Cancel'}
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleSaveBranch} className="font-bold">
+                {language === 'bn' ? 'সংরক্ষণ করুন' : 'Save Branch'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* --- STOP MODAL (ADD & EDIT) --- */}
+      {isStopModalOpen && (
+        <Modal
+          isOpen={isStopModalOpen}
+          onClose={() => setIsStopModalOpen(false)}
+          title={editingStopId ? (language === 'bn' ? 'বোর্ডিং পয়েন্ট সম্পাদনা' : 'Edit Boarding Stop') : (language === 'bn' ? 'নতুন বোর্ডিং পয়েন্ট যোগ করুন' : 'Add Boarding Stop')}
+        >
+          <div className="space-y-4 p-2 text-xs">
+            <div>
+              <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">পয়েন্টের নাম (বাংলা) *</label>
+              <input
+                type="text"
+                value={stopForm.nameBn}
+                onChange={(e) => setStopForm({ ...stopForm, nameBn: e.target.value })}
+                placeholder="e.g. কল্যাণপুর বাসস্ট্যান্ড"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">এলাকা / জোন</label>
+                <input
+                  type="text"
+                  value={stopForm.area}
+                  onChange={(e) => setStopForm({ ...stopForm, area: e.target.value })}
+                  placeholder="e.g. কল্যাণপুর"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
+                />
+              </div>
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">রুট ক্রমিক নম্বর (Sequence)</label>
+                <input
+                  type="number"
+                  value={stopForm.sequence}
+                  onChange={(e) => setStopForm({ ...stopForm, sequence: Number(e.target.value) })}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
+                />
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={stopForm.pickupEnabled}
+                  onChange={(e) => setStopForm({ ...stopForm, pickupEnabled: e.target.checked })}
+                  className="w-4 h-4 rounded text-blue-600"
+                />
+                <span className="font-bold text-slate-800 dark:text-slate-200">পিকআপ পয়েন্ট হিসেবে সক্রিয় (Pickup Allowed)</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={stopForm.dropEnabled}
+                  onChange={(e) => setStopForm({ ...stopForm, dropEnabled: e.target.checked })}
+                  className="w-4 h-4 rounded text-emerald-600"
+                />
+                <span className="font-bold text-slate-800 dark:text-slate-200">ড্রপিং পয়েন্ট হিসেবে সক্রিয় (Drop Allowed)</span>
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setIsStopModalOpen(false)}>
+                {language === 'bn' ? 'বাতিল' : 'Cancel'}
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleSaveStop} className="font-bold">
+                {language === 'bn' ? 'পয়েন্ট সেভ করুন' : 'Save Stop'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
