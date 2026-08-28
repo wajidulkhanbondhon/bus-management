@@ -35,20 +35,14 @@ import {
   BarChart3,
   Layers,
   Database,
-  Crown,
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
   Save,
-  Plus,
-  Trash2,
-  HelpCircle,
-  Clock,
-  Eye,
-  Key,
-  Smartphone,
   Check,
-  X
+  Clock,
+  Phone,
+  Smartphone
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -56,15 +50,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   OrganizationSettingsState,
-  PlatformSuperAdminState,
   DEFAULT_ORGANIZATION_SETTINGS,
-  DEFAULT_PLATFORM_SUPER_ADMIN_SETTINGS,
   getStoredOrganizationSettings,
-  saveStoredOrganizationSettings,
-  getStoredPlatformSettings,
-  saveStoredPlatformSettings
+  saveStoredOrganizationSettings
 } from '@/services/settings-storage.service';
 import { DatabaseBackupClient } from './database-backup-client';
+import { AppearanceSettingsClient } from './appearance-settings-client';
+import { PaymentLogosSettingsClient } from './payment-logos-settings-client';
 import { useApp } from '@/lib/context';
 
 interface Props {
@@ -74,10 +66,6 @@ interface Props {
 
 export function SettingsCenterView({ initialSettings, currentUser }: Props) {
   const { language, t } = useApp();
-  const isSuperAdmin = currentUser?.role?.name === 'SUPER_ADMIN' || !currentUser;
-
-  // Active Tier: ORGANIZATION or PLATFORM
-  const [activeTier, setActiveTier] = useState<'ORGANIZATION' | 'PLATFORM'>('ORGANIZATION');
 
   // Active Setting Category Section
   const [activeSection, setActiveSection] = useState<string>('general');
@@ -87,27 +75,15 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
 
   // Settings State Store
   const [orgSettings, setOrgSettings] = useState<OrganizationSettingsState>(DEFAULT_ORGANIZATION_SETTINGS);
-  const [platformSettings, setPlatformSettings] = useState<PlatformSuperAdminState>(DEFAULT_PLATFORM_SUPER_ADMIN_SETTINGS);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-
-  // Quick state helpers for new items
-  const [newStopName, setNewStopName] = useState('');
-  const [newStopArea, setNewStopArea] = useState('');
-  const [newIncomeCat, setNewIncomeCat] = useState('');
-  const [newExpenseCat, setNewExpenseCat] = useState('');
 
   useEffect(() => {
     setOrgSettings(getStoredOrganizationSettings());
-    setPlatformSettings(getStoredPlatformSettings());
   }, []);
 
   const handleSaveAll = () => {
-    if (activeTier === 'ORGANIZATION') {
-      saveStoredOrganizationSettings(orgSettings);
-    } else {
-      saveStoredPlatformSettings(platformSettings);
-    }
-    setSaveMessage(language === 'bn' ? '✓ সেটিংস সফলভাবে সংরক্ষিত হয়েছে!' : '✓ Settings successfully saved!');
+    saveStoredOrganizationSettings(orgSettings);
+    setSaveMessage(language === 'bn' ? '✓ সকল সেটিংস সফলভাবে সংরক্ষিত হয়েছে!' : '✓ All settings successfully saved!');
     setTimeout(() => setSaveMessage(null), 3500);
   };
 
@@ -115,68 +91,44 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(orgSettings, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `atoms-org-settings-${new Date().toISOString().slice(0, 10)}.json`);
+    downloadAnchor.setAttribute('download', `atoms-bus-settings-${new Date().toISOString().slice(0, 10)}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
   };
 
-  // 32 Organization Setting Nav Items
-  const orgCategories = [
-    { id: 'general', nameBn: '১. সাধারণ ও ভাষা সেটিংস', nameEn: '1. General & Localization', icon: Globe, group: 'CORE' },
-    { id: 'organization', nameBn: '২. প্রতিষ্ঠান পরিচিতি', nameEn: '2. Organization Profile', icon: Building2, group: 'CORE' },
-    { id: 'branches', nameBn: '৩. শাখা ও কাউন্টার হাব', nameEn: '3. Branches & Counters', icon: GitBranch, group: 'CORE' },
-    { id: 'transport', nameBn: '৪. পরিবহন মাস্টার কন্ট্রোল', nameEn: '4. Transport Master', icon: Activity, group: 'FLEET' },
-    { id: 'bus', nameBn: '৫. বাস বহর কনফিগারেশন', nameEn: '5. Bus Fleet Config', icon: Bus, group: 'FLEET' },
-    { id: 'seat_layout', nameBn: '৬. কাস্টম সিট লেআউট', nameEn: '6. Custom Seat Layouts', icon: Grid3X3, group: 'FLEET' },
-    { id: 'seat_rules', nameBn: '৭. সিট রুলস ও লক পলিসি', nameEn: '7. Seat Rules & Locks', icon: Lock, group: 'FLEET' },
-    { id: 'passenger_rules', nameBn: '৮. যাত্রী ও জেন্ডার সম্পর্ক রুলস', nameEn: '8. Passenger Eligibility', icon: Users, group: 'FLEET' },
-    { id: 'routes', nameBn: '৯. রুট ও দূরপাল্লা লাইন', nameEn: '9. Routes Management', icon: MapPin, group: 'FLEET' },
-    { id: 'stops', nameBn: '১০. বোর্ডিং ও ড্রপিং পয়েন্ট', nameEn: '10. Boarding & Dropping', icon: MapPin, group: 'FLEET' },
-    { id: 'trips', nameBn: '১১. ট্রিপ ও শিডিউল সেটিংস', nameEn: '11. Trip & Scheduling', icon: Calendar, group: 'FLEET' },
-    { id: 'drivers', nameBn: '১২. চালক ও সহকারী রোস্টার', nameEn: '12. Drivers & Helpers', icon: Users, group: 'FLEET' },
-    { id: 'holidays', nameBn: '১৩. ভর্তি পরীক্ষা ও ছুটির ক্যালেন্ডার', nameEn: '13. Exam Calendar & Holidays', icon: Calendar, group: 'FLEET' },
-    { id: 'fuel', nameBn: '১৪. ফুয়েল ও মাইলেজ ট্র্যাকিং', nameEn: '14. Fuel & Mileage', icon: Fuel, group: 'FLEET' },
-    { id: 'maintenance', nameBn: '১৫. বাস রক্ষণাবেক্ষণ ও সার্ভিসিং', nameEn: '15. Maintenance & Repairs', icon: Wrench, group: 'FLEET' },
-    { id: 'booking', nameBn: '১৬. টিকিট বুকিং ও হোল্ড পলিসি', nameEn: '16. Booking & Hold Rules', icon: Receipt, group: 'COMMERCE' },
-    { id: 'pricing', nameBn: '১৭. ভাড়া ও ফেয়ার জোন স্ট্রাকচার', nameEn: '17. Pricing & Fare Zones', icon: Coins, group: 'COMMERCE' },
-    { id: 'discounts', nameBn: '১৮. ছাড় ও কমিশন নীতিমালা', nameEn: '18. Discounts & Caps', icon: Percent, group: 'COMMERCE' },
-    { id: 'payments', nameBn: '১৯. পেমেন্ট গেটওয়ে ও বিকাশ/নগদ', nameEn: '19. Payment & MFS Gateways', icon: CreditCard, group: 'COMMERCE' },
-    { id: 'payment_verify', nameBn: '২০. পেমেন্ট ভেরিফিকেশন রুলস', nameEn: '20. Payment Verification', icon: ShieldCheck, group: 'COMMERCE' },
-    { id: 'finance', nameBn: '২১. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং', nameEn: '21. Finance & Day Closing', icon: Lock, group: 'COMMERCE' },
-    { id: 'categories', nameBn: '২২. আয় ও ব্যয় ক্যাটাগরি', nameEn: '22. Income & Expense Tags', icon: Layers, group: 'COMMERCE' },
-    { id: 'documents', nameBn: '২৩. ডকুমেন্ট ও থার্মাল প্রিন্ট', nameEn: '23. Documents & Thermal Print', icon: Printer, group: 'COMMERCE' },
-    { id: 'numbering', nameBn: '২৪. ইনভয়েস ও টিকিট নাম্বারিং', nameEn: '24. Numbering Format', icon: FileText, group: 'COMMERCE' },
-    { id: 'communication', nameBn: '২৫. এসএমএস ও হোয়াটসঅ্যাপ এলার্ট', nameEn: '25. SMS & WhatsApp API', icon: Send, group: 'COMMUNICATION' },
-    { id: 'notifications', nameBn: '২৬. ইউজার নোটিফিকেশন', nameEn: '26. Notifications Alert', icon: Bell, group: 'COMMUNICATION' },
-    { id: 'automation', nameBn: '২৭. অটোমেশন ও স্মার্ট রুলস', nameEn: '27. Automation Rules', icon: Workflow, group: 'COMMUNICATION' },
-    { id: 'reports', nameBn: '২৮. রিপোর্ট ও লেজার কনফিগ', nameEn: '28. Reports & Ledger', icon: BarChart3, group: 'COMMUNICATION' },
-    { id: 'dashboard', nameBn: '২৯. ড্যাশবোর্ড ও কেপিআই কাস্টমাইজার', nameEn: '29. Dashboard Customizer', icon: SlidersHorizontal, group: 'ADMIN' },
-    { id: 'security', nameBn: '৩০. নিরাপত্তা, ২FA ও সেশন', nameEn: '30. Security & 2FA', icon: Lock, group: 'ADMIN' },
-    { id: 'branding', nameBn: '৩১. ব্র্যান্ডিং ও হোয়াইট লেবেল', nameEn: '31. Branding & White Label', icon: Sparkles, group: 'ADMIN' },
-    { id: 'database_backup', nameBn: '৩২. ডাটাবেজ ব্যাকআপ ও মাইগ্রেশন', nameEn: '32. Database Backup & Restore', icon: Database, group: 'ADMIN' }
-  ];
-
-  // Super Admin Platform Nav Items
-  const platformCategories = [
-    { id: 'saas_platform', nameBn: '১. প্ল্যাটফর্ম মাস্টার কনফিগ', nameEn: '1. Platform Master', icon: Crown },
-    { id: 'saas_tenants', nameBn: '২. অর্গানাইজেশন ও টেন্যান্ট ডিরেক্টরি', nameEn: '2. Tenants Registry', icon: Building2 },
-    { id: 'saas_plans', nameBn: '৩. সাবস্ক্রিপশন প্ল্যান ও কোটা', nameEn: '3. SaaS Plans & Quotas', icon: Award },
-    { id: 'saas_flags', nameBn: '৪. গ্লোবাল ফিচার ফ্ল্যাগস', nameEn: '4. Global Feature Flags', icon: SlidersHorizontal },
-    { id: 'saas_broadcast', nameBn: '৫. প্ল্যাটফর্ম ব্রডকাস্ট নোটিশ', nameEn: '5. Platform Broadcasts', icon: Send },
-    { id: 'saas_analytics', nameBn: '৬. SaaS MRR ও রেভিনিউ এনালিটিক্স', nameEn: '6. SaaS Revenue Analytics', icon: BarChart3 }
+  // Operational Settings Categories
+  const categories = [
+    { id: 'general', nameBn: '১. সাধারণ ও ভাষা সেটিংস', nameEn: '1. General & Localization', icon: Globe },
+    { id: 'organization', nameBn: '২. প্রতিষ্ঠান পরিচিতি ও যোগাযোগ', nameEn: '2. Profile & Contacts', icon: Building2 },
+    { id: 'branches', nameBn: '৩. শাখা ও কাউন্টার হাব', nameEn: '3. Branches & Counters', icon: GitBranch },
+    { id: 'transport', nameBn: '৪. পরিবহন পলিসি ও এলাউন্স', nameEn: '4. Transport & Allowances', icon: Activity },
+    { id: 'seat_rules', nameBn: '৫. সিট রুলস ও জেন্ডার লক', nameEn: '5. Seat Rules & Gender Lock', icon: Lock },
+    { id: 'passenger_rules', nameBn: '৬. অভিভাবক ও শিক্ষার্থী রুলস', nameEn: '6. Passenger Eligibility', icon: Users },
+    { id: 'stops', nameBn: '৭. বোর্ডিং ও ড্রপিং পয়েন্ট ড্রপডাউন', nameEn: '7. Boarding & Dropping Points', icon: MapPin },
+    { id: 'booking', nameBn: '৮. টিকিট বুকিং ও হোল্ড টাইমার', nameEn: '8. Booking & Hold Rules', icon: Receipt },
+    { id: 'discounts', nameBn: '৯. ছাড় ও রোল-ভিত্তিক লিমিট', nameEn: '9. Discounts & Limits', icon: Percent },
+    { id: 'payments', nameBn: '১০. পেমেন্ট গেটওয়ে (বিকাশ/নগদ/রকেট)', nameEn: '10. Payment & MFS Gateways', icon: CreditCard },
+    { id: 'finance', nameBn: '১১. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং', nameEn: '11. Finance & Day Closing', icon: Coins },
+    { id: 'categories', nameBn: '১২. আয় ও ব্যয় ক্যাটাগরি', nameEn: '12. Income & Expense Tags', icon: Layers },
+    { id: 'documents', nameBn: '১৩. ডকুমেন্ট ও থার্মাল পিওএস প্রিন্ট', nameEn: '13. Documents & Thermal Print', icon: Printer },
+    { id: 'communication', nameBn: '১৪. এসএমএস ও হোয়াটসঅ্যাপ এলার্ট', nameEn: '14. SMS & WhatsApp API', icon: Send },
+    { id: 'security', nameBn: '১৫. নিরাপত্তা, পাসওয়ার্ড ও সেশন', nameEn: '15. Security & Session', icon: ShieldCheck },
+    { id: 'appearance', nameBn: '১৬. থিম ও কালার কাস্টমাইজেশন', nameEn: '16. Appearance & Themes', icon: Sparkles },
+    { id: 'payment_logos', nameBn: '১৭. পেমেন্ট ব্র্যান্ড লোগো সেটিংস', nameEn: '17. Payment Brand Logos', icon: CreditCard },
+    { id: 'database_backup', nameBn: '১৮. ডাটাবেজ ব্যাকআপ ও মাইগ্রেশন', nameEn: '18. Database Backup & Restore', icon: Database }
   ];
 
   // Filter Categories by Search Query
-  const filteredOrgCategories = useMemo(() => {
-    if (!searchQuery.trim()) return orgCategories;
+  const filteredCategories = useMemo(() => {
+    if (!searchQuery.trim()) return categories;
     const q = searchQuery.toLowerCase();
-    return orgCategories.filter(c => c.nameBn.toLowerCase().includes(q) || c.nameEn.toLowerCase().includes(q) || c.id.includes(q));
-  }, [searchQuery, orgCategories]);
+    return categories.filter(c => c.nameBn.toLowerCase().includes(q) || c.nameEn.toLowerCase().includes(q) || c.id.includes(q));
+  }, [searchQuery, categories]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
-      {/* Top Main Header */}
+      {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
@@ -185,12 +137,12 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </div>
             <div>
               <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                {language === 'bn' ? 'সিস্টেম ও SaaS সেটিংস সেন্টার' : 'Multi-Tenant SaaS Settings Center'}
+                {language === 'bn' ? 'বাস ম্যানেজমেন্ট ও অপারেশন সেটিংস' : 'Bus Operations Settings Center'}
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 {language === 'bn'
-                  ? 'মাল্টি-টেন্যান্ট বাস ম্যানেজমেন্ট, সিট রুলস, ব্রাঞ্চ, পেমেন্ট ও প্ল্যাটফর্ম নিয়ন্ত্রণ কক্ষ'
-                  : 'Enterprise configuration suite for multi-branch transit, seat policies, and platform operations'}
+                  ? 'ভর্তি স্পেশাল বাস বহর, সিট রুলস, বোর্ডিং পয়েন্ট, পেমেন্ট ও ব্যাকআপ নিয়ন্ত্রণ কক্ষ'
+                  : 'Master configuration for admission express fleet, seat policies, stops, and financial ledgers'}
               </p>
             </div>
           </div>
@@ -215,43 +167,6 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
         </div>
       </div>
 
-      {/* Tier Switcher (Organization vs Super Admin Platform) */}
-      {isSuperAdmin && (
-        <div className="flex items-center gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 max-w-md">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTier('ORGANIZATION');
-              setActiveSection('general');
-            }}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTier === 'ORGANIZATION'
-                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-700'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            <span>{language === 'bn' ? 'অর্গানাইজেশন সেটিংস (Tenant Tier)' : 'Organization Tier'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTier('PLATFORM');
-              setActiveSection('saas_platform');
-            }}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTier === 'PLATFORM'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Crown className="w-4 h-4 text-amber-300" />
-            <span>{language === 'bn' ? 'সুপার এডমিন (SaaS Platform)' : 'Super Admin Tier'}</span>
-          </button>
-        </div>
-      )}
-
       {/* Main Settings Grid: Left Nav + Right Content Area */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Navigation Sidebar */}
@@ -263,56 +178,33 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={language === 'bn' ? 'যেকোনো সেটিংস খুঁজুন (e.g. bKash, discount, bus)...' : 'Search 76 settings keys...'}
+              placeholder={language === 'bn' ? 'সেটিংস খুঁজুন (e.g. bKash, discount, hold)...' : 'Search settings...'}
               className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 shadow-2xs"
             />
           </div>
 
           {/* Navigation List */}
           <div className="bg-white dark:bg-slate-900 p-2.5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs max-h-[750px] overflow-y-auto space-y-1 scrollbar-thin">
-            {activeTier === 'ORGANIZATION' ? (
-              filteredOrgCategories.map((cat) => {
-                const Icon = cat.icon;
-                const isActive = activeSection === cat.id;
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => setActiveSection(cat.id)}
-                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition-all cursor-pointer ${
-                      isActive
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
-                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 truncate">
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                      <span className="truncate">{language === 'bn' ? cat.nameBn : cat.nameEn}</span>
-                    </div>
-                  </button>
-                );
-              })
-            ) : (
-              platformCategories.map((cat) => {
-                const Icon = cat.icon;
-                const isActive = activeSection === cat.id;
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => setActiveSection(cat.id)}
-                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition-all cursor-pointer ${
-                      isActive
-                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
-                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 truncate">
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-amber-300' : 'text-purple-500'}`} />
-                      <span className="truncate">{language === 'bn' ? cat.nameBn : cat.nameEn}</span>
-                    </div>
-                  </button>
-                );
-              })
-            )}
+            {filteredCategories.map((cat) => {
+              const Icon = cat.icon;
+              const isActive = activeSection === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveSection(cat.id)}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    <span className="truncate">{language === 'bn' ? cat.nameBn : cat.nameEn}</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -384,7 +276,7 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Building2 className="w-5 h-5 text-blue-600" />
-                  <span>{language === 'bn' ? '২. অর্গানাইজেশন প্রোফাইল ও পরিচিতি' : '2. Organization Profile'}</span>
+                  <span>{language === 'bn' ? '২. প্রতিষ্ঠান পরিচিতি ও হেল্পলাইন' : '2. Organization Profile'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -400,21 +292,21 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">অর্গানাইজেশন কোড</label>
-                    <input
-                      type="text"
-                      value={orgSettings.organization.orgCode}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, orgCode: e.target.value } })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold"
-                    />
-                  </div>
-
-                  <div>
                     <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">হটলাইন / হেল্পলাইন নম্বর</label>
                     <input
                       type="text"
                       value={orgSettings.organization.phone}
                       onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, phone: e.target.value } })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">জরুরী যোগাযোগ নম্বর (Emergency)</label>
+                    <input
+                      type="text"
+                      value={orgSettings.organization.emergencyContact}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, emergencyContact: e.target.value } })}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold"
                     />
                   </div>
@@ -439,9 +331,9 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <GitBranch className="w-5 h-5 text-blue-600" />
-                  <span>{language === 'bn' ? '৩. ব্রাঞ্চ ও মাল্টি-কাউন্টার হাব' : '3. Branch Management'}</span>
+                  <span>{language === 'bn' ? '৩. কাউন্টার ও ব্রাঞ্চ হাব' : '3. Branch Management'}</span>
                 </CardTitle>
-                <Badge variant="primary">{orgSettings.branches.length} টি ব্রাঞ্চ সক্রিয়</Badge>
+                <Badge variant="primary">{orgSettings.branches.length} টি কাউন্টার সক্রিয়</Badge>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
                 <div className="space-y-3">
@@ -468,7 +360,7 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Activity className="w-5 h-5 text-emerald-600" />
-                  <span>{language === 'bn' ? '৪. পরিবহন মাস্টার পলিসি ও এলাউন্স' : '4. Transport Master Policy'}</span>
+                  <span>{language === 'bn' ? '৪. পরিবহন পলিসি ও এলাউন্স' : '4. Transport Master Policy'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -502,13 +394,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 7: Seat Rules & Locks */}
+          {/* SECTION 5: Seat Rules & Locks */}
           {activeSection === 'seat_rules' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Lock className="w-5 h-5 text-amber-600" />
-                  <span>{language === 'bn' ? '৭. সিট রুলস, ভিআইপি ফেয়ার ও এমার্জেন্সি লক পলিসি' : '7. Seat Rules & Locking Policies'}</span>
+                  <span>{language === 'bn' ? '৫. সিট রুলস, ভিআইপি ফেয়ার ও এমার্জেন্সি লক পলিসি' : '5. Seat Rules & Locking Policies'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -543,13 +435,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 8: Passenger Eligibility */}
+          {/* SECTION 6: Passenger Eligibility */}
           {activeSection === 'passenger_rules' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Users className="w-5 h-5 text-purple-600" />
-                  <span>{language === 'bn' ? '৮. যাত্রী যোগ্যতা ও অভিভাবক সম্পর্ক পলিসি' : '8. Passenger Eligibility Rules'}</span>
+                  <span>{language === 'bn' ? '৬. যাত্রী যোগ্যতা ও অভিভাবক সম্পর্ক পলিসি' : '6. Passenger Eligibility Rules'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -578,13 +470,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 10: Stops & Boarding Points */}
+          {/* SECTION 7: Stops & Boarding Points */}
           {activeSection === 'stops' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <MapPin className="w-5 h-5 text-blue-600" />
-                  <span>{language === 'bn' ? '১০. বোর্ডিং ও ড্রপিং পয়েন্ট ড্রপডাউন' : '10. Boarding & Dropping Points'}</span>
+                  <span>{language === 'bn' ? '৭. বোর্ডিং ও ড্রপিং পয়েন্ট ড্রপডাউন' : '7. Boarding & Dropping Points'}</span>
                 </CardTitle>
                 <Badge variant="primary">{orgSettings.stops.length} টি পয়েন্ট নিবন্ধিত</Badge>
               </CardHeader>
@@ -610,13 +502,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 16: Booking & Hold Policies */}
+          {/* SECTION 8: Booking & Hold Policies */}
           {activeSection === 'booking' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Receipt className="w-5 h-5 text-blue-600" />
-                  <span>{language === 'bn' ? '১৬. টিকিট বুকিং ও সিট হোল্ড টাইমার' : '16. Booking & Hold Rules'}</span>
+                  <span>{language === 'bn' ? '৮. টিকিট বুকিং ও সিট হোল্ড টাইমার' : '8. Booking & Hold Rules'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -647,13 +539,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 18: Discounts & Caps */}
+          {/* SECTION 9: Discounts & Caps */}
           {activeSection === 'discounts' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Percent className="w-5 h-5 text-purple-600" />
-                  <span>{language === 'bn' ? '১৮. ডিসকাউন্ট ও ছাড়ের রোল-ভিত্তিক লিমিট' : '18. Role-Based Discount Limits'}</span>
+                  <span>{language === 'bn' ? '৯. ডিসকাউন্ট ও ছাড়ের রোল-ভিত্তিক লিমিট' : '9. Role-Based Discount Limits'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -704,13 +596,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 19: Payment Gateways & MFS */}
+          {/* SECTION 10: Payment Gateways & MFS */}
           {activeSection === 'payments' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-emerald-600" />
-                  <span>{language === 'bn' ? '১৯. পেমেন্ট গেটওয়ে ও বিকাশ/নগদ মার্চেন্ট কনফিগ' : '19. Payment Gateways & MFS'}</span>
+                  <span>{language === 'bn' ? '১০. পেমেন্ট গেটওয়ে ও বিকাশ/নগদ মার্চেন্ট কনফিগ' : '10. Payment Gateways & MFS'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -749,13 +641,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 21: Finance & Day Closing */}
+          {/* SECTION 11: Finance & Day Closing */}
           {activeSection === 'finance' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Coins className="w-5 h-5 text-amber-600" />
-                  <span>{language === 'bn' ? '২১. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং হিসাব' : '21. Finance & Day Closing'}</span>
+                  <span>{language === 'bn' ? '১১. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং হিসাব' : '11. Finance & Day Closing'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -781,13 +673,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 22: Income & Expense Categories */}
+          {/* SECTION 12: Income & Expense Categories */}
           {activeSection === 'categories' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Layers className="w-5 h-5 text-indigo-600" />
-                  <span>{language === 'bn' ? '২২. আয় ও ব্যয় ক্যাটাগরি ব্যবস্থাপনা' : '22. Income & Expense Categories'}</span>
+                  <span>{language === 'bn' ? '১২. আয় ও ব্যয় ক্যাটাগরি ব্যবস্থাপনা' : '12. Income & Expense Categories'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -822,13 +714,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 23: Documents & Thermal Printing */}
+          {/* SECTION 13: Documents & Thermal Printing */}
           {activeSection === 'documents' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Printer className="w-5 h-5 text-blue-600" />
-                  <span>{language === 'bn' ? '২৩. ডকুমেন্ট ও থার্মাল পিওএস প্রিন্ট সেটিংস' : '23. Documents & Thermal Print'}</span>
+                  <span>{language === 'bn' ? '১৩. ডকুমেন্ট ও থার্মাল পিওএস প্রিন্ট সেটিংস' : '13. Documents & Thermal Print'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -872,13 +764,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 25: SMS & WhatsApp Gateways */}
+          {/* SECTION 14: SMS & WhatsApp Gateways */}
           {activeSection === 'communication' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Send className="w-5 h-5 text-emerald-600" />
-                  <span>{language === 'bn' ? '২৫. এসএমএস ও হোয়াটসঅ্যাপ অটোমেশন গেটওয়ে' : '25. SMS & WhatsApp Automation'}</span>
+                  <span>{language === 'bn' ? '১৪. এসএমএস ও হোয়াটসঅ্যাপ অটোমেশন গেটওয়ে' : '14. SMS & WhatsApp Automation'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -903,13 +795,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 30: Security & 2FA */}
+          {/* SECTION 15: Security & Session */}
           {activeSection === 'security' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
-                  <Lock className="w-5 h-5 text-rose-600" />
-                  <span>{language === 'bn' ? '৩০. নিরাপত্তা, ২FA ও সেশন ম্যানেজমেন্ট' : '30. Security & 2FA'}</span>
+                  <ShieldCheck className="w-5 h-5 text-rose-600" />
+                  <span>{language === 'bn' ? '১৫. নিরাপত্তা, পাসওয়ার্ড ও সেশন ম্যানেজমেন্ট' : '15. Security & Session Management'}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4 text-xs">
@@ -937,152 +829,25 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 31: Branding & White-Label */}
-          {activeSection === 'branding' && (
-            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
-              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
-                <CardTitle className="text-base font-black flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-indigo-600" />
-                  <span>{language === 'bn' ? '৩১. ব্র্যান্ডিং ও হোয়াইট লেবেল পোর্টাল' : '31. Branding & White Label'}</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block font-bold mb-1.5">প্রাইমারি ব্র্যান্ড কালার (HEX)</label>
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-xl border border-slate-300" style={{ backgroundColor: orgSettings.branding.primaryColorHex }} />
-                      <input
-                        type="text"
-                        value={orgSettings.branding.primaryColorHex}
-                        onChange={(e) => setOrgSettings({ ...orgSettings, branding: { ...orgSettings.branding, primaryColorHex: e.target.value } })}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-mono font-bold"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block font-bold mb-1.5">পোর্টাল হেডার টাইটেল</label>
-                    <input
-                      type="text"
-                      value={orgSettings.branding.portalTitle}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, branding: { ...orgSettings.branding, portalTitle: e.target.value } })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-xl font-bold"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {/* SECTION 16: Appearance & Themes */}
+          {activeSection === 'appearance' && (
+            <div className="space-y-6">
+              <AppearanceSettingsClient />
+            </div>
           )}
 
-          {/* SECTION 32: Database Backup & Hosting Migration (PRESERVED) */}
+          {/* SECTION 17: Payment Brand Logos */}
+          {activeSection === 'payment_logos' && (
+            <div className="space-y-6">
+              <PaymentLogosSettingsClient />
+            </div>
+          )}
+
+          {/* SECTION 18: Database Backup & Hosting Migration */}
           {activeSection === 'database_backup' && (
             <div className="space-y-6">
               <DatabaseBackupClient />
             </div>
-          )}
-
-          {/* SUPER ADMIN PLATFORM SECTION */}
-          {activeSection.startsWith('saas_') && (
-            <Card className="border-purple-200 dark:border-purple-900/60 shadow-md">
-              <CardHeader className="pb-3 border-b border-purple-100 dark:border-purple-900/40 bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 dark:from-purple-950/40 dark:via-indigo-950/30 dark:to-purple-950/40">
-                <CardTitle className="text-base font-black text-purple-900 dark:text-purple-200 flex items-center gap-2">
-                  <Crown className="w-5 h-5 text-amber-500" />
-                  <span>SaaS Platform Super Admin Master Controller</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-5 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="p-4 bg-purple-50/50 dark:bg-purple-950/30 rounded-2xl border border-purple-200 dark:border-purple-800">
-                    <span className="font-bold text-purple-900 dark:text-purple-300 block mb-1">প্ল্যাটফর্ম রক্ষণাবেক্ষণ মোড</span>
-                    <select
-                      value={platformSettings.maintenanceMode ? 'YES' : 'NO'}
-                      onChange={(e) => setPlatformSettings({ ...platformSettings, maintenanceMode: e.target.value === 'YES' })}
-                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border rounded-xl font-bold"
-                    >
-                      <option value="NO">🟢 লাইভ মোড (Live Active)</option>
-                      <option value="YES">🔴 মেইনটেন্যান্স মোড (Maintenance On)</option>
-                    </select>
-                  </div>
-
-                  <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-2xl border border-indigo-200 dark:border-indigo-800">
-                    <span className="font-bold text-indigo-900 dark:text-indigo-300 block mb-1">ডিফল্ট ফ্রি ট্রায়াল (দিন)</span>
-                    <input
-                      type="number"
-                      value={platformSettings.defaultTrialDays}
-                      onChange={(e) => setPlatformSettings({ ...platformSettings, defaultTrialDays: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border rounded-xl font-bold font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* SaaS Plans Preview */}
-                <div className="space-y-3 pt-2">
-                  <h4 className="font-black text-slate-900 dark:text-white text-sm">সক্রিয় SaaS সাবস্ক্রিপশন প্ল্যানসমূহ:</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {platformSettings.plans.map((pl) => (
-                      <div key={pl.id} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-900 dark:text-white">{pl.name}</span>
-                          {pl.isPopular && <Badge variant="primary">POPULAR</Badge>}
-                        </div>
-                        <div className="font-mono text-lg font-black text-purple-600">৳{pl.monthlyPrice}<span className="text-xs text-slate-400">/মাস</span></div>
-                        <div className="text-[11px] text-slate-500 font-mono space-y-0.5">
-                          <div>• বাস লিমিট: {pl.maxBuses} টি</div>
-                          <div>• স্টাফ লিমিট: {pl.maxStaff} জন</div>
-                          <div>• মাসিক টিকিট: {pl.maxBookingsPerMonth} টি</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* FALLBACK FOR OTHER CATEGORIES: Interactive Config Form */}
-          {![
-            'general',
-            'organization',
-            'branches',
-            'transport',
-            'seat_rules',
-            'passenger_rules',
-            'stops',
-            'booking',
-            'discounts',
-            'payments',
-            'finance',
-            'categories',
-            'documents',
-            'communication',
-            'security',
-            'branding',
-            'database_backup'
-          ].includes(activeSection) && !activeSection.startsWith('saas_') && (
-            <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
-              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
-                <CardTitle className="text-base font-black flex items-center gap-2">
-                  <SlidersHorizontal className="w-5 h-5 text-blue-600" />
-                  <span>
-                    {orgCategories.find(c => c.id === activeSection)?.nameBn || 'সেটিংস কনফিগারেশন'}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4 text-xs">
-                <p className="text-slate-500 dark:text-slate-400 leading-relaxed">
-                  এই মডিউলটির সকল ব্যবসায়িক নিয়ম ও কনফিগারেশন রিয়েল-টাইমে সক্রিয় রয়েছে। কোনো পরিবর্তন করার পর উপরে ডানদিকের <strong>"সকল পরিবর্তন সেভ করুন"</strong> বাটনে চাপ দিন।
-                </p>
-                <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-700 dark:text-slate-300">স্বয়ংক্রিয় ভ্যালিডেশন ও হিস্ট্রি ট্র্যাকিং</span>
-                    <Badge variant="success">সক্রিয়</Badge>
-                  </div>
-                  <div className="text-slate-500 text-[11px]">
-                    প্রতিটি পরিবর্তনের তারিখ, ইউজার আইডি এবং পূর্ববর্তী মান অডিট লগে সংরক্ষিত থাকবে।
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
           )}
         </div>
       </div>
