@@ -10,7 +10,8 @@ from app.api.v1.endpoints import (
     day_closing,
     reports,
     audit,
-    ai
+    ai,
+    backup
 )
 
 api_router = APIRouter()
@@ -26,3 +27,5 @@ api_router.include_router(day_closing.router, prefix="/day-closing", tags=["Day 
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports & Analytics"])
 api_router.include_router(audit.router, prefix="/audit", tags=["Audit Logs"])
 api_router.include_router(ai.router, prefix="/ai", tags=["AI Engine & OCR"])
+api_router.include_router(backup.router, prefix="/backup", tags=["Database Backup & Migration"])
+

@@ -20,6 +20,10 @@ class CreateBookingRequest(BaseModel):
     trip_id: str
     seats: List[dict]  # [{"seat_id": "...", "fare": 550}]
     passengers: List[PassengerInput]
+    journey_type: Optional[str] = "ROUND_TRIP"
+    boarding_point: Optional[str] = None
+    dropping_point: Optional[str] = None
+    passenger_legs_json: Optional[str] = None
     discount_type: Optional[str] = "FIXED"
     discount_rate: Optional[float] = 0.0
     discount_reason: Optional[str] = None
@@ -38,6 +42,10 @@ class CreatePreBookingRequest(BaseModel):
     passenger_gender: str = "FEMALE"
     is_student: bool = False
     student_admission_id: Optional[str] = None
+    journey_type: Optional[str] = "ROUND_TRIP"
+    boarding_point: Optional[str] = None
+    dropping_point: Optional[str] = None
+    passenger_legs_json: Optional[str] = None
     notes: Optional[str] = None
     source: str = "ONLINE"
 

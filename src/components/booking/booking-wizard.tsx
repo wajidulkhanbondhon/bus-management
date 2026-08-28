@@ -45,6 +45,7 @@ import {
   VisaMastercardLogo,
   DynamicPaymentLogo
 } from './payment-brand-icons';
+import { BoardingPointSelector } from './boarding-point-selector';
 import Link from 'next/link';
 import {
   Bus,
@@ -500,6 +501,12 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
   const [passengers, setPassengers] = useState<PassengerInput[]>([]);
   const [suggestedPassengerMap, setSuggestedPassengerMap] = useState<Record<string, DirectoryPassenger>>({});
 
+  // Journey Direction & Boarding Points State
+  const [journeyType, setJourneyType] = useState<'ROUND_TRIP' | 'OUTBOUND_ONLY' | 'RETURN_ONLY' | 'ASYMMETRIC'>('ROUND_TRIP');
+  const [boardingPoint, setBoardingPoint] = useState<string>('গাবতলী বাস টার্মিনাল');
+  const [droppingPoint, setDroppingPoint] = useState<string>('বিশ্ববিদ্যালয় মেইন গেট');
+  const [seatLegs, setSeatLegs] = useState<Record<string, 'ROUND_TRIP' | 'OUTBOUND_ONLY' | 'RETURN_ONLY'>>({});
+
   // Step 3: Discount calculation (টিকিটের দাম Less / ছাড় ও রেফারেন্স)
   const [isDiscountApplied, setIsDiscountApplied] = useState<boolean>(false);
   const [discountType, setDiscountType] = useState<'FIXED' | 'PERCENTAGE'>('FIXED');
@@ -725,7 +732,12 @@ const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
 
   const grossAmount = selectedSeatIds.reduce((sum, sId) => {
     const seatObj = allCurrentSeats.find(s => s.seatId === sId);
-    return sum + (seatObj?.fare || selectedTrip?.basePrice || 550);
+    const baseFare = seatObj?.fare || selectedTrip?.basePrice || 550;
+    if (journeyType === 'ROUND_TRIP') return sum + baseFare;
+    if (journeyType === 'OUTBOUND_ONLY' || journeyType === 'RETURN_ONLY') return sum + Math.round(baseFare * 0.5);
+    // ASYMMETRIC / CUSTOM_SPLIT
+    const leg = seatLegs[sId] || 'ROUND_TRIP';
+    return sum + (leg === 'ROUND_TRIP' ? baseFare : Math.round(baseFare * 0.5));
   }, 0);
 
   const discountAmount = isDiscountApplied
@@ -1012,9 +1024,17 @@ const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
     try {
       const seatsPayload = selectedSeatIds.map(sId => {
         const sObj = allCurrentSeats.find(s => s.seatId === sId);
+        const base = sObj?.fare || selectedTrip?.basePrice || 550;
+        let seatFare = base;
+        if (journeyType === 'OUTBOUND_ONLY' || journeyType === 'RETURN_ONLY') {
+          seatFare = Math.round(base * 0.5);
+        } else if (journeyType === 'ASYMMETRIC') {
+          const leg = seatLegs[sId] || 'ROUND_TRIP';
+          seatFare = leg === 'ROUND_TRIP' ? base : Math.round(base * 0.5);
+        }
         return {
           seatId: sId,
-          fare: sObj?.fare || selectedTrip?.basePrice || 550
+          fare: seatFare
         };
       });
 
@@ -1026,6 +1046,10 @@ const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
         tripId: selectedTripId,
         seats: seatsPayload,
         passengers,
+        journeyType,
+        boardingPoint: boardingPoint || undefined,
+        droppingPoint: droppingPoint || undefined,
+        passengerLegsJson: journeyType === 'ASYMMETRIC' ? JSON.stringify(seatLegs) : undefined,
         isDiscountApplied,
         discountType: isDiscountApplied && discountAmount > 0 ? discountType : undefined,
         discountRate: isDiscountApplied && discountAmount > 0 ? discountRate : undefined,
@@ -1035,7 +1059,15 @@ const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
         paidAmount: paidAmount,
         transactionId: transactionId.trim() || undefined,
         senderReference: finalSenderRef,
-        notes: bookingNotes || undefined
+        notes: bookingNotes || `যাত্রার ধরণ: ${
+          journeyType === 'ROUND_TRIP'
+            ? 'উভয়মুখী (যাওয়া ও আসা)'
+            : journeyType === 'OUTBOUND_ONLY'
+            ? 'শুধুমাত্র যাওয়া'
+            : journeyType === 'RETURN_ONLY'
+            ? 'শুধুমাত্র আসা'
+            : 'অভিভাবক সহ স্প্লিট'
+        } | বোর্ডিং: ${boardingPoint} | ড্রপিং: ${droppingPoint}`
       });
 
       if (res.success && res.booking) {
@@ -1778,6 +1810,133 @@ const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
               </div>
             </CardHeader>
             <CardContent className="space-y-5 p-4 sm:p-6">
+              {/* 1. Journey Direction & Multi-Leg Config Card */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Bus className="w-4 h-4 text-blue-600" />
+                    <span>{language === 'bn' ? 'যাত্রার ধরণ নির্ধারণ করুন (Journey Direction)' : 'Journey Direction'}</span>
+                  </span>
+                  <span className="text-xs font-mono font-black text-blue-600 dark:text-blue-400">
+                    {journeyType === 'ROUND_TRIP' ? 'উভয়মুখী (ফুল ভাড়া)' : journeyType === 'ASYMMETRIC' ? 'গার্ডিয়ান স্প্লিট' : 'হাফ টিকিট (৫০% ভাড়া)'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setJourneyType('ROUND_TRIP')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left cursor-pointer ${
+                      journeyType === 'ROUND_TRIP'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300 text-slate-800 dark:text-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>🚌</span>
+                      <span>উভয়মুখী</span>
+                    </div>
+                    <span className="text-[10px] block opacity-80 mt-0.5 font-normal">যাওয়া + আসা</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setJourneyType('OUTBOUND_ONLY')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left cursor-pointer ${
+                      journeyType === 'OUTBOUND_ONLY'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300 text-slate-800 dark:text-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>➡️</span>
+                      <span>শুধু যাওয়া</span>
+                    </div>
+                    <span className="text-[10px] block opacity-80 mt-0.5 font-normal">৫০% হাফ ভাড়া</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setJourneyType('RETURN_ONLY')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left cursor-pointer ${
+                      journeyType === 'RETURN_ONLY'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300 text-slate-800 dark:text-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>⬅️</span>
+                      <span>শুধু আসা</span>
+                    </div>
+                    <span className="text-[10px] block opacity-80 mt-0.5 font-normal">৫০% হাফ ভাড়া</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setJourneyType('ASYMMETRIC')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left cursor-pointer ${
+                      journeyType === 'ASYMMETRIC'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-indigo-300 text-slate-800 dark:text-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>👥</span>
+                      <span>গার্ডিয়ান স্প্লিট</span>
+                    </div>
+                    <span className="text-[10px] block opacity-80 mt-0.5 font-normal">যাওয়া ২ জন, আসা ১ জন</span>
+                  </button>
+                </div>
+
+                {/* Per-seat leg config if ASYMMETRIC */}
+                {journeyType === 'ASYMMETRIC' && selectedSeatIds.length > 0 && (
+                  <div className="mt-2 p-3 bg-white dark:bg-slate-900 rounded-xl border border-indigo-200 dark:border-indigo-800 space-y-2 text-xs">
+                    <span className="text-[11px] font-bold text-indigo-900 dark:text-indigo-200 block">
+                      প্রতিটি সিটের জন্য যাওয়ার/আসার ধরণ নির্বাচন করুন:
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {selectedSeatIds.map((sId, idx) => {
+                        const sObj = allCurrentSeats.find(s => s.seatId === sId);
+                        const sLabel = sObj?.seatNumber || `Seat ${idx + 1}`;
+                        const baseFare = sObj?.fare || 550;
+                        const curLeg = seatLegs[sId] || (idx === 0 ? 'ROUND_TRIP' : 'OUTBOUND_ONLY');
+                        return (
+                          <div key={sId} className="flex items-center justify-between gap-2 p-2 bg-slate-50 dark:bg-slate-800/70 rounded-lg">
+                            <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">
+                              সিট {sLabel} ({idx === 0 ? 'শিক্ষার্থী' : 'অভিভাবক'}):
+                            </span>
+                            <select
+                              value={curLeg}
+                              onChange={(e) => {
+                                setSeatLegs({
+                                  ...seatLegs,
+                                  [sId]: e.target.value as any
+                                });
+                              }}
+                              className="text-[11px] font-bold px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                            >
+                              <option value="ROUND_TRIP">উভয়মুখী - ৳{baseFare}</option>
+                              <option value="OUTBOUND_ONLY">শুধু যাওয়া - ৳{Math.round(baseFare * 0.5)}</option>
+                              <option value="RETURN_ONLY">শুধু আসা - ৳{Math.round(baseFare * 0.5)}</option>
+                            </select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Boarding & Dropping Points Selector */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <BoardingPointSelector
+                  boardingPoint={boardingPoint}
+                  onBoardingChange={setBoardingPoint}
+                  droppingPoint={droppingPoint}
+                  onDroppingChange={setDroppingPoint}
+                />
+              </div>
+
               {/* Smart Gender-Adjacent & Guardian Protection Banner */}
               <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-800/80 rounded-2xl flex items-start gap-3 text-xs text-blue-950 dark:text-blue-200 shadow-2xs">
                 <Shield className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />

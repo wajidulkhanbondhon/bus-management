@@ -20,6 +20,10 @@ export interface CreateBookingInput {
   tripId: string;
   seats: { seatId: string; fare: number }[];
   passengers: PassengerInput[];
+  journeyType?: 'ROUND_TRIP' | 'OUTBOUND_ONLY' | 'RETURN_ONLY' | 'ASYMMETRIC';
+  boardingPoint?: string | null;
+  droppingPoint?: string | null;
+  passengerLegsJson?: string | null;
   isDiscountApplied?: boolean;
   discountType?: 'FIXED' | 'PERCENTAGE';
   discountRate?: number;
@@ -41,6 +45,10 @@ export interface CreatePreBookingInput {
   passengerGender: 'MALE' | 'FEMALE';
   isStudent?: boolean;
   studentAdmissionId?: string;
+  journeyType?: 'ROUND_TRIP' | 'OUTBOUND_ONLY' | 'RETURN_ONLY' | 'ASYMMETRIC';
+  boardingPoint?: string | null;
+  droppingPoint?: string | null;
+  passengerLegsJson?: string | null;
   source?: 'ONLINE' | 'PHONE' | 'AGENT' | 'COUNTER';
   createdById?: string;
   notes?: string;
@@ -105,6 +113,10 @@ export async function createBooking(input: CreateBookingInput) {
       seat_id: p.seatId,
       student_admission_id: p.admissionId
     })),
+    journey_type: input.journeyType || 'ROUND_TRIP',
+    boarding_point: input.boardingPoint,
+    dropping_point: input.droppingPoint,
+    passenger_legs_json: input.passengerLegsJson,
     payment_method: input.paymentMethod,
     paid_amount: input.paidAmount,
     discount_rate: input.discountRate,
@@ -128,6 +140,10 @@ export async function createPreBooking(input: CreatePreBookingInput) {
     passenger_gender: input.passengerGender,
     is_student: input.isStudent,
     student_admission_id: input.studentAdmissionId,
+    journey_type: input.journeyType || 'ROUND_TRIP',
+    boarding_point: input.boardingPoint,
+    dropping_point: input.droppingPoint,
+    passenger_legs_json: input.passengerLegsJson,
     source: input.source || 'ONLINE',
     notes: input.notes
   });

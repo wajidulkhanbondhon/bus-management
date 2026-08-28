@@ -150,52 +150,93 @@ export function PaymentReceiptCard({ booking }: { booking: any }) {
       {/* Main Receipt Content */}
       <div className="p-6 sm:p-8 space-y-6">
         {/* 1. Trip & Schedule Highlight Card */}
-        <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
-              যাত্রার রুট ও গন্তব্য (Route)
-            </span>
-            <div className="text-base font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-              <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
-              <span>{route.routeName || 'ঢাকা ➔ বিশ্ববিদ্যালয় রুট'}</span>
-            </div>
-            <span className="text-xs text-slate-500 dark:text-slate-400 pl-5.5 block">
-              {route.origin || 'ঢাকা কাউন্টার'} ➔ {route.destination || 'টার্গেট বিশ্ববিদ্যালয় মেইন গেট'}
-            </span>
-          </div>
-
-          <div className="space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
-              যাত্রা শুরুর সময় (Departure Schedule)
-            </span>
-            <div className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-              <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
-              <span>{formatDate(trip.departureDate)}</span>
-            </div>
-            <div className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5 pl-5.5">
-              <Clock className="w-3.5 h-3.5" />
-              <span>{formatTime(trip.departureTime)} (বাংলাদেশ সময়)</span>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
-              বাস ও কোচের বিবরণ (Bus Details)
-            </span>
-            <div className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-              <Bus className="w-4 h-4 text-blue-600 shrink-0" />
-              <span className="truncate">{bus.busName || trip.busName || 'Express Coach'}</span>
-            </div>
-            <div className="flex items-center gap-2 pl-5.5">
-              <span className="font-mono text-xs text-slate-600 dark:text-slate-300 font-bold">
-                {bus.busNumber || 'কোচ নং'}
+        <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
+                যাত্রার রুট ও গন্তব্য (Route)
               </span>
-              <Badge
-                variant={busType === 'FEMALE' ? 'danger' : busType === 'MALE' ? 'primary' : 'success'}
-                className="text-[10px] font-bold"
-              >
-                {busType === 'FEMALE' ? 'মহিলা স্পেশাল' : busType === 'MALE' ? 'ছাত্র স্পেশাল' : 'মিক্সড বাস'}
-              </Badge>
+              <div className="text-base font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>{route.routeName || 'ঢাকা ➔ বিশ্ববিদ্যালয় রুট'}</span>
+              </div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 pl-5.5 block">
+                {route.origin || 'ঢাকা কাউন্টার'} ➔ {route.destination || 'টার্গেট বিশ্ববিদ্যালয় মেইন গেট'}
+              </span>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
+                যাত্রা শুরুর সময় (Departure Schedule)
+              </span>
+              <div className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>{formatDate(trip.departureDate)}</span>
+              </div>
+              <div className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5 pl-5.5">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{formatTime(trip.departureTime)} (বাংলাদেশ সময়)</span>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
+                বাস ও কোচের বিবরণ (Bus Details)
+              </span>
+              <div className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                <Bus className="w-4 h-4 text-blue-600 shrink-0" />
+                <span className="truncate">{bus.busName || trip.busName || 'Express Coach'}</span>
+              </div>
+              <div className="flex items-center gap-2 pl-5.5">
+                <span className="font-mono text-xs text-slate-600 dark:text-slate-300 font-bold">
+                  {bus.busNumber || 'কোচ নং'}
+                </span>
+                <Badge
+                  variant={busType === 'FEMALE' ? 'danger' : busType === 'MALE' ? 'primary' : 'success'}
+                  className="text-[10px] font-bold"
+                >
+                  {busType === 'FEMALE' ? 'মহিলা স্পেশাল' : busType === 'MALE' ? 'ছাত্র স্পেশাল' : 'মিক্সড বাস'}
+                </Badge>
+              </div>
+            </div>
+          </div>
+
+          {/* Boarding Point, Dropping Point & Journey Direction Strip */}
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-700/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+              <span className="text-base">🚌</span>
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase font-mono block">যাত্রার ধরণ:</span>
+                <span className="font-bold text-slate-900 dark:text-white">
+                  {booking.journeyType === 'OUTBOUND_ONLY' || booking.journey_type === 'OUTBOUND_ONLY'
+                    ? '➡️ শুধুমাত্র যাওয়া (One-way Going)'
+                    : booking.journeyType === 'RETURN_ONLY' || booking.journey_type === 'RETURN_ONLY'
+                    ? '⬅️ শুধুমাত্র আসা (One-way Return)'
+                    : booking.journeyType === 'ASYMMETRIC' || booking.journey_type === 'ASYMMETRIC'
+                    ? '👥 অভিভাবক সহ স্প্লিট'
+                    : '🚌 উভয়মুখী (যাওয়া ও আসা)'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+              <span className="text-base">📍</span>
+              <div className="truncate">
+                <span className="text-[10px] text-slate-400 uppercase font-mono block">ওঠার স্থান (Boarding):</span>
+                <span className="font-bold text-blue-600 dark:text-blue-400 truncate block">
+                  {booking.boardingPoint || booking.boarding_point || 'কাউন্টার নির্ধারিত'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+              <span className="text-base">🎯</span>
+              <div className="truncate">
+                <span className="text-[10px] text-slate-400 uppercase font-mono block">নামার স্থান (Dropping):</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400 truncate block">
+                  {booking.droppingPoint || booking.dropping_point || 'বিশ্ববিদ্যালয় মেইন গেট'}
+                </span>
+              </div>
             </div>
           </div>
         </div>

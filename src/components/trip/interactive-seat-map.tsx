@@ -54,6 +54,7 @@ import {
   DirectoryPassenger
 } from '@/services/passenger-directory.service';
 import { OfficialWhatsAppIcon } from '@/components/passenger/passenger-portal-client';
+import { BoardingPointSelector } from '@/components/booking/boarding-point-selector';
 import { useApp } from '@/lib/context';
 
 interface Props {
@@ -96,7 +97,13 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
   const [passengerGender, setPassengerGender] = useState<'MALE' | 'FEMALE'>('MALE');
   const [isStudent, setIsStudent] = useState(true);
   const [studentAdmissionId, setStudentAdmissionId] = useState('');
-  const [boardingPoint, setBoardingPoint] = useState('');
+  
+  // Journey Direction & Boarding Points state
+  const [journeyType, setJourneyType] = useState<'ROUND_TRIP' | 'OUTBOUND_ONLY' | 'RETURN_ONLY' | 'ASYMMETRIC'>('ROUND_TRIP');
+  const [boardingPoint, setBoardingPoint] = useState('গাবতলী বাস টার্মিনাল');
+  const [droppingPoint, setDroppingPoint] = useState('বিশ্ববিদ্যালয় মেইন গেট');
+  const [seatLegs, setSeatLegs] = useState<Record<string, 'ROUND_TRIP' | 'OUTBOUND_ONLY' | 'RETURN_ONLY'>>({});
+
   const [authPin, setAuthPin] = useState('');
   const [authConfirmPin, setAuthConfirmPin] = useState('');
   const [authPinVisible, setAuthPinVisible] = useState(false);
@@ -181,9 +188,20 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
     return seats.filter(s => selectedSeatIds.includes(s.seatId));
   }, [seats, selectedSeatIds]);
 
+  // Dynamic Fare Calculation taking journey direction / legs into account
   const totalFare = useMemo(() => {
-    return selectedSeats.reduce((sum, s) => sum + s.fare, 0);
-  }, [selectedSeats]);
+    if (journeyType === 'ROUND_TRIP') {
+      return selectedSeats.reduce((sum, s) => sum + s.fare, 0);
+    } else if (journeyType === 'OUTBOUND_ONLY' || journeyType === 'RETURN_ONLY') {
+      return selectedSeats.reduce((sum, s) => sum + Math.round(s.fare * 0.5), 0);
+    } else {
+      // ASYMMETRIC / CUSTOM_SPLIT
+      return selectedSeats.reduce((sum, s) => {
+        const leg = seatLegs[s.seatId] || 'ROUND_TRIP';
+        return sum + (leg === 'ROUND_TRIP' ? s.fare : Math.round(s.fare * 0.5));
+      }, 0);
+    }
+  }, [selectedSeats, journeyType, seatLegs]);
 
   // Handle seat click (Multi-seat toggle for prebooking)
   const handleSeatClick = (seat: SeatStatusDetail) => {
@@ -249,7 +267,7 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
         });
       }
 
-      // 2. Dispatch Pre-Booking Action
+      // 2. Dispatch Pre-Booking Action with Journey Type & Boarding Points
       const res = await createPreBookingAction({
         tripId: trip.id,
         seatIds: selectedSeatIds,
@@ -258,7 +276,19 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
         passengerGender,
         isStudent,
         studentAdmissionId: studentAdmissionId.trim() || undefined,
-        notes: boardingPoint ? `বোর্ডিং পয়েন্ট: ${boardingPoint}` : undefined
+        journeyType,
+        boardingPoint: boardingPoint || undefined,
+        droppingPoint: droppingPoint || undefined,
+        passengerLegsJson: journeyType === 'ASYMMETRIC' ? JSON.stringify(seatLegs) : undefined,
+        notes: `যাত্রার ধরণ: ${
+          journeyType === 'ROUND_TRIP'
+            ? 'উভয়মুখী (যাওয়া ও আসা)'
+            : journeyType === 'OUTBOUND_ONLY'
+            ? 'শুধুমাত্র যাওয়া'
+            : journeyType === 'RETURN_ONLY'
+            ? 'শুধুমাত্র আসা'
+            : 'অভিভাবক সহ স্প্লিট'
+        } | বোর্ডিং: ${boardingPoint || 'কাউন্টার'} | ড্রপিং: ${droppingPoint || 'ক্যাম্পাস'}`
       });
 
       if (res.success && res.booking) {
@@ -959,16 +989,128 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
                     </div>
                   )}
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
-                      কোথায় উঠবেন / বোর্ডিং পয়েন্ট (ঐচ্ছিক)
+                  {/* 1. Journey Direction Selector */}
+                  <div className="space-y-2 p-3.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800">
+                    <label className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                      <span>যাত্রার ধরণ (Journey Direction) *</span>
+                      <span className="text-[11px] font-mono text-blue-600 dark:text-blue-400 font-bold">
+                        {journeyType === 'ROUND_TRIP'
+                          ? 'ফুল প্যাকেজ'
+                          : journeyType === 'ASYMMETRIC'
+                          ? 'কাস্টম সিট স্প্লিট'
+                          : '৫০% হাফ ভাড়া'}
+                      </span>
                     </label>
-                    <Input
-                      type="text"
-                      placeholder="যেমন: গাবতলী কাউন্টার / সাভার ওভারব্রিজ"
-                      value={boardingPoint}
-                      onChange={e => setBoardingPoint(e.target.value)}
-                      className="rounded-xl py-2.5 text-xs"
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setJourneyType('ROUND_TRIP')}
+                        className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer text-left ${
+                          journeyType === 'ROUND_TRIP'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>🚌</span>
+                          <span>উভয়মুখী (যাওয়া+আসা)</span>
+                        </div>
+                        <span className="text-[10px] block opacity-80 mt-0.5 font-normal">সম্পূর্ণ ট্রিপ</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setJourneyType('OUTBOUND_ONLY')}
+                        className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer text-left ${
+                          journeyType === 'OUTBOUND_ONLY'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>➡️</span>
+                          <span>শুধুমাত্র যাওয়া</span>
+                        </div>
+                        <span className="text-[10px] block opacity-80 mt-0.5 font-normal">হাফ টিকিট (৫০% ভাড়া)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setJourneyType('RETURN_ONLY')}
+                        className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer text-left ${
+                          journeyType === 'RETURN_ONLY'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>⬅️</span>
+                          <span>শুধুমাত্র আসা</span>
+                        </div>
+                        <span className="text-[10px] block opacity-80 mt-0.5 font-normal">হাফ টিকিট (৫০% ভাড়া)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setJourneyType('ASYMMETRIC')}
+                        className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer text-left ${
+                          journeyType === 'ASYMMETRIC'
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-indigo-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>👥</span>
+                          <span>অভিভাবক সহ স্প্লিট</span>
+                        </div>
+                        <span className="text-[10px] block opacity-80 mt-0.5 font-normal">যাওয়া ২ জন + আসা ১ জন</span>
+                      </button>
+                    </div>
+
+                    {/* Asymmetric per-seat configuration breakdown */}
+                    {journeyType === 'ASYMMETRIC' && selectedSeats.length > 0 && (
+                      <div className="mt-3 p-3 bg-white dark:bg-slate-900 rounded-xl border border-indigo-200 dark:border-indigo-800 space-y-2 text-xs">
+                        <span className="text-[11px] font-bold text-indigo-900 dark:text-indigo-200 block">
+                          প্রতিটি সিটের জন্য যাওয়ার/আসার ধরণ নির্ধারণ করুন:
+                        </span>
+                        <div className="space-y-2">
+                          {selectedSeats.map((s, idx) => {
+                            const curLeg = seatLegs[s.seatId] || (idx === 0 ? 'ROUND_TRIP' : 'OUTBOUND_ONLY');
+                            return (
+                              <div key={s.seatId} className="flex items-center justify-between gap-2 p-2 bg-slate-50 dark:bg-slate-800/70 rounded-lg">
+                                <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                                  সিট {s.seatNumber} ({idx === 0 ? 'পরীক্ষার্থী' : 'অভিভাবক'}):
+                                </span>
+                                <select
+                                  value={curLeg}
+                                  onChange={(e) => {
+                                    setSeatLegs({
+                                      ...seatLegs,
+                                      [s.seatId]: e.target.value as any
+                                    });
+                                  }}
+                                  className="text-[11px] font-bold px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                                >
+                                  <option value="ROUND_TRIP">উভয়মুখী (যাওয়া ও আসা) - ৳{s.fare}</option>
+                                  <option value="OUTBOUND_ONLY">শুধুমাত্র যাওয়া - ৳{Math.round(s.fare * 0.5)}</option>
+                                  <option value="RETURN_ONLY">শুধুমাত্র আসা - ৳{Math.round(s.fare * 0.5)}</option>
+                                </select>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. Boarding & Dropping Points Selector with Dropdown + Custom Manual Entry */}
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800">
+                    <BoardingPointSelector
+                      boardingPoint={boardingPoint}
+                      onBoardingChange={setBoardingPoint}
+                      droppingPoint={droppingPoint}
+                      onDroppingChange={setDroppingPoint}
                     />
                   </div>
 

@@ -45,6 +45,12 @@ class Booking(Base):
     paid_amount = Column(Float, default=0.0)
     due_amount = Column(Float, nullable=False)
 
+    # Journey Type & Boarding Points
+    journey_type = Column(String, default="ROUND_TRIP")  # "ROUND_TRIP", "OUTBOUND_ONLY", "RETURN_ONLY", "ASYMMETRIC"
+    boarding_point = Column(String, nullable=True)
+    dropping_point = Column(String, nullable=True)
+    passenger_legs_json = Column(Text, nullable=True)  # JSON mapping per-seat leg directions
+
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

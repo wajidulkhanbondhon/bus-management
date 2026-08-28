@@ -56,9 +56,14 @@ export const CreateBookingSchema = z.object({
   discountReference: z.string().max(200).optional(),
   paymentMethod: PaymentMethodSchema,
   paidAmount: z.number().min(0, 'Paid amount must be non-negative'),
+  journeyType: z.enum(['ROUND_TRIP', 'OUTBOUND_ONLY', 'RETURN_ONLY', 'ASYMMETRIC']).optional(),
+  boardingPoint: z.string().max(200).optional().nullable(),
+  droppingPoint: z.string().max(200).optional().nullable(),
+  passengerLegsJson: z.string().optional().nullable(),
   transactionId: z.string().max(100).optional(),
   senderReference: z.string().max(100).optional(),
   notes: z.string().max(1000).optional(),
+  createdById: z.string().optional(),
 });
 
 export const CreatePreBookingSchema = z.object({
@@ -69,6 +74,10 @@ export const CreatePreBookingSchema = z.object({
   passengerGender: GenderSchema,
   isStudent: z.boolean().optional(),
   studentAdmissionId: z.string().max(50).optional(),
+  journeyType: z.enum(['ROUND_TRIP', 'OUTBOUND_ONLY', 'RETURN_ONLY', 'ASYMMETRIC']).optional(),
+  boardingPoint: z.string().max(200).optional().nullable(),
+  droppingPoint: z.string().max(200).optional().nullable(),
+  passengerLegsJson: z.string().optional().nullable(),
   notes: z.string().max(1000).optional(),
   source: z.enum(['ONLINE', 'COUNTER']).optional(),
   createdById: z.string().optional(),

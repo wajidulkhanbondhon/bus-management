@@ -312,6 +312,30 @@ export function LiveBookingTrackerClient({ initialBooking }: Props) {
                   {booking.seats?.map((s: any) => s.seat?.seatNumber || 'Seat').join(', ')}
                 </span>
               </div>
+              <div className="flex justify-between border-b border-slate-800 pb-1">
+                <span className="text-slate-400">যাত্রার ধরণ:</span>
+                <span className="font-bold text-amber-400">
+                  {booking.journeyType === 'OUTBOUND_ONLY' || booking.journey_type === 'OUTBOUND_ONLY'
+                    ? '➡️ শুধুমাত্র যাওয়া (One-way Going)'
+                    : booking.journeyType === 'RETURN_ONLY' || booking.journey_type === 'RETURN_ONLY'
+                    ? '⬅️ শুধুমাত্র আসা (One-way Return)'
+                    : booking.journeyType === 'ASYMMETRIC' || booking.journey_type === 'ASYMMETRIC'
+                    ? '👥 অভিভাবক সহ স্প্লিট'
+                    : '🚌 উভয়মুখী (যাওয়া ও আসা)'}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-slate-800 pb-1">
+                <span className="text-slate-400">ওঠার স্থান (Boarding):</span>
+                <span className="font-bold text-blue-400">
+                  {booking.boardingPoint || booking.boarding_point || 'কাউন্টার'}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-slate-800 pb-1">
+                <span className="text-slate-400">নামার স্থান (Dropping):</span>
+                <span className="font-bold text-emerald-400">
+                  {booking.droppingPoint || booking.dropping_point || 'বিশ্ববিদ্যালয় মেইন গেট'}
+                </span>
+              </div>
             </div>
           </div>
 

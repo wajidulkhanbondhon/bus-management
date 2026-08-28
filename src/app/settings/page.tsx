@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AppearanceSettingsClient } from '@/components/settings/appearance-settings-client';
 import { PaymentLogosSettingsClient } from '@/components/settings/payment-logos-settings-client';
+import { DatabaseBackupClient } from '@/components/settings/database-backup-client';
 import { Settings, Sliders, ShieldCheck } from 'lucide-react';
 
 export const revalidate = 0;
@@ -27,9 +28,12 @@ export default async function SettingsPage() {
           Settings & Customization
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-          Customize navigation font sizes, content reading scales, color themes, payment gateway brand logos, and view operational security policies.
+          Customize navigation font sizes, content reading scales, color themes, payment gateway brand logos, database backup archives, and view operational security policies.
         </p>
       </div>
+
+      {/* Database Backup & Hosting Migration Manager */}
+      <DatabaseBackupClient />
 
       {/* Dynamic Payment & Bank Logos Manager */}
       <PaymentLogosSettingsClient />

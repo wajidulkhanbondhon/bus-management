@@ -127,6 +127,15 @@ export const fastApiClient = {
   trackBooking: (query: string) =>
     apiRequest(`/bookings/track/${encodeURIComponent(query)}`),
 
+  // Generic helpers
+  get: <T = any>(endpoint: string) => apiRequest<T>(endpoint),
+  post: <T = any>(endpoint: string, data?: any) =>
+    apiRequest<T>(endpoint, { method: 'POST', body: data ? JSON.stringify(data) : undefined }),
+
+  // Database Backup & Migration
+  getDbStats: () => apiRequest('/backup/stats'),
+  exportDbBackup: () => apiRequest('/backup/export'),
+
   // AI Assistant
   queryAi: (prompt: string) =>
     apiRequest('/ai/query-assistant', { method: 'POST', body: JSON.stringify({ prompt }) }),
