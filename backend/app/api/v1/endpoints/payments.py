@@ -106,3 +106,14 @@ def issue_refund(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/refunds", response_model=List[RefundOut])
+def list_refunds(
+    tenant_id: Optional[str] = Depends(get_current_tenant_id),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT", "MANAGER"]))
+):
+    query = db.query(Refund).join(Booking, Refund.booking_id == Booking.id)
+    query = apply_tenant_filter(query, Booking, current_user, tenant_id)
+    return query.order_by(Refund.created_at.desc()).limit(100).all()

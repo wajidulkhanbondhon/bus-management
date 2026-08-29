@@ -112,8 +112,6 @@ export function Sidebar({ onNavigate }: SidebarProps = {}) {
       items: [
         { href: '/day-closing', label: t.dayClosing, icon: LockKeyhole, highlight: true },
         { href: '/dashboard/cash-calculator', label: language === 'bn' ? 'ক্যাশ ক্যালকুলেটর' : 'Cash Calculator', icon: Calculator, highlight: true },
-        { href: '/dashboard/bus-expenses', label: language === 'bn' ? 'বাস খরচ হিসাব' : 'Bus Expenses', icon: Truck },
-        { href: '/dashboard/staff-expenses', label: language === 'bn' ? 'স্টাফ বেতন ও খরচ' : 'Staff Expenses', icon: Wallet },
         { href: '/reports/financial-ledger', label: t.financialLedger, icon: Scale }
       ]
     },
@@ -128,23 +126,22 @@ export function Sidebar({ onNavigate }: SidebarProps = {}) {
     {
       label: language === 'bn' ? 'অ্যানালিটিক্স ও রিপোর্ট' : 'ANALYTICS & REPORTS',
       items: [
-        { href: '/reports', label: t.reports, icon: BarChart3 }
+        { href: '/reports', label: t.reports, icon: BarChart3 },
+        { href: '/marketing/coupons', label: language === 'bn' ? 'মার্কেটিং কুপন' : 'Discount Coupons', icon: Tag }
       ]
     },
     {
-      label: language === 'bn' ? 'সুপারভাইজার ও যোগাযোগ' : 'SUPERVISOR & COMMS',
+      label: language === 'bn' ? 'সুপারভাইজার ও পোর্টাল' : 'PORTALS & ADMISSION',
       items: [
-        { href: '/dashboard/supervisor-management', label: language === 'bn' ? 'সুপারভাইজার ম্যানেজমেন্ট' : 'Supervisor Mgmt', icon: UserCheck },
-        { href: '/dashboard/communication', label: language === 'bn' ? 'মেসেজ ও যোগাযোগ' : 'Communication Hub', icon: MessageCircle, badge: 'New' },
-        { href: '/dashboard/contacts', label: language === 'bn' ? 'কন্ট্যাক্ট ডিরেক্টরি' : 'Contact Directory', icon: Contact2 },
-        { href: '/dashboard/universities', label: language === 'bn' ? 'বিশ্ববিদ্যালয় তথ্য' : 'University Portal', icon: GraduationCap }
+        { href: '/supervisor', label: language === 'bn' ? 'সুপারভাইজার পোর্টাল' : 'Supervisor Portal', icon: UserCheck },
+        { href: '/universities/manage', label: language === 'bn' ? 'বিশ্ববিদ্যালয় সার্কুলার' : 'University Circulars', icon: GraduationCap },
+        { href: '/dashboard/landing-control', label: language === 'bn' ? 'ল্যান্ডিং কন্ট্রোল' : 'Landing Control', icon: SlidersHorizontal }
       ]
     },
     {
       label: language === 'bn' ? 'প্রশাসন ও সিকিউরিটি' : 'GOVERNANCE & ADMIN',
       items: [
         { href: '/staff', label: t.staffRoles, icon: Users2 },
-        { href: '/dashboard/device-tracking', label: language === 'bn' ? 'ডিভাইস ট্র্যাকিং' : 'Device Tracking', icon: Smartphone },
         { href: '/audit-logs', label: t.auditLogs, icon: Fingerprint },
         { href: '/settings', label: t.settings, icon: SlidersHorizontal }
       ]

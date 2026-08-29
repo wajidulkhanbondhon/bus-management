@@ -117,8 +117,8 @@ export function TripsRosterClient({ initialTrips }: Props) {
         </div>
       </div>
 
-      {/* Trips Table Card */}
-      <Card className="border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
+      {/* Trips Table Card (Desktop) */}
+      <Card className="hidden md:block border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
         <CardContent className="p-0 overflow-x-auto">
           {filteredTrips.length === 0 ? (
             <div className="p-8">
@@ -219,7 +219,7 @@ export function TripsRosterClient({ initialTrips }: Props) {
                         </div>
                       </td>
 
-                      {/* Visual Occupancy Progress Bar (Fix #16) */}
+                      {/* Visual Occupancy Progress Bar */}
                       <td className="px-4 py-4">
                         <div className="space-y-1">
                           <div className="flex justify-between text-xs font-mono font-bold">
@@ -278,7 +278,7 @@ export function TripsRosterClient({ initialTrips }: Props) {
                           <Link href={`/book/${trip.id}`} target="_blank">
                             <Button size="sm" variant="outline" className="font-bold text-xs rounded-xl px-2.5 py-1">
                               <ExternalLink className="w-3.5 h-3.5 mr-1" />
-                              {language === 'bn' ? 'পাবলিক পেজ' : 'Public'}
+                              {language === 'bn' ? 'পাবলিক' : 'Public'}
                             </Button>
                           </Link>
                           <Link href={`/trips/${trip.id}/seat-map`}>
@@ -297,6 +297,109 @@ export function TripsRosterClient({ initialTrips }: Props) {
           )}
         </CardContent>
       </Card>
+
+      {/* Trips Mobile Cards View (Screens < md) */}
+      <div className="grid grid-cols-1 gap-4 md:hidden">
+        {filteredTrips.length === 0 ? (
+          <div className="p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <EmptyState
+              icon={Bus}
+              title={language === 'bn' ? 'কোনো ট্রিপ শিডিউল পাওয়া যায়নি' : 'No Trips Found'}
+              description={language === 'bn' ? 'নতুন বাস ট্রিপ তৈরি করুন।' : 'No trips scheduled yet.'}
+              actionLabel={language === 'bn' ? '+ নতুন ট্রিপ তৈরি করুন' : '+ Schedule New Trip'}
+              actionHref="/trips/create"
+            />
+          </div>
+        ) : (
+          filteredTrips.map((trip: any) => {
+            const totalSeats = trip.bus?.seatLayout?.totalSeats || trip.bus?.totalSeats || trip.bus?.capacity || 40;
+            const bookedSeats = (trip.bookings || []).reduce(
+              (sum: number, b: any) => sum + (b.seats?.length || 1),
+              0
+            );
+            const occupancy = totalSeats > 0 ? Math.min(100, Math.round((bookedSeats / totalSeats) * 100)) : 0;
+            const busType = trip.tripBusType || trip.bus?.busType || trip.bus?.bus_type || 'MIXED';
+            const busName = trip.bus?.busName || trip.bus?.bus_name || 'Express Coach';
+            const routeName = trip.route?.routeName || trip.route?.route_name || 'Dhaka to University';
+            const origin = trip.route?.origin || 'Dhaka';
+            const destination = trip.route?.destination || 'Destination';
+
+            return (
+              <div
+                key={trip.id}
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-3 shadow-xs"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="font-mono font-black text-blue-600 dark:text-blue-400 text-xs">
+                      {trip.tripCode || trip.trip_code}
+                    </span>
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white mt-0.5">{busName}</h3>
+                    <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                      {origin} ➔ {destination}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <Badge
+                      variant={
+                        trip.status === 'SCHEDULED'
+                          ? 'primary'
+                          : trip.status === 'BOARDING'
+                          ? 'warning'
+                          : 'default'
+                      }
+                      className="text-[10px] font-bold"
+                    >
+                      {trip.status}
+                    </Badge>
+                    <div className="font-bold text-slate-900 dark:text-white text-xs mt-1">
+                      {formatCurrency(trip.basePrice || trip.base_price || 550)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Departure & Occupancy */}
+                <div className="grid grid-cols-2 gap-2 text-xs py-2 border-y border-slate-100 dark:border-slate-800">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">ছাড়ার সময়:</span>
+                    <span className="font-bold text-slate-700 dark:text-slate-300">
+                      {formatDate(trip.departureDate || trip.departure_date)} ({formatTime(trip.departureTime || trip.departure_time)})
+                    </span>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[10px] text-slate-400 mb-0.5">
+                      <span>সিট বুকড:</span>
+                      <span className="font-bold text-blue-600">{bookedSeats}/{totalSeats} ({occupancy}%)</span>
+                    </div>
+                    <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${occupancy > 80 ? 'bg-rose-500' : 'bg-blue-500'}`}
+                        style={{ width: `${occupancy}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mobile Actions */}
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <Link href={`/book/${trip.id}`} target="_blank" className="flex-1">
+                    <Button size="sm" variant="outline" className="w-full text-xs h-8">
+                      <ExternalLink className="w-3 h-3 mr-1" />
+                      পাবলিক ভিউ
+                    </Button>
+                  </Link>
+                  <Link href={`/trips/${trip.id}/seat-map`} className="flex-1">
+                    <Button size="sm" variant="primary" className="w-full text-xs h-8">
+                      <Sparkles className="w-3 h-3 mr-1" />
+                      সিট ম্যাপ
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

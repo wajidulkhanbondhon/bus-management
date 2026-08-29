@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Eye,
@@ -66,11 +66,12 @@ const DEFAULT_CONFIG: LandingConfig = {
   tagline: 'বিশ্ববিদ্যালয় ভর্তি স্পেশাল ট্রান্সপোর্ট সার্ভিস',
 };
 
+import { fastApiClient } from '@/lib/api-client';
+
 export default function LandingControlPage() {
   const { language } = useApp();
   const { success, info } = useToast();
   
-  // Load config from localStorage (would be from API in production)
   const [config, setConfig] = useState<LandingConfig>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -82,6 +83,29 @@ export default function LandingControlPage() {
   });
 
   const [hasChanges, setHasChanges] = useState(false);
+
+  useEffect(() => {
+    async function loadBackendSettings() {
+      try {
+        const res = await fastApiClient.getLandingSettings();
+        if (res.success && res.data) {
+          setConfig(prev => ({
+            ...prev,
+            companyName: res.data.company_name || prev.companyName,
+            tagline: res.data.tagline || prev.tagline,
+            helplineNumber: res.data.helpline_number || prev.helplineNumber,
+            whatsappNumber: res.data.whatsapp_number || prev.whatsappNumber,
+            bannerEnabled: res.data.banner_enabled ?? prev.bannerEnabled,
+            bannerMessage: res.data.banner_message || prev.bannerMessage,
+            mapAnimationEnabled: res.data.map_animation_enabled ?? prev.mapAnimationEnabled
+          }));
+        }
+      } catch (err) {
+        console.warn('API error loading landing settings:', err);
+      }
+    }
+    loadBackendSettings();
+  }, []);
 
   const toggleSection = (sectionId: string) => {
     setConfig(prev => ({
@@ -98,15 +122,39 @@ export default function LandingControlPage() {
     setHasChanges(true);
   };
 
-  const saveConfig = () => {
+  const saveConfig = async () => {
     localStorage.setItem('atoms_landing_config', JSON.stringify(config));
+    try {
+      await fastApiClient.saveLandingSettings({
+        company_name: config.companyName,
+        tagline: config.tagline,
+        helpline_number: config.helplineNumber,
+        whatsapp_number: config.whatsappNumber,
+        banner_enabled: config.bannerEnabled,
+        banner_message: config.bannerMessage,
+        map_animation_enabled: config.mapAnimationEnabled
+      });
+    } catch (err) {
+      console.warn('Failed to save to backend API:', err);
+    }
     setHasChanges(false);
     success('সেভ হয়েছে', 'ল্যান্ডিং পেজ কনফিগারেশন সফলভাবে সেভ হয়েছে।');
   };
 
-  const resetConfig = () => {
+  const resetConfig = async () => {
     setConfig(DEFAULT_CONFIG);
     localStorage.removeItem('atoms_landing_config');
+    try {
+      await fastApiClient.saveLandingSettings({
+        company_name: DEFAULT_CONFIG.companyName,
+        tagline: DEFAULT_CONFIG.tagline,
+        helpline_number: DEFAULT_CONFIG.helplineNumber,
+        whatsapp_number: DEFAULT_CONFIG.whatsappNumber,
+        banner_enabled: DEFAULT_CONFIG.bannerEnabled,
+        banner_message: DEFAULT_CONFIG.bannerMessage,
+        map_animation_enabled: DEFAULT_CONFIG.mapAnimationEnabled
+      });
+    } catch {}
     setHasChanges(false);
     info('রিসেট', 'ডিফল্ট কনফিগারেশনে ফিরে এসেছে।');
   };

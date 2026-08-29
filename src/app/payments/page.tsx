@@ -10,35 +10,46 @@ import {
   BankTransferLogo
 } from '@/components/booking/payment-brand-icons';
 
+import { getAllPayments } from '@/services/payment.service';
+
 export const revalidate = 0;
 
 export default async function PaymentsPage({
   searchParams
 }: {
-  searchParams: Promise<{ method?: string }>
+  searchParams: Promise<{ method?: string }>;
 }) {
-  const payments = [
-    {
-      id: 'pay-1',
-      receiptNumber: 'RCT-20260827-0001',
-      amount: 650.0,
-      method: 'BKASH',
-      createdAt: new Date(),
-      booking: {
-        bookingNumber: 'BK-20260827-CONF-001',
-        trip: {
-          bus: { busName: 'Dhaka Express 01' },
-          route: { routeName: 'Dhaka to Rajshahi University (RU Unit-A)' }
-        },
-        passengers: [{ passengerName: 'Farhana Yasmin', seatNumber: 'A1' }]
+  const params = await searchParams;
+  const rawPayments = await getAllPayments();
+
+  const payments = (rawPayments || []).map((p: any) => ({
+    id: p.id,
+    receiptNumber: p.receipt_number || p.receiptNumber || 'RCT-000',
+    amount: Number(p.amount) || 0,
+    method: p.method || 'HAND_CASH',
+    createdAt: p.created_at ? new Date(p.created_at) : new Date(),
+    booking: {
+      bookingNumber: p.booking?.booking_number || p.booking?.bookingNumber || 'BK-CONF',
+      trip: {
+        bus: { busName: p.booking?.trip?.bus?.bus_name || p.booking?.trip?.bus?.busName || 'Express Bus' },
+        route: { routeName: p.booking?.trip?.route?.route_name || p.booking?.trip?.route?.routeName || 'Campus Express' }
       },
-      receivedBy: { fullName: 'Rahim Chowdhury (Desk Officer)' },
-      transactions: [{ transactionId: 'BKA928192837', senderReference: '01712345678' }]
-    }
-  ];
+      passengers: [{
+        passengerName: p.booking?.passengers?.[0]?.passenger_name || p.booking?.passengers?.[0]?.passengerName || p.booking?.contact_name || 'Passenger'
+      }]
+    },
+    receivedBy: {
+      fullName: p.received_by?.full_name || p.received_by?.fullName || p.receivedBy?.fullName || 'Staff Member'
+    },
+    transactions: [{
+      transactionId: p.notes?.replace('TrxID: ', '') || p.transaction_id || 'Counter'
+    }]
+  })).filter((p: any) => {
+    if (!params.method) return true;
+    return p.method.toLowerCase() === params.method.toLowerCase();
+  });
 
-
-  const totalCollected = payments.reduce((sum, p) => sum + p.amount, 0);
+  const totalCollected = payments.reduce((sum: number, p: any) => sum + p.amount, 0);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -60,7 +71,8 @@ export default async function PaymentsPage({
         </div>
       </div>
 
-      <Card>
+      {/* Desktop Table View */}
+      <Card className="hidden md:block">
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-mono text-[11px] uppercase">
@@ -75,7 +87,7 @@ export default async function PaymentsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-              {payments.map((p) => (
+              {payments.map((p: any) => (
                 <tr key={p.id} className="hover:bg-slate-50/60">
                   <td className="px-5 py-4 font-mono font-bold text-slate-900">{p.receiptNumber}</td>
                   <td className="px-4 py-4">
@@ -108,6 +120,37 @@ export default async function PaymentsPage({
           </table>
         </CardContent>
       </Card>
+
+      {/* Mobile Card List (md:hidden) */}
+      <div className="grid grid-cols-1 gap-3 md:hidden">
+        {payments.map((p: any) => (
+          <div
+            key={p.id}
+            className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5 shadow-xs"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <span className="text-[10px] font-mono text-slate-400 block">{p.receiptNumber}</span>
+                <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">{p.booking.bookingNumber}</span>
+                <h4 className="font-bold text-xs text-slate-900 dark:text-white mt-0.5">{p.booking.passengers[0]?.passengerName}</h4>
+              </div>
+              <div className="text-right">
+                <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm block">
+                  {formatCurrency(p.amount)}
+                </span>
+                <Badge variant={p.method === 'BKASH' ? 'danger' : (p.method === 'NAGAD' ? 'warning' : 'success')} className="text-[9px] mt-1">
+                  {p.method}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+              <span>গ্রহীতা: {p.receivedBy.fullName}</span>
+              <span className="font-mono text-[10px] text-slate-400">{formatDateTime(p.createdAt)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

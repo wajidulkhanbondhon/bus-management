@@ -4,6 +4,10 @@ import crypto from 'crypto';
 const SESSION_COOKIE_NAME = 'atoms_session_token';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'atoms-dev-secret-change-in-production';
 
+if (!process.env.SESSION_SECRET && process.env.NODE_ENV === 'production') {
+  console.error('[ATOMS AUTH] ⛔ SESSION_SECRET environment variable is NOT set! This is a critical security risk in production.');
+}
+
 export interface AuthSessionUser {
   id: string;
   email: string;
@@ -229,15 +233,6 @@ export async function verifyCredentials(email: string, passwordPlain: string) {
     };
   }
 
-  // Fallback demo matching (dev only)
-  if (process.env.NODE_ENV !== 'production' && passwordPlain === 'admin1234') {
-    return {
-      id: 'admin-super-001',
-      email: email,
-      fullName: 'Kamrul Hasan',
-      role: { name: 'SUPER_ADMIN' }
-    };
-  }
-
+  // No fallback — credentials must be verified against the backend
   return null;
 }

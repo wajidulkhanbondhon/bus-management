@@ -8,6 +8,8 @@ from app.models.booking import Booking, BookingSeat, BookingPassenger, Discount,
 from app.models.payment import Payment, PaymentTransaction, Refund
 from app.models.finance import FinancialLedger, DayClosing, DayClosingPaymentSummary
 from app.models.audit import AuditLog, Notification, SystemSetting
+from app.models.university import University
+from app.models.coupon import MarketingCoupon
 
 __all__ = [
     "Base",
@@ -42,4 +44,6 @@ __all__ = [
     "AuditLog",
     "Notification",
     "SystemSetting",
+    "University",
+    "MarketingCoupon",
 ]

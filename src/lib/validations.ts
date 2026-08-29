@@ -42,6 +42,14 @@ export const PassengerInputSchema = z.object({
   guardianRelationship: z.string().max(50).optional().nullable(),
 });
 
+export const CouponCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9_-]{3,20}$/, {
+    message: 'কুপন কোড ৩ থেকে ২০ অক্ষরের আলফানিউমেরিক (যেমন: PROMO10, ADMIT100) হতে হবে'
+  });
+
 export const CreateBookingSchema = z.object({
   tripId: z.string().min(1, 'Trip ID is required'),
   seats: z.array(z.object({
@@ -64,6 +72,12 @@ export const CreateBookingSchema = z.object({
   senderReference: z.string().max(100).optional(),
   notes: z.string().max(1000).optional(),
   createdById: z.string().optional(),
+}).refine(data => {
+  const gross = data.seats.reduce((sum, s) => sum + s.fare, 0);
+  return data.paidAmount <= gross;
+}, {
+  message: 'Paid amount cannot exceed total gross fare',
+  path: ['paidAmount']
 });
 
 export const CreatePreBookingSchema = z.object({
@@ -154,8 +168,21 @@ export const ScheduleTripSchema = z.object({
   departureTime: z.string().min(1, 'Departure time is required'),
   arrivalEst: z.string().optional(),
   tripBusType: z.enum(['MALE', 'FEMALE', 'MIXED']).optional(),
-  basePrice: z.number().min(0, 'Base price must be non-negative'),
+  basePrice: z.number().min(1, 'Base price must be greater than 0'),
   notes: z.string().max(1000).optional(),
+}).refine(data => {
+  try {
+    const d = new Date(data.departureDate);
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(0, 0, 0, 0);
+    return d >= yesterday;
+  } catch {
+    return true;
+  }
+}, {
+  message: 'Departure date cannot be in the past',
+  path: ['departureDate']
 });
 
 // --- Day Closing Schemas ---

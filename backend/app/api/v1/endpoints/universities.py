@@ -1,0 +1,159 @@
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from app.db.session import get_db
+from app.core.deps import get_optional_user, require_role, apply_tenant_filter, get_current_tenant_id
+from app.models.university import University
+from app.models.user import User
+from app.schemas.university import UniversityCreate, UniversityUpdate, UniversityOut
+
+router = APIRouter()
+
+SAMPLE_UNIVERSITIES = [
+    {
+        "name": "রাজশাহী বিশ্ববিদ্যালয়",
+        "name_en": "University of Rajshahi",
+        "apply_status": "OPEN",
+        "deadline": "2026-09-15",
+        "exam_date": "2026-10-05",
+        "units": ["A ইউনিট", "B ইউনিট", "C ইউনিট", "D ইউনিট"],
+        "fees": "৳৫০০ - ৳৮০০",
+        "requirements": [
+            "এসএসসি ও এইচএসসি সনদ ও মার্কশিট (মূল ও ফটোকপি)",
+            "পাসপোর্ট সাইজের ছবি (৩ কপি)",
+            "জাতীয় পরিচয়পত্র / জন্ম সনদ ফটোকপি",
+            "অনলাইন আবেদন ফি পরিশোধের রসিদ"
+        ],
+        "how_to_apply": "admission.ru.ac.bd ওয়েবসাইটে গিয়ে অনলাইন আবেদন ফরম পূরণ করুন। বিকাশ/নগদ/রকেটে আবেদন ফি দিন।",
+        "location": "রাজশাহী",
+        "circular_url": None,
+    },
+    {
+        "name": "চট্টগ্রাম বিশ্ববিদ্যালয়",
+        "name_en": "University of Chittagong",
+        "apply_status": "OPEN",
+        "deadline": "2026-09-20",
+        "exam_date": "2026-10-12",
+        "units": ["A ইউনিট", "B ইউনিট", "C ইউনিট"],
+        "fees": "৳৬০০",
+        "requirements": [
+            "এসএসসি ও এইচএসসি সনদ ও মার্কশিট",
+            "পাসপোর্ট সাইজের ছবি (৪ কপি)",
+            "প্রবেশপত্র প্রিন্ট"
+        ],
+        "how_to_apply": "চট্টগ্রাম বিশ্ববিদ্যালয়ের অফিসিয়াল ওয়েবসাইটে অনলাইন আবেদন করুন।",
+        "location": "চট্টগ্রাম",
+        "circular_url": None,
+    },
+    {
+        "name": "জাহাঙ্গীরনগর বিশ্ববিদ্যালয়",
+        "name_en": "Jahangirnagar University",
+        "apply_status": "UPCOMING",
+        "deadline": "2026-10-01",
+        "exam_date": "2026-10-20",
+        "units": ["বিজ্ঞান", "কলা ও মানবিকী", "সমাজবিজ্ঞান", "ব্যবসায় শিক্ষা"],
+        "fees": "৳৫০০",
+        "requirements": [
+            "এসএসসি ও এইচএসসি রেজাল্ট",
+            "ফটো আইডি",
+            "পাসপোর্ট সাইজের ছবি"
+        ],
+        "how_to_apply": "শীঘ্রই ঘোষণা করা হবে।",
+        "location": "সাভার, ঢাকা",
+        "circular_url": None,
+    },
+    {
+        "name": "ঢাকা বিশ্ববিদ্যালয়",
+        "name_en": "University of Dhaka",
+        "apply_status": "CLOSED",
+        "deadline": "2026-08-20",
+        "exam_date": "2026-09-10",
+        "units": ["ক ইউনিট", "খ ইউনিট", "গ ইউনিট", "ঘ ইউনিট", "চারুকলা"],
+        "fees": "৳১,০০০",
+        "requirements": [
+            "এসএসসি ও এইচএসসি সনদ",
+            "ফটো ও আইডি"
+        ],
+        "how_to_apply": "আবেদন সময়সীমা শেষ হয়ে গেছে।",
+        "location": "ঢাকা",
+        "circular_url": None,
+    }
+]
+
+
+def seed_universities_if_empty(db: Session, tenant_id: Optional[str] = None):
+    count = db.query(University).count()
+    if count == 0:
+        for item in SAMPLE_UNIVERSITIES:
+            uni = University(**item, tenant_id=tenant_id)
+            db.add(uni)
+        db.commit()
+
+
+@router.get("/", response_model=List[UniversityOut])
+def list_universities(
+    db: Session = Depends(get_db),
+    tenant_id: Optional[str] = Depends(get_current_tenant_id)
+):
+    seed_universities_if_empty(db, tenant_id)
+    query = db.query(University)
+    if tenant_id:
+        query = query.filter((University.tenant_id == tenant_id) | (University.tenant_id == None))
+    return query.order_by(University.created_at.asc()).all()
+
+
+@router.get("/{university_id}", response_model=UniversityOut)
+def get_university(university_id: str, db: Session = Depends(get_db)):
+    uni = db.query(University).filter(University.id == university_id).first()
+    if not uni:
+        raise HTTPException(status_code=404, detail="University circular not found")
+    return uni
+
+
+@router.post("/", response_model=UniversityOut, status_code=status.HTTP_201_CREATED)
+def create_university(
+    req: UniversityCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
+):
+    effective_tenant = req.tenant_id or current_user.tenant_id
+    uni = University(**req.model_dump(exclude={"tenant_id"}), tenant_id=effective_tenant)
+    db.add(uni)
+    db.commit()
+    db.refresh(uni)
+    return uni
+
+
+@router.put("/{university_id}", response_model=UniversityOut)
+def update_university(
+    university_id: str,
+    req: UniversityUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
+):
+    uni = db.query(University).filter(University.id == university_id).first()
+    if not uni:
+        raise HTTPException(status_code=404, detail="University circular not found")
+
+    update_data = req.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(uni, field, value)
+
+    db.commit()
+    db.refresh(uni)
+    return uni
+
+
+@router.delete("/{university_id}")
+def delete_university(
+    university_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN"]))
+):
+    uni = db.query(University).filter(University.id == university_id).first()
+    if not uni:
+        raise HTTPException(status_code=404, detail="University circular not found")
+
+    db.delete(uni)
+    db.commit()
+    return {"success": True, "message": "University circular deleted"}

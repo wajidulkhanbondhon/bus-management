@@ -156,7 +156,7 @@ export function PublicHeroSearch({
 
               {/* Subtitle */}
               <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 max-w-xl mx-auto lg:mx-0 leading-relaxed font-normal">
-                {t.landingHeroSubtitle || 'ঢাকা থেকে রাজশাহী, চট্টগ্রাম, জাহাঙ্গীরনগর, খুলনা ও জিএসটি গুচ্ছ কেন্দ্রসমূহে ভর্তি পরীক্ষার্থী ও অভিভাবকদের জন্য ডেডিকেটেড স্পেশাল বাস।'}
+                {t.landingHeroSubtitle || 'রাজশাহী বিশ্ববিদ্যালয় (RU) ও প্রধান কেন্দ্রসমূহ থেকে ঢাকা, চট্টগ্রাম, খুলনা, সিলেট, রংপুর ও জিএসটি গুচ্ছ কেন্দ্রসমূহে ভর্তি পরীক্ষার্থী ও অভিভাবকদের জন্য ডেডিকেটেড স্পেশাল এক্সপ্রেস বাস।'}
               </p>
 
               {/* Action Buttons */}
@@ -233,13 +233,13 @@ export function PublicHeroSearch({
               <div className="relative bg-white/60 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/60 rounded-3xl p-5 shadow-xl dark:shadow-2xl dark:shadow-blue-500/5">
                 <div className="flex items-center justify-between mb-3 px-2">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                      {language === 'bn' ? 'লাইভ এক্সপ্রেস রুট ম্যাপ' : 'Live Express Routes'}
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+                    <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                      {language === 'bn' ? 'রাজশাহী সেন্ট্রাল হাব এক্সপ্রেস নেটওয়ার্ক' : 'Rajshahi Central Hub Express'}
                     </span>
                   </div>
-                  <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-full">
-                    GPS TRACKED
+                  <span className="text-[10px] font-bold font-mono text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                    HEADQUARTERS
                   </span>
                 </div>
                 <BangladeshRouteMap showLabels={true} />

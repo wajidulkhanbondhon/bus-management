@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -22,10 +22,12 @@ import {
   Banknote,
   BookOpen,
   Info,
-  Bus
+  Bus,
+  Settings
 } from 'lucide-react';
+import { fastApiClient } from '@/lib/api-client';
 
-// Sample university data (in production, this comes from API)
+// Sample university fallback data
 const SAMPLE_UNIVERSITIES = [
   {
     id: '1',
@@ -118,17 +120,47 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function UniversitiesPage() {
+  const [universities, setUniversities] = useState(SAMPLE_UNIVERSITIES);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const universities = SAMPLE_UNIVERSITIES;
+  useEffect(() => {
+    async function loadUniversities() {
+      try {
+        const res = await fastApiClient.getUniversities();
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped = res.data.map((u: any) => ({
+            id: u.id,
+            name: u.name,
+            nameEn: u.name_en || u.nameEn || '',
+            applyStatus: u.apply_status || u.applyStatus || 'OPEN',
+            deadline: u.deadline,
+            examDate: u.exam_date || u.examDate,
+            units: Array.isArray(u.units) ? u.units : (u.units ? JSON.parse(u.units) : []),
+            fees: u.fees,
+            requirements: Array.isArray(u.requirements) ? u.requirements : (u.requirements ? JSON.parse(u.requirements) : []),
+            howToApply: u.how_to_apply || u.howToApply,
+            location: u.location,
+            circularUrl: u.circular_url || u.circularUrl,
+          }));
+          setUniversities(mapped);
+        }
+      } catch (err) {
+        console.warn('Failed to load universities from API, using fallback:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadUniversities();
+  }, []);
 
   const filtered = universities.filter(u => {
     if (statusFilter !== 'ALL' && u.applyStatus !== statusFilter) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      return u.name.includes(q) || u.nameEn.toLowerCase().includes(q) || u.location.includes(q);
+      return u.name.includes(q) || (u.nameEn && u.nameEn.toLowerCase().includes(q)) || (u.location && u.location.includes(q));
     }
     return true;
   });

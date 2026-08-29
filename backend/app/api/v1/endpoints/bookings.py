@@ -28,6 +28,8 @@ router = APIRouter()
 @router.get("/", response_model=List[BookingOut])
 def list_bookings(
     status: Optional[str] = None,
+    payment_status: Optional[str] = None,
+    has_due: Optional[bool] = None,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF", "ACCOUNTANT", "VIEWER"]))
@@ -36,6 +38,10 @@ def list_bookings(
     query = apply_tenant_filter(query, Booking, current_user, tenant_id)
     if status:
         query = query.filter(Booking.booking_status == status)
+    if payment_status:
+        query = query.filter(Booking.payment_status == payment_status)
+    if has_due:
+        query = query.filter(Booking.due_amount > 0)
     return query.order_by(Booking.created_at.desc()).limit(100).all()
 
 

@@ -100,13 +100,70 @@ export const fastApiClient = {
     apiRequest(`/inventory/cleanup-expired${token ? `?token=${encodeURIComponent(token)}` : ''}`, { method: 'POST' }),
 
   // Payments & Refunds
+  getPayments: () => apiRequest('/payments/'),
+  recordPayment: (data: { booking_id: string; amount: number; method: string; notes?: string }) =>
+    apiRequest('/payments/record', { method: 'POST', body: JSON.stringify(data) }),
+  getRefunds: () => apiRequest('/payments/refunds'),
   issueRefund: (data: { booking_id: string; amount: number; method: string; reason: string; payment_id?: string }) =>
     apiRequest('/payments/refund', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Day Closing & Ledger
+  getDayClosingSummary: (dateStr: string) =>
+    apiRequest(`/day-closing/summary?date_str=${encodeURIComponent(dateStr)}`),
+  submitDayClosing: (data: any) =>
+    apiRequest('/day-closing/submit', { method: 'POST', body: JSON.stringify(data) }),
+  getFinancialLedger: () =>
+    apiRequest('/reports/financial-ledger'),
+  getDashboardKpi: () =>
+    apiRequest('/reports/dashboard-kpi'),
+
+  // Audit Logs
+  getAuditLogs: () => apiRequest('/audit/'),
+
+  // Staff & Roles
+  getStaff: () => apiRequest('/users/'),
+  getStaffById: (id: string) => apiRequest(`/users/${id}`),
+  createStaff: (data: any) => apiRequest('/users/', { method: 'POST', body: JSON.stringify(data) }),
+  updateStaff: (id: string, data: any) => apiRequest(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  toggleStaffActive: (id: string) => apiRequest(`/users/${id}/toggle-active`, { method: 'PATCH' }),
+  updateDiscountLimit: (id: string, discountLimit: number) =>
+    apiRequest(`/users/${id}/discount-limit`, { method: 'PATCH', body: JSON.stringify({ discount_limit: discountLimit }) }),
+  getRoles: () => apiRequest('/users/roles'),
+  createRole: (data: any) => apiRequest('/users/roles', { method: 'POST', body: JSON.stringify(data) }),
+  updateRole: (id: string, data: any) => apiRequest(`/users/roles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getPermissions: () => apiRequest('/users/permissions'),
+
+  // Universities
+  getUniversities: () => apiRequest('/universities/'),
+  getUniversityById: (id: string) => apiRequest(`/universities/${id}`),
+  createUniversity: (data: any) => apiRequest('/universities/', { method: 'POST', body: JSON.stringify(data) }),
+  updateUniversity: (id: string, data: any) => apiRequest(`/universities/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteUniversity: (id: string) => apiRequest(`/universities/${id}`, { method: 'DELETE' }),
+
+  // Marketing Coupons
+  getCoupons: () => apiRequest('/coupons/'),
+  validateCoupon: (code: string, amount: number = 0, university?: string) =>
+    apiRequest(`/coupons/validate/${encodeURIComponent(code)}?purchase_amount=${amount}${university ? `&university=${encodeURIComponent(university)}` : ''}`),
+  createCoupon: (data: any) => apiRequest('/coupons/', { method: 'POST', body: JSON.stringify(data) }),
+  toggleCoupon: (id: string) => apiRequest(`/coupons/${id}/toggle`, { method: 'POST' }),
+  deleteCoupon: (id: string) => apiRequest(`/coupons/${id}`, { method: 'DELETE' }),
+
+  // Routes Management
+  updateRoute: (id: string, data: any) => apiRequest(`/trips/routes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteRoute: (id: string) => apiRequest(`/trips/routes/${id}`, { method: 'DELETE' }),
+
+  // Settings & Landing Page Control
+  getLandingSettings: () => apiRequest('/settings/landing-control'),
+  saveLandingSettings: (data: any) => apiRequest('/settings/landing-control', { method: 'POST', body: JSON.stringify(data) }),
 
   // Generic helpers
   get: <T = any>(endpoint: string) => apiRequest<T>(endpoint),
   post: <T = any>(endpoint: string, data?: any) =>
     apiRequest<T>(endpoint, { method: 'POST', body: data ? JSON.stringify(data) : undefined }),
+  put: <T = any>(endpoint: string, data?: any) =>
+    apiRequest<T>(endpoint, { method: 'PUT', body: data ? JSON.stringify(data) : undefined }),
+  delete: <T = any>(endpoint: string) =>
+    apiRequest<T>(endpoint, { method: 'DELETE' }),
 
   // Database Backup & Migration
   getDbStats: () => apiRequest('/backup/stats'),

@@ -21,6 +21,15 @@ class BusRouteCreate(BusRouteBase):
     stops: List[TripStopSchema] = []
 
 
+class BusRouteUpdate(BaseModel):
+    route_name: Optional[str] = None
+    origin: Optional[str] = None
+    destination: Optional[str] = None
+    distance_km: Optional[float] = None
+    est_duration: Optional[str] = None
+    stops: Optional[List[TripStopSchema]] = None
+
+
 class BusRouteOut(BusRouteBase):
     id: str
     stops: List[TripStopSchema] = []

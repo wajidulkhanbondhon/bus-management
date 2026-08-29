@@ -103,6 +103,8 @@ export const DEFAULT_PASSENGER_DIRECTORY: DirectoryPassenger[] = [
   }
 ];
 
+import { fastApiClient } from '@/lib/api-client';
+
 /**
  * Searches the passenger directory by phone number (supports partial and full matching)
  */
@@ -137,6 +139,40 @@ export function lookupPassengerByPhone(phoneNumber: string): DirectoryPassenger 
       return pClean.includes(cleanPhone) || cleanPhone.includes(pClean);
     });
     if (partial) return partial;
+  }
+
+  return null;
+}
+
+/**
+ * Async passenger lookup that checks backend booking history if not found in local cache
+ */
+export async function lookupPassengerByPhoneAsync(phoneNumber: string): Promise<DirectoryPassenger | null> {
+  const local = lookupPassengerByPhone(phoneNumber);
+  if (local) return local;
+
+  const cleanPhone = phoneNumber.replace(/[\s\-\+]/g, '');
+  if (cleanPhone.length < 11) return null;
+
+  try {
+    const res = await fastApiClient.trackBooking(cleanPhone);
+    if (res.success && res.data && res.data.bookings && res.data.bookings.length > 0) {
+      const latest = res.data.bookings[0];
+      const p: DirectoryPassenger = {
+        name: latest.contact_name || latest.contactName || '',
+        phone: cleanPhone,
+        gender: latest.passenger_gender || latest.passengerGender || 'FEMALE',
+        passengerType: latest.is_student ? 'STUDENT' : 'GUARDIAN',
+        admissionId: latest.student_admission_id || latest.studentAdmissionId,
+        institution: latest.institution
+      };
+      if (p.name) {
+        recordPassengerInDirectory(p);
+        return p;
+      }
+    }
+  } catch {
+    // ignore
   }
 
   return null;

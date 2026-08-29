@@ -132,8 +132,8 @@ export function BookingsRosterClient({ initialBookings }: Props) {
         </div>
       </div>
 
-      {/* Bookings Table Card */}
-      <Card className="border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
+      {/* Bookings Table Card (Desktop: hidden below md) */}
+      <Card className="border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden hidden md:block">
         <CardContent className="p-0 overflow-x-auto">
           {filteredBookings.length === 0 ? (
             <div className="p-8">
@@ -262,7 +262,7 @@ export function BookingsRosterClient({ initialBookings }: Props) {
                           <Link href={`/track/${encodeURIComponent(bNum)}`}>
                             <Button size="sm" variant="outline" className="font-bold text-xs rounded-xl px-2.5 py-1">
                               <Printer className="w-3.5 h-3.5 mr-1" />
-                              {language === 'bn' ? 'রসিদ / ট্র্যাক' : 'Receipt'}
+                              {language === 'bn' ? 'রসিদ' : 'Receipt'}
                             </Button>
                           </Link>
                           <Link href={`/bookings/${b.id}`}>
@@ -280,6 +280,76 @@ export function BookingsRosterClient({ initialBookings }: Props) {
           )}
         </CardContent>
       </Card>
+
+      {/* Mobile Card List View (md:hidden) */}
+      <div className="grid grid-cols-1 gap-3 md:hidden">
+        {filteredBookings.length === 0 ? (
+          <div className="p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <EmptyState
+              icon={Ticket}
+              title={language === 'bn' ? 'কোনো বুকিং পাওয়া যায়নি' : 'No Bookings'}
+              description={language === 'bn' ? 'কোনো বুকিং ম্যাচ করেনি।' : 'No matching bookings found.'}
+              actionLabel={language === 'bn' ? '+ নতুন টিকিট' : '+ New'}
+              actionHref="/bookings/new"
+            />
+          </div>
+        ) : (
+          filteredBookings.map((b: any) => {
+            const bNum = b.booking_number || b.bookingNumber || 'BK-2026';
+            const candidateName = b.contact_name || b.contactName || b.passengers?.[0]?.passengerName || 'Candidate';
+            const candidatePhone = b.contact_phone || b.contactPhone || b.passengers?.[0]?.passengerPhone || '—';
+            const pStatus = b.payment_status || b.paymentStatus || 'PAID';
+            const isPaid = pStatus === 'PAID';
+            const isDue = pStatus === 'PARTIALLY_PAID' || pStatus === 'UNPAID';
+            const netAmt = b.net_amount ?? b.netAmount ?? 0;
+            const dueAmt = b.due_amount ?? b.dueAmount ?? 0;
+
+            return (
+              <div
+                key={b.id}
+                className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3 shadow-xs"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <Link href={`/track/${encodeURIComponent(bNum)}`} className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">
+                      {bNum}
+                    </Link>
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white mt-0.5">{candidateName}</h3>
+                    <p className="text-[11px] text-slate-500 font-mono">{candidatePhone}</p>
+                  </div>
+                  <div className="text-right">
+                    <Badge variant={isPaid ? 'success' : isDue ? 'warning' : 'danger'} className="text-[10px]">
+                      {isPaid ? 'PAID' : isDue ? 'DUE' : pStatus}
+                    </Badge>
+                    <span className="font-mono font-black text-slate-900 dark:text-white text-sm block mt-1">
+                      {formatCurrency(netAmt)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-xs text-slate-600 dark:text-slate-300 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                  <span>আসন: {(b.seats || []).map((s: any) => s.seat?.seatNumber || s.seat_id || 'Seat').join(', ')}</span>
+                  {dueAmt > 0 && <span className="text-rose-600 font-bold">বকেয়া: {formatCurrency(dueAmt)}</span>}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <Link href={`/track/${encodeURIComponent(bNum)}`}>
+                    <Button size="sm" variant="outline" className="text-xs h-8">
+                      <Printer className="w-3 h-3 mr-1" />
+                      রসিদ
+                    </Button>
+                  </Link>
+                  <Link href={`/bookings/${b.id}`}>
+                    <Button size="sm" variant="primary" className="text-xs h-8">
+                      বিস্তারিত
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

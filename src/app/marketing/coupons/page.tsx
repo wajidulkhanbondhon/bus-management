@@ -27,9 +27,10 @@ import {
 import {
   MarketingCoupon,
   getMarketingCoupons,
-  createMarketingCoupon,
-  toggleCouponActive,
-  deleteMarketingCoupon
+  fetchMarketingCoupons,
+  createMarketingCouponAsync,
+  toggleCouponActiveAsync,
+  deleteMarketingCouponAsync
 } from '@/services/coupon.service';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useApp } from '@/lib/context';
@@ -58,6 +59,9 @@ export default function MarketingCouponsPage() {
 
   useEffect(() => {
     setCoupons(getMarketingCoupons());
+    fetchMarketingCoupons().then(res => {
+      if (res && res.length > 0) setCoupons(res);
+    });
   }, []);
 
   const handleGenerateRandomCode = () => {
@@ -67,11 +71,11 @@ export default function MarketingCouponsPage() {
     setNewCode(`${randomPrefix}${randomNum}`);
   };
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCode.trim() || !newTitle.trim() || newDiscountValue <= 0) return;
 
-    createMarketingCoupon({
+    await createMarketingCouponAsync({
       code: newCode.trim().toUpperCase(),
       title: newTitle.trim(),
       campaignChannel: newChannel,
@@ -86,7 +90,8 @@ export default function MarketingCouponsPage() {
       notes: newNotes.trim() || undefined
     });
 
-    setCoupons(getMarketingCoupons());
+    const updated = await fetchMarketingCoupons();
+    setCoupons(updated);
     setIsCreateModalOpen(false);
     // Reset
     setNewCode('');
@@ -95,14 +100,14 @@ export default function MarketingCouponsPage() {
     setNewNotes('');
   };
 
-  const handleToggle = (id: string) => {
-    const updated = toggleCouponActive(id);
+  const handleToggle = async (id: string) => {
+    const updated = await toggleCouponActiveAsync(id);
     setCoupons(updated);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm(language === 'bn' ? 'আপনি কি এই কুপনটি ডিলিট করতে চান?' : 'Are you sure you want to delete this coupon?')) {
-      const updated = deleteMarketingCoupon(id);
+      const updated = await deleteMarketingCouponAsync(id);
       setCoupons(updated);
     }
   };
