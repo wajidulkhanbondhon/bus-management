@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { formatCurrency, formatDate, formatTime, formatDateTime, cleanAndLimitPhoneNumber, isValidBdMobile, generateReceiptNumber } from '@/lib/utils';
@@ -2430,7 +2430,7 @@ const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
                       type="number"
                       min="0"
                       value={discountRate || ''}
-                      onChange={(e) => setDiscountRate(Number(e.target.value))}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDiscountRate(Number(e.target.value))}
                       placeholder="0"
                       required
                     />
@@ -2650,7 +2650,7 @@ const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
                   min="0"
                   max={netAmount}
                   value={paidAmount || ''}
-                  onChange={(e) => setPaidAmount(Number(e.target.value))}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPaidAmount(Number(e.target.value))}
                   required
                 />
 

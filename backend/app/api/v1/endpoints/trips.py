@@ -69,7 +69,8 @@ def schedule_trip(
     if not trip_data.get("trip_code"):
         trip_data["trip_code"] = f"TRIP-RU-2026-{int(datetime.now().timestamp()) % 10000:04d}"
 
-    trip = Trip(**trip_data, tenant_id=tenant_id or current_user.tenant_id)
+    effective_tenant = current_user.tenant_id if (current_user.role and current_user.role.name != "SUPER_ADMIN") else (tenant_id or current_user.tenant_id)
+    trip = Trip(**trip_data, tenant_id=effective_tenant)
     db.add(trip)
     db.commit()
     db.refresh(trip)

@@ -28,24 +28,30 @@ def get_current_user(
     db: Session = Depends(get_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)
 ) -> User:
-    if credentials:
-        payload = decode_token(credentials.credentials)
-        if payload and payload.get("sub"):
-            user_id = payload["sub"]
-            user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
-            if user:
-                return user
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication credentials required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    # Fallback to default active super admin / admin user in database for internal/server-to-server calls
-    default_admin = db.query(User).filter(User.is_active == True).order_by(User.created_at.asc()).first()
-    if default_admin:
-        return default_admin
+    payload = decode_token(credentials.credentials)
+    if not payload or not payload.get("sub"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authentication credentials required",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    user_id = payload["sub"]
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
 
 
 
@@ -72,4 +78,22 @@ def require_role(allowed_roles: List[str]):
             )
         return current_user
     return role_checker
+
+
+def apply_tenant_filter(query, model, current_user: User, requested_tenant_id: Optional[str] = None):
+    """
+    Safely applies tenant scoping to a SQLAlchemy query.
+    - SUPER_ADMIN can view all tenants or optionally filter by requested_tenant_id.
+    - All other roles are strictly scoped to current_user.tenant_id.
+    """
+    if current_user.role and current_user.role.name == "SUPER_ADMIN":
+        if requested_tenant_id:
+            return query.filter(model.tenant_id == requested_tenant_id)
+        return query
+
+    tenant_id = current_user.tenant_id
+    if not tenant_id:
+        return query.filter(model.tenant_id == "__NONE__")
+    return query.filter(model.tenant_id == tenant_id)
+
 

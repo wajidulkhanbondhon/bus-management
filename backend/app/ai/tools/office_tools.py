@@ -22,7 +22,7 @@ from app.models.finance import FinancialLedger, BusExpense, DayClosing
     name="get_today_sales",
     description="Retrieves verified sales, ticket count, and revenue for today.",
     allowed_contexts=[AIContext.OFFICE_AI],
-    required_roles=["SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "VIEWER"]
+    required_roles=["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF", "ACCOUNTANT", "VIEWER"]
 )
 def get_today_sales(db: Session, tenant_id: Optional[str] = None) -> Dict[str, Any]:
     now = datetime.now(timezone.utc)

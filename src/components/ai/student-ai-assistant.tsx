@@ -31,6 +31,7 @@ interface Message {
   id: string;
   sender: 'user' | 'ai';
   text: string;
+  isRefusal?: boolean;
   timestamp: string;
 }
 
@@ -63,7 +64,8 @@ export function StudentAIAssistant() {
     { labelBn: '💺 আমার সিট নম্বর কত?', prompt: 'আমার seat কোনটা?' },
     { labelBn: '💳 আমার কত টাকা বকেয়া আছে?', prompt: 'আমার কত টাকা due আছে?' },
     { labelBn: '👥 বাবা/ভাই কি ছাত্রী বাসে যেতে পারবে?', prompt: 'আমার বাবা বা ভাই কি যেতে পারবে? guardian rules বলো।' },
-    { labelBn: '🎟️ অন্য কোনো বাস খালি আছে?', prompt: 'রাজশাহী বাসের আর কোনো সিট খালি আছে?' }
+    { labelBn: '🎟️ অন্য কোনো বাস খালি আছে?', prompt: 'রাজশাহী বাসের আর কোনো সিট খালি আছে?' },
+    { labelBn: '🚫 টেস্ট: কোম্পানির মোট লাভ কত?', prompt: 'আজকে অফিসের sales কত টাকা এবং কোম্পানির লাভ কত?' }
   ];
 
   const handleSend = async (promptToSend?: string) => {
@@ -88,6 +90,7 @@ export function StudentAIAssistant() {
         body: JSON.stringify({
           prompt: query,
           context: 'STUDENT_AI',
+          role: 'STUDENT',
           student_phone: studentPhone
         })
       });
@@ -97,10 +100,13 @@ export function StudentAIAssistant() {
       }
 
       const data = await res.json();
+      const isRefusal = data.text.includes('অননুমোদিত প্রশ্ন') || data.text.includes('শিক্ষার্থী সহায়তার আওতাভুক্ত নয়');
+
       const aiMsg: Message = {
         id: `ai-${Date.now()}`,
         sender: 'ai',
         text: data.text,
+        isRefusal: isRefusal,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
@@ -188,10 +194,22 @@ export function StudentAIAssistant() {
                 className={`p-4 md:p-5 rounded-2xl text-xs md:text-sm leading-relaxed inline-block shadow-sm ${
                   msg.sender === 'user'
                     ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-tr-xs font-medium border border-emerald-400/20 shadow-emerald-600/20'
+                    : msg.isRefusal
+                    ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-950 dark:text-rose-200 border-2 border-rose-300 dark:border-rose-800 rounded-tl-xs shadow-sm'
                     : 'bg-white dark:bg-slate-800/95 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700/80 rounded-tl-xs backdrop-blur-md'
                 }`}
               >
-                <div className="whitespace-pre-wrap font-sans space-y-1.5">
+                {msg.isRefusal && (
+                  <div className="mb-2 pb-2 border-b border-rose-200 dark:border-rose-800 flex items-center justify-between text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                    <span className="flex items-center gap-1">
+                      ⚠️ অননুমোদিত প্রশ্ন প্রতিরোধ (Student Guardrail)
+                    </span>
+                    <span className="text-[9px] font-mono bg-rose-200 dark:bg-rose-900 px-1.5 py-0.5 rounded text-rose-800 dark:text-rose-200">
+                      RESTRICTED
+                    </span>
+                  </div>
+                )}
+                <div className="whitespace-pre-wrap font-sans space-y-1.5 font-medium">
                   {msg.text}
                 </div>
               </div>

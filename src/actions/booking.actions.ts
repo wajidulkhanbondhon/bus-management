@@ -161,8 +161,9 @@ export async function confirmPreBookingPaymentAction(params: {
     revalidatePath('/bookings');
     revalidatePath('/payments');
     revalidatePath('/dashboard');
-    if (booking.tripId) {
-      revalidatePath(`/trips/${booking.tripId}/seat-map`);
+    const tripId = (booking as any)?.tripId || (booking as any)?.trip_id;
+    if (tripId) {
+      revalidatePath(`/trips/${tripId}/seat-map`);
     }
     return { success: true, booking };
   } catch (error: any) {
@@ -185,8 +186,9 @@ export async function rejectPreBookingAction(bookingId: string, reason: string) 
 
     revalidatePath('/bookings/online-requests');
     revalidatePath('/dashboard');
-    if (booking.tripId) {
-      revalidatePath(`/trips/${booking.tripId}/seat-map`);
+    const tripId = (booking as any)?.tripId || (booking as any)?.trip_id;
+    if (tripId) {
+      revalidatePath(`/trips/${tripId}/seat-map`);
     }
     return { success: true, booking };
   } catch (error: any) {

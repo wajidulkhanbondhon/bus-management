@@ -21,7 +21,12 @@ import {
   Layers,
   ArrowRight,
   Zap,
-  Activity
+  Activity,
+  Shield,
+  Users,
+  Ticket,
+  Calculator,
+  ShieldAlert
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +35,8 @@ import { Modal } from '@/components/ui/modal';
 import { useApp } from '@/lib/context';
 import { AIAvatar } from './ai-avatar';
 
+export type OfficeSubRole = 'SUPER_ADMIN' | 'MANAGER' | 'BOOKING_STAFF' | 'ACCOUNTANT';
+
 interface Message {
   id: string;
   sender: 'user' | 'ai';
@@ -37,6 +44,7 @@ interface Message {
   confidence?: 'FACT' | 'CALCULATED' | 'ESTIMATE' | 'FORECAST' | 'RECOMMENDATION';
   dataCards?: Array<{ title: string; value: string; badge: string }>;
   toolsUsed?: string[];
+  isRefusal?: boolean;
   actionPreview?: {
     action_type: string;
     trip_id: string;
@@ -49,15 +57,98 @@ interface Message {
   timestamp: string;
 }
 
+interface RoleConfig {
+  id: OfficeSubRole;
+  nameBn: string;
+  nameEn: string;
+  designationBn: string;
+  icon: React.ElementType;
+  colorClass: string;
+  badgeClass: string;
+  scopeDescBn: string;
+  prompts: Array<{ labelBn: string; prompt: string }>;
+}
+
+const OFFICE_ROLES_CONFIG: Record<OfficeSubRole, RoleConfig> = {
+  SUPER_ADMIN: {
+    id: 'SUPER_ADMIN',
+    nameBn: 'সুপার অ্যাডমিন',
+    nameEn: 'Super Admin',
+    designationBn: 'ডিরেক্টর / শীর্ষ নির্বাহী',
+    icon: Shield,
+    colorClass: 'text-indigo-600 dark:text-indigo-400',
+    badgeClass: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700',
+    scopeDescBn: 'পূর্ণ অ্যাক্সেস: ৩০ দিনের P&L, প্রফিট মার্জিন %, সকল বাসের পারফরম্যান্স ও অডিট',
+    prompts: [
+      { labelBn: '📊 আজকের সার্বিক সেলস ও সংগ্রহ', prompt: 'আজকে sales কত এবং কালেকশন কত?' },
+      { labelBn: '💵 ৩০ দিনের লাভ-ক্ষতি ও মার্জিন (P&L)', prompt: 'গত ৩০ দিনের profit কত এবং মার্জিন কত?' },
+      { labelBn: '🚌 বাস বহর পারফরম্যান্স ও লাভ', prompt: 'কোন bus সবচেয়ে বেশি লাভ করেছে?' },
+      { labelBn: '🧠 অডিট ইনসাইটস ও বিজনেস সুপারিশ', prompt: 'কোন সমস্যা বা ইনসাইট আছে?' }
+    ]
+  },
+  MANAGER: {
+    id: 'MANAGER',
+    nameBn: 'অপারেশনস ম্যানেজার',
+    nameEn: 'Operations Manager',
+    designationBn: 'রুট ও বাস ফ্লিট ম্যানেজার',
+    icon: Users,
+    colorClass: 'text-blue-600 dark:text-blue-400',
+    badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border-blue-300 dark:border-blue-700',
+    scopeDescBn: 'রুট অপারেশনস: বাস বহর ক্যাপাসিটি, অকুপেন্সি রেট, আজকের মোট বিক্রি ও ট্রিপ শিডিউল',
+    prompts: [
+      { labelBn: '🚌 বাসের অকুপেন্সি রেট ও পারফরম্যান্স', prompt: 'বাস বহরের অকুপেন্সি রেট ও পারফরম্যান্স দেখাও' },
+      { labelBn: '🎟️ আজকের মোট বিক্রিত আসন', prompt: 'আজকে কতটি সিট বিক্রি হয়েছে এবং সেলস কত?' },
+      { labelBn: '📈 গত ৩০ দিনের সেলস রিপোর্ট', prompt: 'গত ৩০ দিনের বিক্রির রিপোর্ট বিশ্লেষণ করো' },
+      { labelBn: '🚫 টেস্ট: কোম্পানির প্রফিট মার্জিন কত?', prompt: 'কোম্পানির নিট প্রফিট মার্জিন কত?' }
+    ]
+  },
+  BOOKING_STAFF: {
+    id: 'BOOKING_STAFF',
+    nameBn: 'কাউন্টার বুকিং স্টাফ',
+    nameEn: 'Booking Staff',
+    designationBn: 'কাউন্টার ও টিকিট অপারেটর',
+    icon: Ticket,
+    colorClass: 'text-emerald-600 dark:text-emerald-400',
+    badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700',
+    scopeDescBn: 'কাউন্টার বুকিং: আসন অনুসন্ধান, টিকিট বুকিং স্ট্যাটাস ও কাউন্টার শিফট কালেকশন',
+    prompts: [
+      { labelBn: '🎟️ আজকের কাউন্টার টিকিট সেলস', prompt: 'আজকে কাউন্টার sales কত টাকা?' },
+      { labelBn: '🚌 খালি সিট ও ট্রিপ অনুসন্ধান', prompt: 'আসন্ন ট্রিপগুলোতে কতটি সিট খালি আছে?' },
+      { labelBn: '💳 আজকের আদায়কৃত ক্যাশ ও বকেয়া', prompt: 'আজকে কত টাকা আদায় হয়েছে এবং বকেয়া কত?' },
+      { labelBn: '🚫 টেস্ট: কোম্পানির ৩০ দিনের লাভ কত?', prompt: 'গত ৩০ দিনের profit কত এবং কোম্পানির মার্জিন কত?' }
+    ]
+  },
+  ACCOUNTANT: {
+    id: 'ACCOUNTANT',
+    nameBn: 'অ্যাকাউন্ট্যান্ট',
+    nameEn: 'Accountant',
+    designationBn: 'আর্থিক হিসাব ও ক্যাশিয়ার',
+    icon: Calculator,
+    colorClass: 'text-amber-600 dark:text-amber-400',
+    badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700',
+    scopeDescBn: 'আর্থিক হিসাব: ডে-ক্লোজিং, ক্যাশ রিকনসিলিয়েশন, ফুয়েল ভাউচার ও P&L বিবরণী',
+    prompts: [
+      { labelBn: '💵 আজকের ডে-ক্লোজিং ও ক্যাশ হিসাব', prompt: 'আজকের সেলস, আদায়কৃত ক্যাশ ও বকেয়া হিসাব দেখাও' },
+      { labelBn: '📊 গত ৩০ দিনের আর্থিক P&L বিবরণী', prompt: 'গত ৩০ দিনের profit & loss এবং অপারেটিং expense বিবরণী দাও' },
+      { labelBn: '🧾 ফুয়েল ও পরিচালনা খরচ বিবরণী', prompt: 'গত ৩০ দিনে মোট কত টাকা expense হয়েছে?' },
+      { labelBn: '🚫 টেস্ট: বাস রুট পরিবর্তন করো', prompt: 'ঢাকা টু রাজশাহী বাসের রুট পরিবর্তন করো' }
+    ]
+  }
+};
+
 export function OfficeAIAssistant() {
   const { language } = useApp();
+  const [activeRole, setActiveRole] = useState<OfficeSubRole>('SUPER_ADMIN');
+
+  const currentRoleConfig = OFFICE_ROLES_CONFIG[activeRole];
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome',
       sender: 'ai',
       text: language === 'bn'
-        ? 'আসসালামু আলাইকুম! আমি **ATOMS অফিস এআই বিজনেস কো-পাইলট** 🏢। আজকের সেলস, ৩০ দিনের প্রফিট-মার্জিন, বাস বহর পারফরম্যান্স, বা ডে ক্লোজিং সংক্রান্ত যেকোনো প্রশ্ন করতে পারেন।'
-        : 'Hello! I am the **ATOMS Office AI Business Copilot** 🏢. Ask about today sales, 30-day profit margins, bus rankings, or financial audits.',
+        ? `আসসালামু আলাইকুম! আমি **ATOMS অফিস এআই কো-পাইলট** 🏢। আপনি বর্তমানে **${currentRoleConfig.nameBn} (${currentRoleConfig.designationBn})** মোডে আছেন।\n\n📌 **অনুমোদিত পরিধি:** ${currentRoleConfig.scopeDescBn}।`
+        : `Hello! I am the **ATOMS Office AI Copilot** 🏢 in **${currentRoleConfig.nameEn}** mode.\nScope: ${currentRoleConfig.scopeDescBn}.`,
       confidence: 'FACT',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
@@ -75,13 +166,22 @@ export function OfficeAIAssistant() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const quickPrompts = [
-    { labelBn: '📊 আজকের সেলস দেখাও', labelEn: 'Show today sales', prompt: 'আজকে sales কত?' },
-    { labelBn: '📈 গত ৩০ দিনের বিজনেস রিপোর্ট', labelEn: '30-day business report', prompt: 'গত ৩০ দিনের sales analyse করো' },
-    { labelBn: '🚌 সবচেয়ে লাভজনক বাস কোনটি?', labelEn: 'Most profitable bus?', prompt: 'কোন bus সবচেয়ে বেশি লাভ করেছে?' },
-    { labelBn: '💵 এই মাসের প্রফিট ও মার্জিন', labelEn: 'Profit and margin', prompt: 'এই মাসে profit কত এবং মার্জিন কত?' },
-    { labelBn: '🧠 সমস্যা ও স্মার্ট ইনসাইটস', labelEn: 'Smart business insights', prompt: 'কোন সমস্যা বা ইনসাইট আছে?' }
-  ];
+  // When active role changes, append a notification message indicating switch
+  const handleRoleChange = (role: OfficeSubRole) => {
+    if (role === activeRole) return;
+    setActiveRole(role);
+    const newConfig = OFFICE_ROLES_CONFIG[role];
+    const switchNotice: Message = {
+      id: `role-switch-${Date.now()}`,
+      sender: 'ai',
+      text: language === 'bn'
+        ? `🔄 ভূমিকা পরিবর্তিত হয়ে **${newConfig.nameBn} (${newConfig.designationBn})** সেট করা হয়েছে।\n\n📌 **অনুমোদিত পরিধি:** ${newConfig.scopeDescBn}।`
+        : `🔄 Role switched to **${newConfig.nameEn}**.`,
+      confidence: 'FACT',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setMessages(prev => [...prev, switchNotice]);
+  };
 
   const handleSend = async (promptToSend?: string) => {
     const query = promptToSend || inputPrompt;
@@ -104,7 +204,8 @@ export function OfficeAIAssistant() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: query,
-          context: 'OFFICE_AI'
+          context: 'OFFICE_AI',
+          role: activeRole
         })
       });
 
@@ -113,6 +214,8 @@ export function OfficeAIAssistant() {
       }
 
       const data = await res.json();
+      const isRefusal = data.text.includes('পারমিশন সীমাবদ্ধ') || data.text.includes('অননুমোদিত প্রশ্ন');
+
       const aiMsg: Message = {
         id: `ai-${Date.now()}`,
         sender: 'ai',
@@ -120,6 +223,7 @@ export function OfficeAIAssistant() {
         confidence: data.confidence,
         dataCards: data.data_cards,
         toolsUsed: data.tools_used,
+        isRefusal: isRefusal,
         actionPreview: data.action_preview,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
@@ -138,19 +242,6 @@ export function OfficeAIAssistant() {
       setMessages(prev => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleFeedback = async (msgId: string, isHelpful: boolean) => {
-    setFeedbackGiven(prev => ({ ...prev, [msgId]: isHelpful ? 'up' : 'down' }));
-    try {
-      await fetch('http://127.0.0.1:8000/api/v1/ai/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message_id: msgId, is_helpful: isHelpful })
-      });
-    } catch (e) {
-      console.warn('Failed to record feedback:', e);
     }
   };
 
@@ -183,21 +274,21 @@ export function OfficeAIAssistant() {
 
   return (
     <div className="flex flex-col h-[780px] bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden backdrop-blur-xl transition-colors duration-200">
-      {/* Top Header (Light & Dark Dual Mode) */}
+      {/* 1. Top Header */}
       <div className="p-4 md:p-5 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-transparent dark:from-indigo-950/60 dark:via-slate-900/80 dark:to-blue-950/60 flex items-center justify-between">
         <div className="flex items-center gap-3.5">
           <AIAvatar variant="office" size="md" isThinking={isLoading} />
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-black text-slate-900 dark:text-white tracking-tight">
-                {language === 'bn' ? 'অফিস এআই বিজনেস কো-পাইলট' : 'Office AI Business Copilot'}
+                {language === 'bn' ? 'অফিস এআই বিজনেস ও অপারেশন কো-পাইলট' : 'Office AI Business & Operations Copilot'}
               </h2>
-              <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-indigo-500/20 border border-blue-200 dark:border-indigo-400/30 text-blue-700 dark:text-cyan-300 text-[10px] font-mono font-bold">
-                ENTERPRISE
+              <span className={`px-2 py-0.5 rounded-full border text-[10px] font-mono font-bold ${currentRoleConfig.badgeClass}`}>
+                {currentRoleConfig.nameEn.toUpperCase()}
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
-              {language === 'bn' ? 'ডাটাবেজ ভিত্তিক লাইভ সেলস, প্রফিট-মার্জিন ও পরিচালনা অডিট' : 'Live Verified Financials, Fleet Profitability & Audit Engine'}
+              {currentRoleConfig.scopeDescBn}
             </p>
           </div>
         </div>
@@ -205,26 +296,58 @@ export function OfficeAIAssistant() {
         <div className="hidden sm:flex items-center gap-2">
           <span className="px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs font-bold flex items-center gap-1.5 shadow-2xs">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            Zero-Hallucination Safe
+            Role Scoped Safe
           </span>
         </div>
       </div>
 
-      {/* Quick Prompts Bar (Light & Dark Dual Mode) */}
+      {/* 2. Office Sub-Role / Division Switcher Bar */}
+      <div className="p-2.5 bg-slate-100/80 dark:bg-slate-950/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 overflow-x-auto">
+        <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 shrink-0 ml-1.5 flex items-center gap-1 font-mono uppercase">
+          <Layers className="w-3.5 h-3.5" />
+          <span>অফিস ডিভিশন:</span>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {(Object.keys(OFFICE_ROLES_CONFIG) as OfficeSubRole[]).map((rKey) => {
+            const r = OFFICE_ROLES_CONFIG[rKey];
+            const Icon = r.icon;
+            const isSelected = activeRole === rKey;
+
+            return (
+              <button
+                key={rKey}
+                type="button"
+                onClick={() => handleRoleChange(rKey)}
+                className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                  isSelected
+                    ? 'bg-blue-600 text-white shadow-xs scale-102'
+                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{r.nameBn}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 3. Role-Tailored Quick Prompts Bar */}
       <div className="px-4 py-3 bg-slate-50/90 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 flex gap-2 overflow-x-auto scrollbar-none">
-        {quickPrompts.map((qp, i) => (
+        {currentRoleConfig.prompts.map((qp, i) => (
           <button
             key={i}
             onClick={() => handleSend(qp.prompt)}
             disabled={isLoading}
             className="px-3.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-indigo-600/30 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-cyan-300 border border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-indigo-500/50 text-xs font-bold shrink-0 transition-all cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
           >
-            {language === 'bn' ? qp.labelBn : qp.labelEn}
+            {qp.labelBn}
           </button>
         ))}
       </div>
 
-      {/* Messages Stream */}
+      {/* 4. Messages Viewport */}
       <div className="flex-1 p-4 md:p-6 overflow-y-auto space-y-4 bg-slate-50/40 dark:bg-slate-950/40">
         {messages.map((msg) => (
           <div
@@ -240,11 +363,26 @@ export function OfficeAIAssistant() {
                 className={`p-4 md:p-5 rounded-2xl text-xs md:text-sm leading-relaxed inline-block shadow-sm ${
                   msg.sender === 'user'
                     ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-xs font-medium border border-blue-400/20 shadow-blue-600/20'
+                    : msg.isRefusal
+                    ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-950 dark:text-rose-200 border-2 border-rose-300 dark:border-rose-800 rounded-tl-xs shadow-sm'
                     : 'bg-white dark:bg-slate-800/95 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700/80 rounded-tl-xs backdrop-blur-md'
                 }`}
               >
+                {/* Refusal Notice Badge */}
+                {msg.isRefusal && (
+                  <div className="mb-2 pb-2 border-b border-rose-200 dark:border-rose-800 flex items-center justify-between text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                    <span className="flex items-center gap-1">
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      অননুমোদিত প্রশ্ন প্রতিরোধ (Role Guardrail Blocked)
+                    </span>
+                    <span className="text-[9px] font-mono bg-rose-200 dark:bg-rose-900 px-1.5 py-0.5 rounded text-rose-800 dark:text-rose-200">
+                      RESTRICTED
+                    </span>
+                  </div>
+                )}
+
                 {/* Confidence Badge for AI Responses */}
-                {msg.sender === 'ai' && msg.confidence && (
+                {msg.sender === 'ai' && msg.confidence && !msg.isRefusal && (
                   <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-200 dark:border-slate-700">
                     <span className="font-mono text-[10px] font-black uppercase text-blue-600 dark:text-cyan-300 flex items-center gap-1">
                       <Activity className="w-3 h-3 text-blue-500 dark:text-cyan-400" />
@@ -259,7 +397,7 @@ export function OfficeAIAssistant() {
                 )}
 
                 {/* Markdown text rendered cleanly */}
-                <div className="whitespace-pre-wrap font-sans space-y-1.5">
+                <div className="whitespace-pre-wrap font-sans space-y-1.5 font-medium">
                   {msg.text}
                 </div>
 
@@ -284,7 +422,7 @@ export function OfficeAIAssistant() {
                       size="sm"
                       variant="primary"
                       onClick={() => setActionConfirmModal(msg.actionPreview)}
-                      className="mt-1 text-xs font-black rounded-xl bg-amber-600 hover:bg-amber-500 text-white shadow-md shadow-amber-600/30"
+                      className="mt-1 text-xs font-black rounded-xl bg-amber-600 hover:bg-amber-500 text-white shadow-md shadow-amber-600/30 cursor-pointer"
                     >
                       <Lock className="w-3.5 h-3.5 mr-1" />
                       কনফার্মেশন ও সম্পাদন করুন
@@ -302,51 +440,24 @@ export function OfficeAIAssistant() {
                     <button
                       type="button"
                       onClick={() => handleCopy(msg.id, msg.text)}
-                      className="hover:text-blue-600 dark:hover:text-cyan-300 transition-colors flex items-center gap-1 cursor-pointer"
+                      className="hover:text-blue-600 dark:hover:text-cyan-400 transition-colors flex items-center gap-1 cursor-pointer"
                     >
                       {copiedId === msg.id ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                       {copiedId === msg.id ? 'কপি হয়েছে' : 'কপি'}
                     </button>
-                    <span>•</span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => handleFeedback(msg.id, true)}
-                        className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer ${
-                          feedbackGiven[msg.id] === 'up' ? 'text-emerald-600 dark:text-emerald-400 font-bold' : ''
-                        }`}
-                      >
-                        <ThumbsUp className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleFeedback(msg.id, false)}
-                        className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer ${
-                          feedbackGiven[msg.id] === 'down' ? 'text-rose-600 dark:text-rose-400 font-bold' : ''
-                        }`}
-                      >
-                        <ThumbsDown className="w-3 h-3" />
-                      </button>
-                    </div>
                   </>
                 )}
               </div>
             </div>
-
-            {msg.sender === 'user' && (
-              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-1">
-                <User className="w-4 h-4" />
-              </div>
-            )}
           </div>
         ))}
 
         {isLoading && (
-          <div className="flex gap-3 justify-start items-center text-xs text-slate-500 dark:text-slate-300">
+          <div className="flex gap-3.5 justify-start">
             <AIAvatar variant="office" size="sm" isThinking={true} />
-            <div className="flex items-center gap-2.5 p-3.5 bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-indigo-500/30 shadow-md">
-              <RefreshCw className="w-4 h-4 animate-spin text-blue-600 dark:text-cyan-400" />
-              <span className="font-medium text-slate-700 dark:text-slate-200">ডাটাবেজ ও টুলস থেকে রিয়েল-টাইম তথ্য বিশ্লেষণ হচ্ছে...</span>
+            <div className="p-4 rounded-2xl rounded-tl-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-xs text-slate-500 flex items-center gap-2 shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              <span>{currentRoleConfig.nameBn} পারমিশন যাচাই ও ডাটাবেজ প্রসেসিং...</span>
             </div>
           </div>
         )}
@@ -354,48 +465,73 @@ export function OfficeAIAssistant() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Box Bar (Light & Dark Dual Mode) */}
-      <div className="p-3 md:p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/90 flex gap-2">
-        <input
-          type="text"
-          value={inputPrompt}
-          onChange={(e) => setInputPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder={language === 'bn' ? 'অফিস এআই-কে জিজ্ঞাসা করুন (e.g. আজকের সেলস কত?)...' : 'Ask Office AI...'}
-          className="flex-1 px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs md:text-sm font-bold text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:focus:ring-indigo-500/50 shadow-inner"
-        />
-        <Button
-          variant="primary"
-          onClick={() => handleSend()}
-          disabled={isLoading || !inputPrompt.trim()}
-          className="px-5 font-black rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/25"
+      {/* 5. Message Input Bar */}
+      <div className="p-3 md:p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSend();
+          }}
+          className="flex items-center gap-2"
         >
-          <Send className="w-4 h-4" />
-        </Button>
+          <input
+            type="text"
+            value={inputPrompt}
+            onChange={(e) => setInputPrompt(e.target.value)}
+            placeholder={
+              language === 'bn'
+                ? `${currentRoleConfig.nameBn} সংক্রান্ত বিষয় জিজ্ঞাসা করুন...`
+                : `Ask queries relevant to ${currentRoleConfig.nameEn}...`
+            }
+            disabled={isLoading}
+            className="flex-1 px-4 py-3 rounded-2xl text-xs sm:text-sm bg-slate-100 dark:bg-slate-800/80 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <Button
+            type="submit"
+            disabled={isLoading || !inputPrompt.trim()}
+            className="bg-blue-600 hover:bg-blue-500 text-white font-bold p-3 rounded-2xl shrink-0 cursor-pointer shadow-md shadow-blue-600/20"
+          >
+            <Send className="w-4 h-4" />
+          </Button>
+        </form>
       </div>
 
-      {/* Action Confirmation Modal */}
+      {/* 6. Controlled Action Confirmation Modal */}
       {actionConfirmModal && (
         <Modal
-          isOpen={!!actionConfirmModal}
+          isOpen={true}
           onClose={() => setActionConfirmModal(null)}
-          title="অপারেশন কনফার্মেশন ও নিরাপত্তা অনুমোদন"
+          title="অ্যাকশন সম্পাদনের পূর্বে চূড়ান্ত অনুমোদন"
         >
-          <div className="space-y-4 p-2 text-xs">
-            <div className="p-4 bg-amber-50 dark:bg-amber-950/40 rounded-2xl border border-amber-200 dark:border-amber-500/40 space-y-2">
-              <span className="font-bold text-amber-900 dark:text-amber-200 block text-sm">
-                {actionConfirmModal.confirmation_prompt}
-              </span>
-              <p className="text-slate-700 dark:text-slate-300">
-                {actionConfirmModal.impact}
-              </p>
+          <div className="space-y-4 p-2">
+            <div className="p-3.5 bg-amber-50 dark:bg-amber-950/60 rounded-2xl border border-amber-200 dark:border-amber-700/80 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-xs space-y-1">
+                <span className="font-bold text-amber-950 dark:text-amber-200 block">{actionConfirmModal.summary}</span>
+                <p className="text-amber-800 dark:text-amber-300 font-medium">{actionConfirmModal.impact}</p>
+              </div>
             </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              আপনি কি নিশ্চিত যে এই পরিবর্তনটি সরাসরি সিস্টেমে কার্যকর করতে চান? এই অপারেশনের একটি স্থায়ী অডিট লগ সংরক্ষিত হবে।
+            </p>
+
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setActionConfirmModal(null)}>
-                বাতিল
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActionConfirmModal(null)}
+                className="text-xs font-bold"
+              >
+                বাতিল করুন
               </Button>
-              <Button variant="primary" size="sm" onClick={handleConfirmAction} className="font-bold bg-amber-600 hover:bg-amber-700 text-white">
-                হ্যাঁ, নিশ্চিত করুন
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleConfirmAction}
+                className="text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white"
+              >
+                হ্যাঁ, অনুমোদন করুন
               </Button>
             </div>
           </div>

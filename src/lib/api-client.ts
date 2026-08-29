@@ -1,28 +1,4 @@
-import crypto from 'crypto';
-
 const API_BASE_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || 'http://localhost:8000/api/v1';
-const JWT_SECRET = process.env.JWT_SECRET || 'atoms_super_secret_jwt_key_saas_bus_management_2026';
-
-function generateServerJwtToken(): string {
-  try {
-    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-    const payload = Buffer.from(
-      JSON.stringify({
-        sub: 'admin-super-001',
-        role: 'SUPER_ADMIN',
-        tenant_id: 'central-transit',
-        exp: Math.floor(Date.now() / 1000) + 86400 * 365
-      })
-    ).toString('base64url');
-    const signature = crypto
-      .createHmac('sha256', JWT_SECRET)
-      .update(`${header}.${payload}`)
-      .digest('base64url');
-    return `${header}.${payload}.${signature}`;
-  } catch {
-    return '';
-  }
-}
 
 export interface ApiResponse<T = any> {
   data?: T;
@@ -40,12 +16,6 @@ export async function apiRequest<T = any>(
     
     if (typeof window !== 'undefined') {
       token = localStorage.getItem('fastapi_token');
-      if (!token) {
-        token = generateServerJwtToken();
-        if (token) localStorage.setItem('fastapi_token', token);
-      }
-    } else {
-      token = generateServerJwtToken();
     }
 
     const headers: Record<string, string> = {
@@ -53,27 +23,17 @@ export async function apiRequest<T = any>(
       ...(options.headers as Record<string, string> || {}),
     };
 
-    if (token) {
+    if (token && !headers['Authorization']) {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    let res = await fetch(url, {
+    const res = await fetch(url, {
       ...options,
       headers,
     });
 
     if (res.status === 401 && typeof window !== 'undefined') {
-      // Clear stale token and retry with fresh token
       localStorage.removeItem('fastapi_token');
-      const freshToken = generateServerJwtToken();
-      if (freshToken) {
-        localStorage.setItem('fastapi_token', freshToken);
-        headers['Authorization'] = `Bearer ${freshToken}`;
-        res = await fetch(url, {
-          ...options,
-          headers,
-        });
-      }
     }
 
     if (!res.ok) {
@@ -126,6 +86,22 @@ export const fastApiClient = {
     }),
   trackBooking: (query: string) =>
     apiRequest(`/bookings/track/${encodeURIComponent(query)}`),
+  cancelBooking: (bookingId: string, reason: string = 'Customer Request') =>
+    apiRequest(`/bookings/${bookingId}/cancel?reason=${encodeURIComponent(reason)}`, { method: 'POST' }),
+  rejectPreBooking: (bookingId: string, reason: string = 'Verification Failed') =>
+    apiRequest(`/bookings/${bookingId}/reject?reason=${encodeURIComponent(reason)}`, { method: 'POST' }),
+
+  // Inventory & Locking
+  lockSeat: (tripId: string, data: any) =>
+    apiRequest(`/inventory/${tripId}/lock-seat`, { method: 'POST', body: JSON.stringify(data) }),
+  unlockSeat: (tripId: string, seatId: string) =>
+    apiRequest(`/inventory/${tripId}/unlock-seat?seat_id=${encodeURIComponent(seatId)}`, { method: 'POST' }),
+  cleanupExpired: (token?: string) =>
+    apiRequest(`/inventory/cleanup-expired${token ? `?token=${encodeURIComponent(token)}` : ''}`, { method: 'POST' }),
+
+  // Payments & Refunds
+  issueRefund: (data: { booking_id: string; amount: number; method: string; reason: string; payment_id?: string }) =>
+    apiRequest('/payments/refund', { method: 'POST', body: JSON.stringify(data) }),
 
   // Generic helpers
   get: <T = any>(endpoint: string) => apiRequest<T>(endpoint),

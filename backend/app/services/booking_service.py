@@ -9,7 +9,7 @@ from app.models.booking import Booking, BookingSeat, BookingPassenger, Discount
 from app.models.trip import Trip, SeatHold, SeatLock
 from app.models.bus import Seat
 from app.models.student import Student
-from app.models.payment import Payment, PaymentTransaction
+from app.models.payment import Payment, PaymentTransaction, Refund
 from app.models.finance import FinancialLedger
 from app.models.audit import AuditLog
 from app.schemas.booking import CreateBookingRequest, CreatePreBookingRequest, VerifyTimerRequest, ConfirmPreBookingPaymentRequest
@@ -19,6 +19,12 @@ from app.core.idempotency import check_or_set_idempotency, complete_idempotency,
 
 class SeatAlreadyBookedException(Exception):
     pass
+
+
+ACTIVE_BOOKING_STATUSES = [
+    "CONFIRMED", "COMPLETED", "PRE_BOOKED", 
+    "PAYMENT_TIMER_ACTIVE", "HELD", "VERIFICATION_PENDING"
+]
 
 
 def generate_unique_booking_number(db: Session) -> str:
@@ -42,6 +48,13 @@ def generate_unique_ledger_number(db: Session) -> str:
     return f"LED-{date_str}-{random_part}-{count + 1:05d}"
 
 
+def generate_unique_refund_number(db: Session) -> str:
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    random_part = secrets.token_hex(2).upper()
+    count = db.query(Refund).count()
+    return f"RF-{date_str}-{random_part}-{count + 1:04d}"
+
+
 # =====================================================================
 # 1. COUNTER BOOKING WITH PESSIMISTIC ROW LOCKING (with_for_update)
 # =====================================================================
@@ -52,6 +65,8 @@ def create_counter_booking(
     tenant_id: Optional[str] = None,
     client_ip: Optional[str] = None
 ) -> Booking:
+    now = datetime.now(timezone.utc)
+
     # 1. Pessimistic Row Locking on the target Trip
     trip = db.query(Trip).filter(Trip.id == req.trip_id).with_for_update(nowait=False).first()
     if not trip:
@@ -61,24 +76,63 @@ def create_counter_booking(
 
     seat_ids = [s["seat_id"] for s in req.seats]
 
-    # 2. Concurrency Lock: Check if any seat is already booked with with_for_update
+    # Validate that each requested seat ID actually exists on the bus for this trip
+    bus = trip.bus
+    if bus and bus.seat_layout:
+        valid_seat_ids = {s.id for s in bus.seat_layout.seats}
+        invalid_seats = [sid for sid in seat_ids if sid not in valid_seat_ids]
+        if invalid_seats:
+            raise ValueError(f"Seat IDs {invalid_seats} do not exist for this bus trip")
+
+    # Prevent duplicate passenger seat assignments in the request
+    seen_passenger_seats = set()
+    for p in req.passengers:
+        if p.seat_id in seen_passenger_seats:
+            raise ValueError(f"Duplicate seat {p.seat_id} in passenger list")
+        seen_passenger_seats.add(p.seat_id)
+
+    # 2. Concurrency Lock: Check if any seat is already booked or held in DB with with_for_update
     already_booked = (
         db.query(BookingSeat)
         .join(Booking)
         .filter(
             BookingSeat.seat_id.in_(seat_ids),
             Booking.trip_id == req.trip_id,
-            Booking.booking_status.in_(["CONFIRMED", "COMPLETED"])
+            Booking.booking_status.in_(ACTIVE_BOOKING_STATUSES)
         )
         .with_for_update(nowait=False)
         .first()
     )
     if already_booked:
-        raise SeatAlreadyBookedException(f"Seat {already_booked.seat_id} has just been booked by another transaction.")
+        raise SeatAlreadyBookedException(f"Seat {already_booked.seat_id} is already booked or held by another transaction.")
 
-    # 3. Financial Calculations
+    # Concurrency Lock: Check if any seat is actively locked (VIP, Maintenance, Staff, Emergency)
+    locked = (
+        db.query(SeatLock)
+        .filter(
+            SeatLock.trip_id == req.trip_id,
+            SeatLock.seat_id.in_(seat_ids),
+            SeatLock.is_active == True,
+            or_(SeatLock.locked_until == None, SeatLock.locked_until > now)
+        )
+        .first()
+    )
+    if locked:
+        raise ValueError(f"Seat {locked.seat_id} is currently locked ({locked.reason})")
+
+    # 3. Financial Calculations & Discount Handling
     gross_amount = sum(s["fare"] for s in req.seats)
-    discount_amount = req.discount_rate or 0.0
+    discount_type = getattr(req, "discount_type", "FIXED") or "FIXED"
+    discount_val = req.discount_rate or 0.0
+
+    if discount_type == "PERCENTAGE":
+        discount_amount = round((gross_amount * discount_val) / 100.0, 2)
+    else:
+        discount_amount = float(discount_val)
+
+    if discount_amount > gross_amount:
+        raise ValueError(f"Discount amount (৳{discount_amount}) cannot exceed gross ticket fare (৳{gross_amount})")
+
     net_amount = max(0.0, gross_amount - discount_amount)
     paid_amount = min(net_amount, max(0.0, req.paid_amount))
     due_amount = max(0.0, net_amount - paid_amount)
@@ -138,7 +192,27 @@ def create_counter_booking(
     # 7. Delete Database Holds
     db.query(SeatHold).filter(SeatHold.trip_id == req.trip_id, SeatHold.seat_id.in_(seat_ids)).delete()
 
-    # 8. Record Payment & Double-Entry Ledger
+    # 8. Record Discount if applied
+    if discount_amount > 0:
+        db.add(Discount(
+            booking_id=booking.id,
+            discount_type=discount_type,
+            discount_rate=discount_val,
+            discount_amount=discount_amount,
+            reason=req.discount_reason or "Staff Counter Discount",
+            applied_by_id=staff_id
+        ))
+        db.add(FinancialLedger(
+            entry_number=generate_unique_ledger_number(db),
+            entry_type="DISCOUNT",
+            debit=discount_amount,
+            credit=0.0,
+            balance=net_amount,
+            booking_id=booking.id,
+            description=f"Discount of ৳{discount_amount} applied to {booking.booking_number} ({req.discount_reason or 'No reason specified'})"
+        ))
+
+    # 9. Record Payment & Double-Entry Ledger
     if paid_amount > 0:
         receipt_number = generate_unique_receipt_number(db)
         payment = Payment(
@@ -173,7 +247,7 @@ def create_counter_booking(
         )
         db.add(ledger)
 
-    # 9. Audit Log
+    # 10. Audit Log
     db.add(AuditLog(
         user_id=staff_id,
         action="BOOKING_CREATED",
@@ -196,11 +270,20 @@ def create_pre_booking(
     req: CreatePreBookingRequest,
     tenant_id: Optional[str] = None
 ) -> Booking:
+    now = datetime.now(timezone.utc)
     trip = db.query(Trip).filter(Trip.id == req.trip_id).with_for_update(nowait=False).first()
     if not trip:
         raise ValueError("Trip not found")
 
     t_id = tenant_id or trip.tenant_id or "default"
+
+    # Validate that each requested seat ID actually exists on the bus for this trip
+    bus = trip.bus
+    if bus and bus.seat_layout:
+        valid_seat_ids = {s.id for s in bus.seat_layout.seats}
+        invalid_seats = [sid for sid in req.seat_ids if sid not in valid_seat_ids]
+        if invalid_seats:
+            raise ValueError(f"Seat IDs {invalid_seats} do not exist for this bus trip")
 
     # 1. Attempt Redis 15-Minute Anti-Hoarding Lock for each requested seat
     for seat_id in req.seat_ids:
@@ -217,22 +300,35 @@ def create_pre_booking(
                 f"Please select another seat or retry in {remaining_secs} seconds."
             )
 
-    # 2. Concurrency Lock: Check if any seat is already booked in DB with with_for_update
+    # 2. Concurrency Lock: Check if any seat is already booked/held in DB with with_for_update
     already_booked = (
         db.query(BookingSeat)
         .join(Booking)
         .filter(
             BookingSeat.seat_id.in_(req.seat_ids),
             Booking.trip_id == req.trip_id,
-            Booking.booking_status.in_(["CONFIRMED", "COMPLETED"])
+            Booking.booking_status.in_(ACTIVE_BOOKING_STATUSES)
         )
         .with_for_update(nowait=False)
         .first()
     )
     if already_booked:
-        raise SeatAlreadyBookedException(f"Seat {already_booked.seat_id} has just been booked by another transaction.")
+        raise SeatAlreadyBookedException(f"Seat {already_booked.seat_id} is already booked or held by another passenger.")
 
-    now = datetime.now(timezone.utc)
+    # Concurrency Lock: Check if any seat is actively locked
+    locked = (
+        db.query(SeatLock)
+        .filter(
+            SeatLock.trip_id == req.trip_id,
+            SeatLock.seat_id.in_(req.seat_ids),
+            SeatLock.is_active == True,
+            or_(SeatLock.locked_until == None, SeatLock.locked_until > now)
+        )
+        .first()
+    )
+    if locked:
+        raise ValueError(f"Seat {locked.seat_id} is currently locked ({locked.reason})")
+
     gross_amount = trip.base_price * len(req.seat_ids)
     booking_number = generate_unique_booking_number(db)
 
@@ -259,13 +355,17 @@ def create_pre_booking(
         net_amount=gross_amount,
         paid_amount=0.0,
         due_amount=gross_amount,
-        notes=req.notes or "Online Passenger Pre-Booking (Protected by Redis 15-Min TTL Lock)"
+        notes=req.notes
     )
     db.add(booking)
     db.flush()
 
     for seat_id in req.seat_ids:
-        db.add(BookingSeat(booking_id=booking.id, seat_id=seat_id, fare_snapshot=trip.base_price))
+        db.add(BookingSeat(
+            booking_id=booking.id,
+            seat_id=seat_id,
+            fare_snapshot=trip.base_price
+        ))
         db.add(BookingPassenger(
             booking_id=booking.id,
             passenger_name=req.contact_name,
@@ -287,7 +387,7 @@ def verify_and_start_timer(db: Session, req: VerifyTimerRequest, staff_id: str) 
     booking = db.query(Booking).filter(Booking.id == req.booking_id).with_for_update(nowait=False).first()
     if not booking:
         raise ValueError("Booking not found")
-    if booking.booking_status in ["CANCELLED", "EXPIRED"]:
+    if booking.booking_status in ["CANCELLED", "EXPIRED", "REJECTED"]:
         raise ValueError(f"Cannot verify booking with status: {booking.booking_status}")
     if booking.verification_status == "VERIFIED":
         raise ValueError("Booking has already been verified.")
@@ -338,7 +438,6 @@ def confirm_pre_booking_payment(
         if state == "PROCESSING":
             raise ValueError("This payment request is currently being handled. Please wait.")
         elif state == "COMPLETED" and cached_res:
-            # Return existing booking from DB
             return db.query(Booking).filter(Booking.id == cached_res.get("id", req.booking_id)).first()
 
     try:
@@ -419,3 +518,149 @@ def confirm_pre_booking_payment(
         if idempotency_key:
             clear_idempotency(idempotency_key)
         raise e
+
+
+# =====================================================================
+# 5. CANCELLATION, REJECTION & REFUND SERVICE WORKFLOWS
+# =====================================================================
+def cancel_booking_service(
+    db: Session,
+    booking_id: str,
+    staff_id: str,
+    reason: str = "Customer Request"
+) -> Booking:
+    booking = db.query(Booking).filter(Booking.id == booking_id).with_for_update(nowait=False).first()
+    if not booking:
+        raise ValueError("Booking not found")
+    if booking.booking_status == "CANCELLED":
+        return booking
+
+    booking.booking_status = "CANCELLED"
+    booking.notes = f"{booking.notes or ''} [Cancelled: {reason}]"
+
+    # Release any Redis seat holds
+    for bs in booking.seats:
+        release_seat_redis(booking.tenant_id or "default", booking.trip_id, bs.seat_id)
+
+    # Clean up DB seat holds
+    seat_ids = [bs.seat_id for bs in booking.seats]
+    if seat_ids:
+        db.query(SeatHold).filter(SeatHold.trip_id == booking.trip_id, SeatHold.seat_id.in_(seat_ids)).delete()
+
+    db.add(AuditLog(
+        user_id=staff_id,
+        action="BOOKING_CANCELLED",
+        entity="Booking",
+        entity_id=booking.id,
+        new_value=f"Booking {booking.booking_number} cancelled. Reason: {reason}"
+    ))
+
+    db.commit()
+    db.refresh(booking)
+    return booking
+
+
+def reject_pre_booking_service(
+    db: Session,
+    booking_id: str,
+    staff_id: str,
+    reason: str = "Verification Failed"
+) -> Booking:
+    booking = db.query(Booking).filter(Booking.id == booking_id).with_for_update(nowait=False).first()
+    if not booking:
+        raise ValueError("Booking not found")
+
+    booking.booking_status = "REJECTED"
+    booking.verification_status = "REJECTED"
+    booking.rejection_reason = reason
+    booking.payment_expires_at = None
+    booking.notes = f"{booking.notes or ''} [Rejected: {reason}]"
+
+    # Release any Redis seat holds
+    for bs in booking.seats:
+        release_seat_redis(booking.tenant_id or "default", booking.trip_id, bs.seat_id)
+
+    # Clean up DB seat holds
+    seat_ids = [bs.seat_id for bs in booking.seats]
+    if seat_ids:
+        db.query(SeatHold).filter(SeatHold.trip_id == booking.trip_id, SeatHold.seat_id.in_(seat_ids)).delete()
+
+    db.add(AuditLog(
+        user_id=staff_id,
+        action="PRE_BOOKING_REJECTED",
+        entity="Booking",
+        entity_id=booking.id,
+        new_value=f"Pre-booking {booking.booking_number} rejected. Reason: {reason}"
+    ))
+
+    db.commit()
+    db.refresh(booking)
+    return booking
+
+
+def create_refund_service(
+    db: Session,
+    booking_id: str,
+    amount: float,
+    method: str,
+    reason: str,
+    staff_id: str,
+    payment_id: Optional[str] = None
+) -> Refund:
+    if amount <= 0:
+        raise ValueError("Refund amount must be greater than zero")
+
+    booking = db.query(Booking).filter(Booking.id == booking_id).with_for_update(nowait=False).first()
+    if not booking:
+        raise ValueError("Booking not found")
+
+    if amount > booking.paid_amount:
+        raise ValueError(f"Refund amount (৳{amount}) cannot exceed total paid amount (৳{booking.paid_amount})")
+
+    refund_number = generate_unique_refund_number(db)
+    refund = Refund(
+        refund_number=refund_number,
+        booking_id=booking.id,
+        payment_id=payment_id,
+        amount=amount,
+        method=method,
+        reason=reason,
+        processed_by_id=staff_id
+    )
+    db.add(refund)
+    db.flush()
+
+    new_paid = max(0.0, booking.paid_amount - amount)
+    new_due = max(0.0, booking.net_amount - new_paid)
+    booking.paid_amount = new_paid
+    booking.due_amount = new_due
+    if new_paid == 0:
+        booking.payment_status = "REFUNDED"
+    else:
+        booking.payment_status = "PARTIALLY_PAID"
+
+    ledger = FinancialLedger(
+        entry_number=generate_unique_ledger_number(db),
+        entry_type="REFUND_ISSUED",
+        debit=amount,
+        credit=0.0,
+        balance=new_due,
+        payment_method=method,
+        booking_id=booking.id,
+        refund_id=refund.id,
+        payment_id=payment_id,
+        description=f"Refund for {booking.booking_number} ({refund_number}): {reason}"
+    )
+    db.add(ledger)
+
+    db.add(AuditLog(
+        user_id=staff_id,
+        action="REFUND_ISSUED",
+        entity="Booking",
+        entity_id=booking.id,
+        new_value=f"Refund of ৳{amount} issued via {method}. Refund Number: {refund_number}"
+    ))
+
+    db.commit()
+    db.refresh(refund)
+    return refund

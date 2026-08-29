@@ -1,10 +1,11 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.db.session import get_db
-from app.core.deps import get_current_user, require_role
-from app.models.booking import Booking
+from app.core.deps import get_current_user, require_role, get_current_tenant_id, apply_tenant_filter
+from app.models.booking import Booking, BookingSeat
 from app.models.bus import Bus
 from app.models.trip import Trip
 from app.models.payment import Payment
@@ -16,6 +17,7 @@ router = APIRouter()
 
 @router.get("/dashboard-kpi")
 def get_dashboard_kpi(
+    tenant_id: Optional[str] = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "VIEWER"]))
 ) -> Dict[str, Any]:
@@ -23,28 +25,48 @@ def get_dashboard_kpi(
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 
-    today_bookings = db.query(Booking).filter(
+    # 1. Booking Sales & Tickets aggregated at SQL level
+    booking_q = db.query(
+        func.coalesce(func.sum(Booking.net_amount), 0.0).label("sales")
+    ).filter(
         Booking.created_at >= today_start,
         Booking.created_at <= today_end,
         Booking.booking_status.in_(["CONFIRMED", "COMPLETED"])
-    ).all()
+    )
+    booking_q = apply_tenant_filter(booking_q, Booking, current_user, tenant_id)
+    today_sales = float(booking_q.scalar() or 0.0)
 
-    today_sales = sum(b.net_amount for b in today_bookings)
-    today_tickets = sum(len(b.seats) for b in today_bookings)
+    ticket_q = db.query(func.count(BookingSeat.id)).join(Booking).filter(
+        Booking.created_at >= today_start,
+        Booking.created_at <= today_end,
+        Booking.booking_status.in_(["CONFIRMED", "COMPLETED"])
+    )
+    ticket_q = apply_tenant_filter(ticket_q, Booking, current_user, tenant_id)
+    today_tickets = int(ticket_q.scalar() or 0)
 
-    today_payments = db.query(Payment).filter(
+    # 2. Payments collected today
+    payment_q = db.query(
+        func.coalesce(func.sum(Payment.amount), 0.0)
+    ).join(Booking, Payment.booking_id == Booking.id).filter(
         Payment.created_at >= today_start,
         Payment.created_at <= today_end
-    ).all()
-    today_collected = sum(p.amount for p in today_payments)
+    )
+    payment_q = apply_tenant_filter(payment_q, Booking, current_user, tenant_id)
+    today_collected = float(payment_q.scalar() or 0.0)
     today_due = max(0.0, today_sales - today_collected)
 
-    active_buses = db.query(Bus).filter(Bus.status == "ACTIVE").count()
-    active_trips = db.query(Trip).filter(
+    # 3. Active buses & trips
+    bus_q = db.query(func.count(Bus.id)).filter(Bus.status == "ACTIVE")
+    bus_q = apply_tenant_filter(bus_q, Bus, current_user, tenant_id)
+    active_buses = int(bus_q.scalar() or 0)
+
+    trip_q = db.query(func.count(Trip.id)).filter(
         Trip.departure_date >= today_start,
         Trip.departure_date <= today_end,
         Trip.status.in_(["SCHEDULED", "BOARDING", "ON_ROUTE"])
-    ).count()
+    )
+    trip_q = apply_tenant_filter(trip_q, Trip, current_user, tenant_id)
+    active_trips = int(trip_q.scalar() or 0)
 
     return {
         "today_sales": today_sales,
@@ -59,10 +81,17 @@ def get_dashboard_kpi(
 
 @router.get("/financial-ledger")
 def get_financial_ledger(
+    tenant_id: Optional[str] = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT"]))
 ) -> List[Dict[str, Any]]:
-    entries = db.query(FinancialLedger).order_by(FinancialLedger.created_at.desc()).limit(100).all()
+    query = db.query(FinancialLedger).outerjoin(Booking, FinancialLedger.booking_id == Booking.id)
+    if current_user.role and current_user.role.name != "SUPER_ADMIN":
+        query = query.filter(Booking.tenant_id == current_user.tenant_id)
+    elif tenant_id:
+        query = query.filter(Booking.tenant_id == tenant_id)
+
+    entries = query.order_by(FinancialLedger.created_at.desc()).limit(100).all()
     return [
         {
             "id": e.id,

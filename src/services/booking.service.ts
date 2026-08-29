@@ -117,9 +117,11 @@ export async function createBooking(input: CreateBookingInput) {
     boarding_point: input.boardingPoint,
     dropping_point: input.droppingPoint,
     passenger_legs_json: input.passengerLegsJson,
+    discount_type: input.discountType || 'FIXED',
+    discount_rate: input.discountRate || 0,
+    discount_reason: input.discountReason || input.discountReference,
     payment_method: input.paymentMethod,
     paid_amount: input.paidAmount,
-    discount_rate: input.discountRate,
     transaction_id: input.transactionId,
     sender_reference: input.senderReference,
     notes: input.notes
@@ -187,13 +189,35 @@ export async function confirmPreBookingPayment(input: ConfirmPreBookingPaymentIn
 }
 
 export async function cancelBooking(bookingIdOrInput: any, reason?: string, staffId?: string) {
-  return { success: true, tripId: 'trip-1' };
+  const bookingId = typeof bookingIdOrInput === 'string' ? bookingIdOrInput : bookingIdOrInput?.bookingId;
+  const cancellationReason = reason || (typeof bookingIdOrInput === 'object' ? bookingIdOrInput?.reason : 'Customer Request') || 'Customer Request';
+  const res = await fastApiClient.cancelBooking(bookingId, cancellationReason);
+  if (!res.success) {
+    throw new Error(res.error || 'Failed to cancel booking');
+  }
+  return res.data;
 }
 
 export async function rejectPreBooking(bookingIdOrInput: any, reason?: string, staffId?: string) {
-  return { success: true, tripId: 'trip-1' };
+  const bookingId = typeof bookingIdOrInput === 'string' ? bookingIdOrInput : bookingIdOrInput?.bookingId;
+  const rejectionReason = reason || (typeof bookingIdOrInput === 'object' ? bookingIdOrInput?.reason : 'Verification Failed') || 'Verification Failed';
+  const res = await fastApiClient.rejectPreBooking(bookingId, rejectionReason);
+  if (!res.success) {
+    throw new Error(res.error || 'Failed to reject pre-booking');
+  }
+  return res.data;
 }
 
+
 export async function cleanExpiredBookings() {
+  const cronSecret = process.env.CRON_SECRET || 'atoms-cleanup-token';
+  const res = await fastApiClient.cleanupExpired(cronSecret);
+  if (res.success && res.data?.stats) {
+    return {
+      expiredCount: (res.data.stats.expired_holds || 0) + (res.data.stats.expired_bookings || 0),
+      stats: res.data.stats
+    };
+  }
   return { expiredCount: 0 };
 }
+

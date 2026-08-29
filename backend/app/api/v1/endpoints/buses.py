@@ -77,7 +77,8 @@ def create_bus(
 
     bus_dict = req.model_dump()
     bus_dict["seat_layout_id"] = seat_layout_id
-    bus = Bus(**bus_dict, tenant_id=tenant_id or current_user.tenant_id)
+    effective_tenant = current_user.tenant_id if (current_user.role and current_user.role.name != "SUPER_ADMIN") else (tenant_id or current_user.tenant_id)
+    bus = Bus(**bus_dict, tenant_id=effective_tenant)
     db.add(bus)
     db.commit()
     db.refresh(bus)

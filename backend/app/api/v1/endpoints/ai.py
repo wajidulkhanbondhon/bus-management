@@ -16,7 +16,9 @@ router = APIRouter()
 class AIChatRequest(BaseModel):
     prompt: str
     context: AIContext = AIContext.OFFICE_AI
+    role: Optional[str] = None
     student_phone: Optional[str] = None
+    trip_id: Optional[str] = None
 
 
 class AIActionConfirmRequest(BaseModel):
@@ -41,7 +43,7 @@ def ai_chat_endpoint(
 ):
     """
     Universal AI Orchestration Endpoint.
-    Routes queries to OFFICE_AI or STUDENT_AI with strict authorization and grounded tool execution.
+    Routes queries to SUPERVISOR_AI, STUDENT_AI, or OFFICE_AI with strict authorization and grounded tool execution.
     """
     if not req.prompt or not req.prompt.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt cannot be empty")
@@ -51,9 +53,12 @@ def ai_chat_endpoint(
         prompt=req.prompt,
         context=req.context,
         current_user=current_user,
+        role=req.role,
         student_phone=req.student_phone,
+        trip_id=req.trip_id,
         tenant_id=tenant_id
     )
+
 
 
 @router.post("/action/confirm")

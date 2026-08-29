@@ -51,7 +51,7 @@ export const CreateBookingSchema = z.object({
   passengers: z.array(PassengerInputSchema).min(1, 'At least one passenger is required'),
   isDiscountApplied: z.boolean().optional(),
   discountType: z.enum(['FIXED', 'PERCENTAGE']).optional(),
-  discountRate: z.number().min(0).optional(),
+  discountRate: z.number().min(0).max(50000, 'Discount is unreasonably large').optional(),
   discountReason: z.string().max(500).optional(),
   discountReference: z.string().max(200).optional(),
   paymentMethod: PaymentMethodSchema,

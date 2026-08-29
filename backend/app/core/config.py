@@ -25,6 +25,27 @@ class Settings(BaseSettings):
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            if v.strip().startswith("[") and v.strip().endswith("]"):
+                import json
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, v: str, info) -> str:
+        env = info.data.get("ENVIRONMENT", "development")
+        if env == "production" and v == "atoms_super_secret_jwt_key_saas_bus_management_2026":
+            raise ValueError("CRITICAL: Default placeholder SECRET_KEY cannot be used in production!")
+        return v
+
     # Multi-tenant default
     DEFAULT_TENANT_ID: str = "central-transit"
     CRON_SECRET: str = "atoms-cleanup-token"

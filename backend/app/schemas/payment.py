@@ -30,3 +30,17 @@ class PaymentOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class RefundOut(BaseModel):
+    id: str
+    refund_number: str
+    booking_id: str
+    payment_id: Optional[str] = None
+    amount: float
+    method: str
+    reason: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

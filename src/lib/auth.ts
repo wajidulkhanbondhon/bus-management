@@ -62,9 +62,8 @@ export async function getCurrentUser(): Promise<AuthSessionUser | null> {
     const cookieStore = await cookies();
     const rawToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
-    // ── If no token at all, fall through to dev-only fallback ──
     if (!rawToken) {
-      return getDevFallbackUser();
+      return null;
     }
 
     // ── Verify HMAC signature ──
@@ -97,38 +96,80 @@ export async function getCurrentUser(): Promise<AuthSessionUser | null> {
       };
     }
 
-    // Backend unreachable — use dev fallback so the UI doesn't break locally
-    return getDevFallbackUser();
+    // Backend unreachable with an active session cookie: in non-production, check if it's a known demo user
+    if (process.env.NODE_ENV !== 'production') {
+      return getDevFallbackUser(userId);
+    }
 
+    return null;
   } catch {
-    return getDevFallbackUser();
+    return null;
   }
 }
 
 /**
- * Development-only fallback user.
- * In production, ensure SESSION_SECRET is set and the backend is reachable
- * so that this code path is never hit for real users.
+ * Development-only fallback user mapped to the authenticated session user ID
+ * when backend is temporarily offline. Never runs in production or for unauthenticated users.
  */
-function getDevFallbackUser(): AuthSessionUser | null {
+function getDevFallbackUser(userId: string): AuthSessionUser | null {
   if (process.env.NODE_ENV === 'production') {
-    // Never auto-login in production — force the real login page
     return null;
   }
-  // Dev / local convenience: return the super-admin so the UI is usable
-  return {
-    id: 'admin-super-001',
-    email: 'admin@transport.office',
-    fullName: 'Kamrul Hasan (Director)',
-    phone: '01711000001',
-    role: {
-      id: 'role-super-admin',
-      name: 'SUPER_ADMIN',
-      description: 'Full System Control',
-      permissions: ['*']
+  const demoUsers: Record<string, AuthSessionUser> = {
+    'admin-super-001': {
+      id: 'admin-super-001',
+      email: 'admin@transport.office',
+      fullName: 'Kamrul Hasan (Director)',
+      phone: '01711000001',
+      role: {
+        id: 'role-super-admin',
+        name: 'SUPER_ADMIN',
+        description: 'Full System Control',
+        permissions: ['*']
+      },
+      discountLimit: 99999
     },
-    discountLimit: 99999
+    'usr-2': {
+      id: 'usr-2',
+      email: 'manager@transport.office',
+      fullName: 'Tariqul Islam (Manager)',
+      phone: '01711000002',
+      role: {
+        id: 'role-manager',
+        name: 'MANAGER',
+        description: 'Operations Manager',
+        permissions: ['booking:view', 'booking:create', 'booking:verify', 'report:view']
+      },
+      discountLimit: 500
+    },
+    'usr-3': {
+      id: 'usr-3',
+      email: 'staff@transport.office',
+      fullName: 'Rahim Chowdhury (Desk Officer)',
+      phone: '01711000003',
+      role: {
+        id: 'role-staff',
+        name: 'BOOKING_STAFF',
+        description: 'Counter Booking Staff',
+        permissions: ['booking:create', 'booking:view']
+      },
+      discountLimit: 100
+    },
+    'usr-4': {
+      id: 'usr-4',
+      email: 'accountant@transport.office',
+      fullName: 'Zubair Ahmed (Chief Cashier)',
+      phone: '01711000004',
+      role: {
+        id: 'role-accountant',
+        name: 'ACCOUNTANT',
+        description: 'Chief Accountant',
+        permissions: ['report:view', 'finance:reconcile']
+      },
+      discountLimit: 0
+    }
   };
+  return demoUsers[userId] || null;
 }
 
 export async function hasPermission(permissionCode: string): Promise<boolean> {

@@ -232,19 +232,19 @@ export async function lockSeat(data: {
   lockedUntil?: string | null;
   lockedBy: string;
 }) {
-  const res = await fetch(`http://localhost:8000/api/v1/inventory/${data.tripId}/lock-seat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  }).catch(() => null);
+  const res = await fastApiClient.lockSeat(data.tripId, data);
+  if (!res.success) {
+    throw new Error(res.error || 'Failed to lock seat');
+  }
   return { success: true, ...data };
 }
 
-export async function unlockSeat(tripId: string, seatId: string, staffId: string) {
-  const res = await fetch(`http://localhost:8000/api/v1/inventory/${tripId}/unlock-seat?seat_id=${seatId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' }
-  }).catch(() => null);
+export async function unlockSeat(tripId: string, seatId: string, staffId?: string) {
+  const res = await fastApiClient.unlockSeat(tripId, seatId);
+  if (!res.success) {
+    throw new Error(res.error || 'Failed to unlock seat');
+  }
   return { success: true };
 }
+
 

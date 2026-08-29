@@ -2,7 +2,7 @@ from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.core.deps import get_current_user, require_role
+from app.core.deps import require_role, get_current_tenant_id
 from app.models.audit import AuditLog
 from app.models.user import User
 
@@ -13,10 +13,16 @@ router = APIRouter()
 def list_audit_logs(
     action: Optional[str] = None,
     entity: Optional[str] = None,
+    tenant_id: Optional[str] = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN"]))
 ):
     query = db.query(AuditLog)
+    if current_user.role and current_user.role.name != "SUPER_ADMIN":
+        query = query.join(User, AuditLog.user_id == User.id).filter(User.tenant_id == current_user.tenant_id)
+    elif tenant_id:
+        query = query.join(User, AuditLog.user_id == User.id).filter(User.tenant_id == tenant_id)
+
     if action:
         query = query.filter(AuditLog.action == action)
     if entity:

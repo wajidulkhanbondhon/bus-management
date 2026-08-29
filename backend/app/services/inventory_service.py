@@ -199,14 +199,24 @@ def hold_seat(db: Session, trip_id: str, seat_id: str, staff_id: str, duration_m
 
     clean_expired_inventory(db, trip_id)
 
-    # Check if already booked
+    # Check if already booked or held
     existing = db.query(BookingSeat).join(Booking).filter(
         BookingSeat.seat_id == seat_id,
         Booking.trip_id == trip_id,
-        Booking.booking_status.in_(["CONFIRMED", "COMPLETED"])
+        Booking.booking_status.in_(["CONFIRMED", "COMPLETED", "PRE_BOOKED", "PAYMENT_TIMER_ACTIVE", "HELD", "VERIFICATION_PENDING"])
     ).first()
     if existing:
-        raise ValueError("Seat is already booked")
+        raise ValueError("Seat is already booked or held")
+
+    # Check if seat is locked
+    locked = db.query(SeatLock).filter(
+        SeatLock.trip_id == trip_id,
+        SeatLock.seat_id == seat_id,
+        SeatLock.is_active == True,
+        or_(SeatLock.locked_until == None, SeatLock.locked_until > now)
+    ).first()
+    if locked:
+        raise ValueError(f"Seat is currently locked ({locked.reason})")
 
     hold = SeatHold(
         trip_id=trip_id,
@@ -219,3 +229,108 @@ def hold_seat(db: Session, trip_id: str, seat_id: str, staff_id: str, duration_m
     db.commit()
     db.refresh(hold)
     return hold
+
+
+def lock_seat(
+    db: Session,
+    trip_id: str,
+    seat_id: str,
+    staff_id: str,
+    lock_type: str = "TEMPORARY",
+    reason: str = "OTHER",
+    notes: Optional[str] = None,
+    locked_until: Optional[datetime] = None
+) -> SeatLock:
+    clean_expired_inventory(db, trip_id)
+    now = datetime.now(timezone.utc)
+
+    # 1. Check if already booked
+    existing = db.query(BookingSeat).join(Booking).filter(
+        BookingSeat.seat_id == seat_id,
+        Booking.trip_id == trip_id,
+        Booking.booking_status.in_(["CONFIRMED", "COMPLETED", "PRE_BOOKED", "PAYMENT_TIMER_ACTIVE", "HELD", "VERIFICATION_PENDING"])
+    ).first()
+    if existing:
+        raise ValueError("Cannot lock seat: it is already booked or held in an active booking")
+
+    # 2. Check if already actively locked
+    active_lock = db.query(SeatLock).filter(
+        SeatLock.trip_id == trip_id,
+        SeatLock.seat_id == seat_id,
+        SeatLock.is_active == True,
+        or_(SeatLock.locked_until == None, SeatLock.locked_until > now)
+    ).first()
+    if active_lock:
+        raise ValueError(f"Seat is already locked ({active_lock.reason})")
+
+    # 3. Create lock
+    lock = SeatLock(
+        trip_id=trip_id,
+        seat_id=seat_id,
+        lock_type=lock_type,
+        reason=reason,
+        notes=notes,
+        locked_by=staff_id,
+        locked_until=locked_until,
+        is_active=True
+    )
+    db.add(lock)
+
+    # Remove any temporary hold on this seat
+    db.query(SeatHold).filter(SeatHold.trip_id == trip_id, SeatHold.seat_id == seat_id).delete()
+
+    from app.models.audit import AuditLog
+    db.add(AuditLog(
+        user_id=staff_id,
+        action="SEAT_LOCKED",
+        entity="Seat",
+        entity_id=seat_id,
+        new_value=f"Seat locked for trip {trip_id}. Reason: {reason} ({lock_type})"
+    ))
+
+    db.commit()
+    db.refresh(lock)
+    return lock
+
+
+def unlock_seat(db: Session, trip_id: str, seat_id: str, staff_id: str) -> bool:
+    locks = db.query(SeatLock).filter(
+        SeatLock.trip_id == trip_id,
+        SeatLock.seat_id == seat_id,
+        SeatLock.is_active == True
+    ).all()
+
+    if not locks:
+        raise ValueError("No active lock found for this seat")
+
+    for l in locks:
+        l.is_active = False
+
+    from app.models.audit import AuditLog
+    db.add(AuditLog(
+        user_id=staff_id,
+        action="SEAT_UNLOCKED",
+        entity="Seat",
+        entity_id=seat_id,
+        new_value=f"Seat unlocked for trip {trip_id} by staff {staff_id}"
+    ))
+
+    db.commit()
+    return True
+
+
+def clean_all_expired(db: Session) -> Dict[str, int]:
+    now = datetime.now(timezone.utc)
+    deleted_holds = db.query(SeatHold).filter(SeatHold.expires_at <= now).delete()
+
+    expired_bookings = db.query(Booking).filter(
+        Booking.booking_status == "PAYMENT_TIMER_ACTIVE",
+        Booking.payment_expires_at <= now
+    ).update({"booking_status": "EXPIRED"})
+
+    db.commit()
+    return {
+        "expired_holds": deleted_holds,
+        "expired_bookings": expired_bookings
+    }
+

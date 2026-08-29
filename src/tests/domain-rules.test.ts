@@ -84,4 +84,39 @@ describe('ATOMS Domain Engine & Business Rules', () => {
       expect(discount).toBe(120);
     });
   });
+
+  describe('Phone Number Normalization & Validation', () => {
+    it('should normalize international and Bengali format phone numbers to standard 11 digits', async () => {
+      const { cleanAndLimitPhoneNumber, isValidBdMobile } = await import('@/lib/utils');
+      expect(cleanAndLimitPhoneNumber('+8801712345678')).toBe('01712345678');
+      expect(cleanAndLimitPhoneNumber('8801812345678')).toBe('01812345678');
+      expect(cleanAndLimitPhoneNumber('008801912345678')).toBe('01912345678');
+      expect(cleanAndLimitPhoneNumber('০১৭১২৩৪৫৬৭৮')).toBe('01712345678');
+      expect(isValidBdMobile('01712345678')).toBe(true);
+      expect(isValidBdMobile('01212345678')).toBe(false); // Invalid operator prefix
+    });
+  });
+
+  describe('Zod Schema Boundary & Discount Capping', () => {
+    it('should reject absurdly excessive discount rates in CreateBookingSchema', async () => {
+      const { CreateBookingSchema } = await import('@/lib/validations');
+      const result = CreateBookingSchema.safeParse({
+        tripId: 'trip-1',
+        seats: [{ seatId: 'seat-1', fare: 500 }],
+        passengers: [{
+          passengerName: 'Valid Name',
+          passengerPhone: '01712345678',
+          passengerType: 'STUDENT',
+          gender: 'FEMALE',
+          seatId: 'seat-1'
+        }],
+        paymentMethod: 'HAND_CASH',
+        paidAmount: 500,
+        discountRate: 999999 // Exceeds max 50000 cap
+      });
+
+      expect(result.success).toBe(false);
+    });
+  });
 });
+
