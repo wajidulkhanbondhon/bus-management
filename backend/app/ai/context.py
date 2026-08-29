@@ -51,6 +51,7 @@ class AIResponsePayload(BaseModel):
     recommendations: Optional[List[str]] = None
     tools_used: List[str] = Field(default_factory=list)
     timestamp: str = ""
+    download_url: Optional[str] = None
 
 
 # System Prompts with Strict Role Boundaries

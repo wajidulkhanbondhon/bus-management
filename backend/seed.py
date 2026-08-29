@@ -23,7 +23,8 @@ from app.models import (
     SeatLock, Student, Guardian,
     Booking, BookingSeat, BookingPassenger,
     Payment, PaymentTransaction, FinancialLedger,
-    AuditLog, Notification, SystemSetting
+    AuditLog, Notification, SystemSetting,
+    University
 )
 
 
@@ -164,61 +165,128 @@ def seed_database():
                 seat_objects[seat_num] = s
         db.flush()
 
-        # 6. BUSES
+        # 6. BUSES (Rajshahi Fleet)
         bus1 = Bus(
             tenant_id=tenant.id,
-            bus_name="Dhaka Express 01 (Admission Special)",
-            bus_number="DHAKA-METRO-BA-11-2024",
-            reg_number="REG-2026-90124",
-            capacity=40,
-            bus_type="MIXED",
-            seat_layout_id=layout.id
-        )
-        bus2 = Bus(
-            tenant_id=tenant.id,
-            bus_name="Padma Female Special 02",
-            bus_number="DHAKA-METRO-BA-11-2025",
-            reg_number="REG-2026-90125",
+            bus_name="Padma Admission Express 01 (Female Special)",
+            bus_number="RAJ-METRO-BA-11-2026",
+            reg_number="REG-2026-90126",
             capacity=40,
             bus_type="FEMALE",
             seat_layout_id=layout.id
         )
-        db.add_all([bus1, bus2])
+        bus2 = Bus(
+            tenant_id=tenant.id,
+            bus_name="Barendra Admission Express 02 (General Mixed)",
+            bus_number="RAJ-METRO-BA-11-2027",
+            reg_number="REG-2026-90127",
+            capacity=40,
+            bus_type="MIXED",
+            seat_layout_id=layout.id
+        )
+        bus3 = Bus(
+            tenant_id=tenant.id,
+            bus_name="Karnafuli Super Express 03 (CU & SUST)",
+            bus_number="RAJ-METRO-BA-11-2028",
+            reg_number="REG-2026-90128",
+            capacity=40,
+            bus_type="MIXED",
+            seat_layout_id=layout.id
+        )
+        db.add_all([bus1, bus2, bus3])
         db.flush()
 
-        # 7. ROUTES & TRIPS
+        # 6.1 SEED UNIVERSITIES
+        uni_du = University(
+            tenant_id=tenant.id,
+            name="ঢাকা বিশ্ববিদ্যালয়",
+            name_en="Dhaka University (DU)",
+            apply_status="UPCOMING",
+            deadline="2026-08-31",
+            exam_date="2026-09-05",
+            units=["A ইউনিট (বিজ্ঞান)", "B ইউনিট (কলা ও সামাজিক)", "C ইউনিট (ব্যবসায়)"],
+            fees="৳১,০০০",
+            location="ঢাকা"
+        )
+        uni_ju = University(
+            tenant_id=tenant.id,
+            name="জাহাঙ্গীরনগর বিশ্ববিদ্যালয়",
+            name_en="Jahangirnagar University (JU)",
+            apply_status="UPCOMING",
+            deadline="2026-09-01",
+            exam_date="2026-09-07",
+            units=["A ইউনিট (বিজ্ঞান)", "D ইউনিট (জীববিজ্ঞান)"],
+            fees="৳৯০০",
+            location="সাভার, ঢাকা"
+        )
+        uni_cu = University(
+            tenant_id=tenant.id,
+            name="চট্টগ্রাম বিশ্ববিদ্যালয়",
+            name_en="Chittagong University (CU)",
+            apply_status="OPEN",
+            deadline="2026-09-08",
+            exam_date="2026-09-18",
+            units=["A ইউনিট (বিজ্ঞান)", "C ইউনিট (বাণিজ্য)"],
+            fees="৳৯৫০",
+            location="চট্টগ্রাম"
+        )
+        db.add_all([uni_du, uni_ju, uni_cu])
+        db.flush()
+
+        # 7. RAJSHAHI-ORIGIN ROUTES & TRIPS
         route1 = BusRoute(
             tenant_id=tenant.id,
-            route_name="Dhaka to Rajshahi University (RU Unit-A)",
-            origin="Dhaka Gabtoli",
-            destination="Rajshahi University",
-            distance_km=250.0,
-            est_duration="5h 30m"
+            route_name="Rajshahi to Dhaka University (Curzon & TSC Gate)",
+            origin="Rajshahi (Talaimari/Bhadra/Railgate)",
+            destination="Dhaka University Campus",
+            distance_km=248.0,
+            est_duration="6h 00m"
         )
-        db.add(route1)
+        route2 = BusRoute(
+            tenant_id=tenant.id,
+            route_name="Rajshahi to Jahangirnagar University (Dairy Gate)",
+            origin="Rajshahi (Talaimari/Bhadra/Railgate)",
+            destination="Jahangirnagar University Campus",
+            distance_km=225.0,
+            est_duration="5h 15m"
+        )
+        db.add_all([route1, route2])
         db.flush()
 
         now = datetime.now(timezone.utc)
         today = now.replace(hour=0, minute=0, second=0, microsecond=0)
         trip1 = Trip(
             tenant_id=tenant.id,
-            trip_code="TRIP-20260827-001",
+            trip_code="DU-EXP-2026",
             bus_id=bus1.id,
             route_id=route1.id,
-            departure_date=today,
-            departure_time=now + timedelta(hours=3),
-            base_price=550.0,
+            departure_date=today + timedelta(days=5),
+            departure_time=now.replace(hour=22, minute=30, second=0),
+            base_price=650.0,
+            trip_bus_type="FEMALE",
             status="SCHEDULED",
-            notes="Admission candidate express"
+            notes="Rajshahi Point-to-Point Express to DU Curzon Hall (Zero Midway Pickups, 4h Buffer)"
         )
-        db.add(trip1)
+        trip2 = Trip(
+            tenant_id=tenant.id,
+            trip_code="JU-EXP-2026",
+            bus_id=bus2.id,
+            route_id=route2.id,
+            departure_date=today + timedelta(days=7),
+            departure_time=now.replace(hour=23, minute=0, second=0),
+            base_price=600.0,
+            trip_bus_type="MIXED",
+            status="SCHEDULED",
+            notes="Rajshahi Point-to-Point Express to JU Dairy Gate (3.5h Buffer)"
+        )
+        db.add_all([trip1, trip2])
         db.flush()
 
         # 8. SAMPLE CONFIRMED BOOKING
         seat_a1 = seat_objects["A1"]
         booking1 = Booking(
             tenant_id=tenant.id,
-            booking_number="BK-20260827-CONF-001",
+            booking_number="BK-RAJ-2026-DU-001",
             trip_id=trip1.id,
             created_by_id=staff.id,
             booking_status="CONFIRMED",
@@ -226,9 +294,11 @@ def seed_database():
             source="COUNTER",
             contact_name="Farhana Yasmin",
             contact_phone="01712345678",
+            boarding_point="তালাইমারী প্রধান কাউন্টার (শহীদ মিনার মোড়, রাজশাহী)",
+            dropping_point="কার্জন হল ও নীলক্ষেত টিএসসি গেট (ঢাবি)",
             passenger_gender="FEMALE",
             is_student=True,
-            student_admission_id="RU-2026-98124",
+            student_admission_id="DU-2026-89421",
             gross_amount=650.0,
             net_amount=650.0,
             paid_amount=650.0,

@@ -26,7 +26,12 @@ import {
   Users,
   Ticket,
   Calculator,
-  ShieldAlert
+  ShieldAlert,
+  Mic,
+  Paperclip,
+  Volume2,
+  FileText,
+  X
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -55,6 +60,7 @@ interface Message {
     confirmation_prompt: string;
   };
   timestamp: string;
+  downloadUrl?: string;
 }
 
 interface RoleConfig {
@@ -78,8 +84,9 @@ const OFFICE_ROLES_CONFIG: Record<OfficeSubRole, RoleConfig> = {
     icon: Shield,
     colorClass: 'text-indigo-600 dark:text-indigo-400',
     badgeClass: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700',
-    scopeDescBn: 'পূর্ণ অ্যাক্সেস: ৩০ দিনের P&L, প্রফিট মার্জিন %, সকল বাসের পারফরম্যান্স ও অডিট',
+    scopeDescBn: 'পূর্ণ অ্যাক্সেস: ৩০ দিনের P&L, ভর্তি বাস চাহিদা পূর্বাভাস, প্রফিট মার্জিন %, ফ্লিট ও অডিট',
     prompts: [
+      { labelBn: '📈 ভর্তি পরীক্ষার বাস চাহিদা পূর্বাভাস', prompt: 'আসন্ন ঢাবি ভর্তি পরীক্ষায় কয়টি বাস লাগবে এবং ছাত্রী কোচ কতটি?' },
       { labelBn: '📊 আজকের সার্বিক সেলস ও সংগ্রহ', prompt: 'আজকে sales কত এবং কালেকশন কত?' },
       { labelBn: '💵 ৩০ দিনের লাভ-ক্ষতি ও মার্জিন (P&L)', prompt: 'গত ৩০ দিনের profit কত এবং মার্জিন কত?' },
       { labelBn: '🚌 বাস বহর পারফরম্যান্স ও লাভ', prompt: 'কোন bus সবচেয়ে বেশি লাভ করেছে?' },
@@ -94,8 +101,9 @@ const OFFICE_ROLES_CONFIG: Record<OfficeSubRole, RoleConfig> = {
     icon: Users,
     colorClass: 'text-blue-600 dark:text-blue-400',
     badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border-blue-300 dark:border-blue-700',
-    scopeDescBn: 'রুট অপারেশনস: বাস বহর ক্যাপাসিটি, অকুপেন্সি রেট, আজকের মোট বিক্রি ও ট্রিপ শিডিউল',
+    scopeDescBn: 'রুট অপারেশনস: পরীক্ষার বাস চাহিদা ও ফ্লিট ক্যাপাসিটি, অকুপেন্সি রেট, ট্রিপ শিডিউল',
     prompts: [
+      { labelBn: '📈 ভর্তি বাসের চাহিদা ও ফ্লিট পূর্বাভাস', prompt: 'আসন্ন ভর্তি পরীক্ষায় কয়টি বাস লাগবে এবং ছাত্রী কোচ কতটি?' },
       { labelBn: '🚌 বাসের অকুপেন্সি রেট ও পারফরম্যান্স', prompt: 'বাস বহরের অকুপেন্সি রেট ও পারফরম্যান্স দেখাও' },
       { labelBn: '🎟️ আজকের মোট বিক্রিত আসন', prompt: 'আজকে কতটি সিট বিক্রি হয়েছে এবং সেলস কত?' },
       { labelBn: '📈 গত ৩০ দিনের সেলস রিপোর্ট', prompt: 'গত ৩০ দিনের বিক্রির রিপোর্ট বিশ্লেষণ করো' },
@@ -160,6 +168,12 @@ export function OfficeAIAssistant() {
   const [actionConfirmModal, setActionConfirmModal] = useState<any | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Multimodal & Voice States
+  const [isRecording, setIsRecording] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isPlayingId, setIsPlayingId] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -183,6 +197,58 @@ export function OfficeAIAssistant() {
     setMessages(prev => [...prev, switchNotice]);
   };
 
+  const startVoiceRecognition = () => {
+    // @ts-ignore
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("দুঃখিত, আপনার ব্রাউজার ভয়েস ইনপুট সাপোর্ট করে না। Google Chrome ব্যবহার করুন।");
+      return;
+    }
+    
+    const recognition = new SpeechRecognition();
+    recognition.lang = language === 'bn' ? 'bn-BD' : 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => setIsRecording(true);
+    
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInputPrompt(prev => prev + (prev ? " " : "") + transcript);
+    };
+    
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error", event.error);
+      setIsRecording(false);
+    };
+    
+    recognition.onend = () => setIsRecording(false);
+    
+    recognition.start();
+  };
+
+  const playTTS = (id: string, text: string) => {
+    if (isPlayingId === id) {
+      window.speechSynthesis.cancel();
+      setIsPlayingId(null);
+      return;
+    }
+    
+    window.speechSynthesis.cancel();
+    
+    // Strip markdown formatting for reading
+    const cleanText = text.replace(/[*_#`]/g, '').replace(/https?:\/\/[^\s]+/g, 'a link');
+    
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = language === 'bn' ? 'bn-BD' : 'en-US';
+    
+    utterance.onend = () => setIsPlayingId(null);
+    utterance.onerror = () => setIsPlayingId(null);
+    
+    setIsPlayingId(id);
+    window.speechSynthesis.speak(utterance);
+  };
+
   const handleSend = async (promptToSend?: string) => {
     const query = promptToSend || inputPrompt;
     if (!query.trim() || isLoading) return;
@@ -190,7 +256,7 @@ export function OfficeAIAssistant() {
     const userMsg: Message = {
       id: `user-${Date.now()}`,
       sender: 'user',
-      text: query,
+      text: attachedFile ? `[Attached: ${attachedFile.name}]\n${query}` : query,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
@@ -199,15 +265,32 @@ export function OfficeAIAssistant() {
     setIsLoading(true);
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/v1/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: query,
-          context: 'OFFICE_AI',
-          role: activeRole
-        })
-      });
+      let res;
+      if (attachedFile) {
+        const formData = new FormData();
+        formData.append('prompt', query);
+        formData.append('context', 'OFFICE_AI');
+        formData.append('role', activeRole);
+        formData.append('file', attachedFile);
+        
+        res = await fetch('http://127.0.0.1:8000/api/v1/ai/multimodal-chat', {
+          method: 'POST',
+          body: formData
+        });
+        
+        setAttachedFile(null); // clear file after send
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } else {
+        res = await fetch('http://127.0.0.1:8000/api/v1/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: query,
+            context: 'OFFICE_AI',
+            role: activeRole
+          })
+        });
+      }
 
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`);
@@ -225,6 +308,7 @@ export function OfficeAIAssistant() {
         toolsUsed: data.tools_used,
         isRefusal: isRefusal,
         actionPreview: data.action_preview,
+        downloadUrl: data.download_url,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
@@ -429,13 +513,37 @@ export function OfficeAIAssistant() {
                     </Button>
                   </div>
                 )}
+
+                {/* CSV Download Button */}
+                {msg.downloadUrl && (
+                  <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
+                    <a
+                      href={msg.downloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/30 transition-colors"
+                    >
+                      <DownloadCloud className="w-4 h-4" />
+                      রিপোর্ট ডাউনলোড করুন
+                    </a>
+                  </div>
+                )}
               </div>
 
-              {/* Message Footer: Timestamp, Copy, Feedback */}
-              <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500 px-1">
+              {/* Message Footer: Timestamp, Copy, Feedback, TTS */}
+              <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500 px-1 mt-1">
                 <span>{msg.timestamp}</span>
                 {msg.sender === 'ai' && (
                   <>
+                    <span>•</span>
+                    <button
+                      type="button"
+                      onClick={() => playTTS(msg.id, msg.text)}
+                      className={`hover:text-blue-600 dark:hover:text-cyan-400 transition-colors flex items-center gap-1 cursor-pointer ${isPlayingId === msg.id ? 'text-blue-600 dark:text-cyan-400' : ''}`}
+                    >
+                      <Volume2 className="w-3 h-3" />
+                      {isPlayingId === msg.id ? 'থামান' : 'শুনুন'}
+                    </button>
                     <span>•</span>
                     <button
                       type="button"
@@ -466,7 +574,24 @@ export function OfficeAIAssistant() {
       </div>
 
       {/* 5. Message Input Bar */}
-      <div className="p-3 md:p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+      <div className="p-3 md:p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2">
+        {/* Attached File Preview */}
+        {attachedFile && (
+          <div className="flex items-center justify-between p-2.5 bg-blue-50 dark:bg-indigo-950/30 rounded-xl border border-blue-200 dark:border-indigo-800/50 max-w-sm">
+            <div className="flex items-center gap-2 overflow-hidden text-xs text-blue-800 dark:text-blue-300 font-medium">
+              <FileText className="w-4 h-4 shrink-0 text-blue-600 dark:text-cyan-400" />
+              <span className="truncate">{attachedFile.name}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAttachedFile(null)}
+              className="p-1 hover:bg-blue-200 dark:hover:bg-indigo-800 rounded-full text-blue-600 dark:text-blue-400 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -474,18 +599,55 @@ export function OfficeAIAssistant() {
           }}
           className="flex items-center gap-2"
         >
+          {/* File Input (Hidden) & Trigger */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                setAttachedFile(e.target.files[0]);
+              }
+            }}
+            className="hidden"
+            accept=".pdf,.csv,.xlsx,.jpg,.jpeg,.png,video/mp4"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+            className="p-3 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-2xl shrink-0 transition-colors cursor-pointer"
+            title="Attach file (PDF, Image, CSV)"
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
+
+          {/* Text Input */}
           <input
             type="text"
             value={inputPrompt}
             onChange={(e) => setInputPrompt(e.target.value)}
             placeholder={
-              language === 'bn'
-                ? `${currentRoleConfig.nameBn} সংক্রান্ত বিষয় জিজ্ঞাসা করুন...`
-                : `Ask queries relevant to ${currentRoleConfig.nameEn}...`
+              isRecording 
+                ? (language === 'bn' ? 'শুনছি...' : 'Listening...')
+                : (language === 'bn'
+                    ? `${currentRoleConfig.nameBn} সংক্রান্ত বিষয় জিজ্ঞাসা করুন...`
+                    : `Ask queries relevant to ${currentRoleConfig.nameEn}...`)
             }
             disabled={isLoading}
-            className="flex-1 px-4 py-3 rounded-2xl text-xs sm:text-sm bg-slate-100 dark:bg-slate-800/80 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={`flex-1 px-4 py-3 rounded-2xl text-xs sm:text-sm border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${isRecording ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-900 dark:text-rose-100 border-rose-300 dark:border-rose-800 placeholder:text-rose-500' : 'bg-slate-100 dark:bg-slate-800/80 text-slate-900 dark:text-white border-slate-200 dark:border-slate-700'}`}
           />
+
+          {/* Voice Mic Button */}
+          <button
+            type="button"
+            onClick={startVoiceRecognition}
+            disabled={isLoading || isRecording}
+            className={`p-3 rounded-2xl shrink-0 transition-colors cursor-pointer ${isRecording ? 'bg-rose-100 dark:bg-rose-900 text-rose-600 dark:text-rose-300 animate-pulse' : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400'}`}
+            title="Voice Input"
+          >
+            <Mic className="w-4 h-4" />
+          </button>
+
           <Button
             type="submit"
             disabled={isLoading || !inputPrompt.trim()}
