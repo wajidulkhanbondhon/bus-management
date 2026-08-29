@@ -12,6 +12,11 @@ from app.ai.context import AIContext, DataConfidence, AIResponsePayload, AIActio
 from app.ai.tools.registry import AIToolRegistry
 from app.ai.audit_logger import AIAuditLogger
 from app.models.user import User
+from app.core.config import settings
+import google.generativeai as genai
+
+if settings.GEMINI_API_KEY:
+    genai.configure(api_key=settings.GEMINI_API_KEY)
 
 # Ensure tools are imported & registered
 import app.ai.tools.office_tools
@@ -31,7 +36,9 @@ class AIOrchestrator:
         role: Optional[str] = None,
         student_phone: Optional[str] = None,
         trip_id: Optional[str] = None,
-        tenant_id: Optional[str] = None
+        tenant_id: Optional[str] = None,
+        file_bytes: Optional[bytes] = None,
+        mime_type: Optional[str] = None
     ) -> AIResponsePayload:
         start_time = time.time()
         prompt_lower = prompt.lower().strip()
@@ -65,11 +72,11 @@ class AIOrchestrator:
 
         # 2. ROUTE BY CONTEXT WITH STRICT ROLE-BASED SCOPING
         if context == AIContext.SUPERVISOR_AI:
-            response = cls._handle_supervisor_ai(db, prompt_lower, trip_id, user_role, tools_used)
+            response = cls._handle_supervisor_ai(db, prompt_lower, trip_id, user_role, tools_used, file_bytes, mime_type)
         elif context == AIContext.STUDENT_AI:
-            response = cls._handle_student_ai(db, prompt_lower, student_phone, tools_used)
+            response = cls._handle_student_ai(db, prompt_lower, student_phone, tools_used, file_bytes, mime_type)
         else:
-            response = cls._handle_office_ai(db, prompt_lower, user_role, tenant_id, tools_used)
+            response = cls._handle_office_ai(db, prompt_lower, user_role, tenant_id, tools_used, file_bytes, mime_type)
 
         # 3. AUDIT LOGGING
         latency_ms = (time.time() - start_time) * 1000
@@ -88,6 +95,43 @@ class AIOrchestrator:
         response.role = user_role
         return response
 
+    @classmethod
+    def _call_gemini_fallback(
+        cls,
+        prompt: str,
+        role_guide: str,
+        file_bytes: Optional[bytes] = None,
+        mime_type: Optional[str] = None
+    ) -> str:
+        """Helper to invoke Gemini 1.5 Flash for multimodal processing or generative fallback."""
+        try:
+            if not getattr(genai, "get_api_key", lambda: settings.GEMINI_API_KEY)():
+                return f"আমি আপনার প্রশ্নটি বুঝতে পেরেছি। {role_guide}"
+
+            model = genai.GenerativeModel('gemini-flash-latest')
+            contents = []
+            
+            # Add system instruction dynamically with strict security
+            sys_instruct = (
+                f"You are ATOMS AI, a supportive and helpful bus management assistant. "
+                f"Strictly follow this role constraint: {role_guide}. "
+                f"CRITICAL SECURITY RULE: You must NEVER ask for, process, or output any passwords, "
+                f"credentials, or highly sensitive internal data. If asked, politely refuse. "
+                f"Answer in Bengali."
+            )
+            contents.append(sys_instruct)
+
+            # Add file if multimodal
+            if file_bytes and mime_type:
+                contents.append({"mime_type": mime_type, "data": file_bytes})
+
+            contents.append(prompt)
+            
+            response = model.generate_content(contents)
+            return response.text
+        except Exception as e:
+            return f"আমি আপনার প্রশ্নটি বুঝতে পেরেছি। {role_guide} (Gemini AI Error: {str(e)})"
+
     # ═════════════════════════════════════════════════════════════════════════
     # SUPERVISOR AI: ON-TRIP BUS CONDUCTOR & TRIP SCOPE ONLY
     # ═════════════════════════════════════════════════════════════════════════
@@ -98,7 +142,9 @@ class AIOrchestrator:
         prompt: str,
         trip_id: Optional[str],
         user_role: str,
-        tools_used: List[str]
+        tools_used: List[str],
+        file_bytes: Optional[bytes] = None,
+        mime_type: Optional[str] = None
     ) -> AIResponsePayload:
         # A. Strict Out-of-Scope Guardrails: Refuse company-wide financials, profits, salaries, passwords
         out_of_scope_keywords = [
@@ -250,8 +296,10 @@ class AIOrchestrator:
             )
 
         # Default fallback for Supervisor AI
+        role_guide = "আপনি সুপারভাইজার। আপনার কাজ শুধু বাসের যাত্রী ওঠানামা, ট্রিপ সম্পর্কিত সমস্যা সমাধান এবং যাত্রীদের সঠিক বোর্ডিং পয়েন্টে উঠতে সাহায্য করা।"
+        gemini_text = cls._call_ai_fallback(prompt, role_guide, file_bytes, mime_type)
         return AIResponsePayload(
-            text="আমি আপনার রাজশাহী অন-ট্রিপ ভর্তি বাস সহকারী 🚌। আপনি তালাইমারী/ভদ্রা/রেলগেটের যাত্রী হাজিরা, অপেক্ষমাণ শিক্ষার্থীদের তালিকা, অন-ট্রিপ ক্যাশ বা জরুরি ড্রাইভার যোগাযোগ সম্পর্কে জিজ্ঞাসা করতে পারেন।",
+            text=gemini_text,
             context=AIContext.SUPERVISOR_AI,
             confidence=DataConfidence.FACT
         )
@@ -265,7 +313,9 @@ class AIOrchestrator:
         db: Session,
         prompt: str,
         student_phone: Optional[str],
-        tools_used: List[str]
+        tools_used: List[str],
+        file_bytes: Optional[bytes] = None,
+        mime_type: Optional[str] = None
     ) -> AIResponsePayload:
         # A. Strict Out-of-Scope Guardrails: Block company sales, profits, admin credentials, other passenger data
         out_of_scope_keywords = [
@@ -412,8 +462,10 @@ class AIOrchestrator:
             )
 
         # Fallback Student AI
+        role_guide = "আমি আপনার রাজশাহী ভর্তি এক্সপ্রেস ব্যক্তিগত সহকারী 🎓। আপনি রাজশাহী থেকে বিশ্ববিদ্যালয় ক্যাম্পাসে ছাড়ার সময়, ৩-৪ ঘণ্টার বাফার হিসাব, সিট নম্বর, বোর্ডিং পয়েন্ট বা ছাত্রী কোচ নীতিমালা সম্পর্কে যেকোনো প্রশ্ন করতে পারেন।"
+        gemini_text = cls._call_ai_fallback(prompt, role_guide, file_bytes, mime_type)
         return AIResponsePayload(
-            text="আমি আপনার রাজশাহী ভর্তি এক্সপ্রেস ব্যক্তিগত সহকারী 🎓। আপনি রাজশাহী থেকে বিশ্ববিদ্যালয় ক্যাম্পাসে ছাড়ার সময়, ৩-৪ ঘণ্টার বাফার হিসাব, সিট নম্বর, বোর্ডিং পয়েন্ট বা ছাত্রী কোচ নীতিমালা সম্পর্কে যেকোনো প্রশ্ন করতে পারেন।",
+            text=gemini_text,
             context=AIContext.STUDENT_AI,
             confidence=DataConfidence.FACT
         )
@@ -428,7 +480,9 @@ class AIOrchestrator:
         prompt: str,
         user_role: str,
         tenant_id: Optional[str],
-        tools_used: List[str]
+        tools_used: List[str],
+        file_bytes: Optional[bytes] = None,
+        mime_type: Optional[str] = None
     ) -> AIResponsePayload:
         # 1. Check Sub-Role Specific Permission Boundaries
         if user_role == "BOOKING_STAFF":
@@ -690,8 +744,9 @@ class AIOrchestrator:
             "ACCOUNTANT": "আপনি আজকের ডে-ক্লোজিং, ক্যাশ ও এমএফএস সংগ্রহ, ফুয়েল ভাউচার এবং আর্থিক বিবরণী জানতে পারেন।"
         }.get(user_role, "আপনি আজকের সেলস, পরীক্ষার চাহিদা পূর্বাভাস বা লাভ-ক্ষতি সম্পর্কে জিজ্ঞাসা করতে পারেন।")
 
+        gemini_text = cls._call_ai_fallback(prompt, role_guide, file_bytes, mime_type)
         return AIResponsePayload(
-            text=f"আমি আপনার প্রশ্নটি বুঝতে পেরেছি। {role_guide}",
+            text=gemini_text,
             context=AIContext.OFFICE_AI,
             role=user_role,
             confidence=DataConfidence.FACT

@@ -16,6 +16,10 @@ from app.models.bus import Bus
 from app.models.trip import Trip, SeatLock, BusRoute
 from app.models.payment import Payment, Refund
 from app.models.finance import FinancialLedger, BusExpense, DayClosing
+import os
+import json
+from groq import Groq
+from app.core.config import settings
 
 
 # --- 1. SALES ANALYTICS TOOLS ---
@@ -417,7 +421,7 @@ def get_payment_breakdown(db: Session, days: int = 30, tenant_id: Optional[str] 
     breakdown: Dict[str, Dict[str, Any]] = {}
 
     for p in payments:
-        method = p.payment_method or "OTHER"
+        method = p.method or "OTHER"
         if method not in breakdown:
             breakdown[method] = {"total_amount": 0.0, "transaction_count": 0}
         breakdown[method]["total_amount"] += p.amount
@@ -456,34 +460,56 @@ def get_payment_breakdown(db: Session, days: int = 30, tenant_id: Optional[str] 
     required_roles=["SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "VIEWER"]
 )
 def get_smart_insights(db: Session, tenant_id: Optional[str] = None) -> Dict[str, Any]:
-    insights = []
+    # 1. Fetch live data metrics
+    today_date = datetime.now(timezone.utc).date()
+    total_sales_today = db.query(func.sum(Payment.amount)).filter(func.date(Payment.created_at) == today_date).scalar() or 0.0
+    total_trips = db.query(Trip).count()
+    
+    raw_data = {
+        "today_sales_bdt": float(total_sales_today),
+        "total_active_trips": total_trips
+    }
 
-    # High occupancy trip insight
-    insights.append({
-        "title": "ঢাবি ও জাবি ভর্তি বাসে ৯০%+ সিট বুকিং",
-        "severity": "HIGH_DEMAND",
-        "evidence": "রাজশাহী থেকে ঢাকা ও জাহাঙ্গীরনগর বিশ্ববিদ্যালয় রুটের আগামী ৩টি ট্রিপের সিট প্রায় পূর্ণ (গড় অকুপেন্সি ৯৪%)।",
-        "affected_entity": "Rajshahi ➔ DU & JU Express Routes",
-        "recommended_action": "চাহিদা অনুযায়ী অতিরিক্ত ২টি ব্যাকআপ বাস এবং ১টি অতিরিক্ত ছাত্রী স্পেশাল কোচ শিডিউল করার সুপারিশ।"
-    })
+    # 2. Query Meta Llama 3 (via Groq) for dynamic insights
+    groq_api_key = getattr(settings, "GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
+    if not groq_api_key or groq_api_key == "YOUR_GROQ_API_KEY_HERE":
+        return {
+            "insights_count": 1,
+            "insights": [{
+                "title": "Groq API Not Configured", 
+                "evidence": "GROQ_API_KEY is missing.", 
+                "recommended_action": "Please set GROQ_API_KEY in .env to enable Meta Llama 3 insights."
+            }],
+            "confidence": "RECOMMENDATION"
+        }
 
-    # Female Coach Insight
-    insights.append({
-        "title": "ছাত্রী স্পেশাল বাসে দ্রুত আসন পূরণের প্রবণতা",
-        "severity": "POSITIVE",
-        "evidence": "মেডিকেল ও জাবি ডি ইউনিট ট্রিপে ছাত্রী কোচের আসন সাধারণ বাসের চেয়ে ৪৫% দ্রুত শেষ হচ্ছে।",
-        "affected_entity": "Female Coach Allocation",
-        "recommended_action": "মেডিকেল পরীক্ষা উপলক্ষে ছাত্রী কোচের অনুপাত ৪০% থেকে বৃদ্ধি করে ৪৫-৫০% এ উন্নীত করা হোক।"
-    })
-
-    # Zero Pickup Punctuality Insight
-    insights.append({
-        "title": "পয়েন্ট-টু-পয়েন্ট ডিরেক্ট সার্ভিসের কারণে শতভাগ অন-টাইম পৌঁছানো",
-        "severity": "POSITIVE",
-        "evidence": "মাঝপথে হাইওয়েতে কোনো লোকাল স্টপ না থাকায় শিক্ষার্থীরা নির্ধারিত সময়ের ৩.৮ ঘণ্টা পূর্বে ক্যাম্পাসে পৌঁছাতে পারছে।",
-        "affected_entity": "Zero Midway Pickup Policy",
-        "recommended_action": "সুপারভাইজারদের জিরো-পিকআপ পলিসি কঠোরভাবে অনুসরণের নির্দেশনা বহাল রাখুন।"
-    })
+    try:
+        client = Groq(api_key=groq_api_key)
+        prompt = f"""
+        You are an expert Business Analyst for a Rajshahi-Origin University Admission Bus system.
+        Analyze this live data: {json.dumps(raw_data)}
+        Generate exactly 3 smart, actionable business insights in Bengali. 
+        Output ONLY a JSON object with a single key "insights" containing a list of objects.
+        Each object must have exactly these keys: "title", "evidence", "recommended_action".
+        """
+        
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            response_format={"type": "json_object"}
+        )
+        
+        content = completion.choices[0].message.content
+        data = json.loads(content)
+        insights = data.get("insights", [])
+        
+    except Exception as e:
+        insights = [{
+            "title": "Error generating insights", 
+            "evidence": f"Meta AI Error: {str(e)}", 
+            "recommended_action": "Check Groq API limits or configuration."
+        }]
 
     return {
         "insights_count": len(insights),

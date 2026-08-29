@@ -269,12 +269,11 @@ def ai_multimodal_chat_endpoint(
     if not prompt or not prompt.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt cannot be empty")
 
+    file_bytes = file.file.read()
+    mime_type = file.content_type
     file_extension = os.path.splitext(file.filename)[1].lower() if file and hasattr(file, "filename") else ""
     
-    # Mock Document/Image parsing
-    enhanced_prompt = prompt
-    if file_extension in [".pdf", ".png", ".jpg", ".jpeg", ".xlsx", ".csv"]:
-        enhanced_prompt = f"[User attached a {file_extension} document named '{file.filename}'] {prompt}"
+    enhanced_prompt = f"[User attached a {file_extension} document named '{file.filename}'] {prompt}"
     
     return AIOrchestrator.process_query(
         db=db,
@@ -282,6 +281,8 @@ def ai_multimodal_chat_endpoint(
         context=context,
         current_user=current_user,
         role=role,
-        tenant_id=tenant_id
+        tenant_id=tenant_id,
+        file_bytes=file_bytes,
+        mime_type=mime_type
     )
 

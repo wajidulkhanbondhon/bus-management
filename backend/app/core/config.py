@@ -46,9 +46,13 @@ class Settings(BaseSettings):
             raise ValueError("CRITICAL: Default placeholder SECRET_KEY cannot be used in production!")
         return v
 
-    # Multi-tenant default
+    # Multi-tenant settings
     DEFAULT_TENANT_ID: str = "central-transit"
     CRON_SECRET: str = "atoms-cleanup-token"
+    
+    # AI Integration
+    GEMINI_API_KEY: str = "YOUR_GEMINI_API_KEY_HERE"
+    GROQ_API_KEY: str = "YOUR_GROQ_API_KEY_HERE"
 
     model_config = SettingsConfigDict(
         env_file=".env",
