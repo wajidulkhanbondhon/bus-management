@@ -155,6 +155,8 @@ class AIOrchestrator:
             response = cls._handle_supervisor_ai(db, prompt_lower, trip_id, user_role, tools_used, file_bytes, mime_type)
         elif context == AIContext.STUDENT_AI:
             response = cls._handle_student_ai(db, prompt_lower, student_phone, tools_used, file_bytes, mime_type)
+        elif context == AIContext.SECURITY_AI:
+            response = cls._handle_security_ai(db, prompt_lower, user_role, tools_used)
         else:
             response = cls._handle_office_ai(db, prompt_lower, user_role, tenant_id, tools_used, file_bytes, mime_type)
 
@@ -198,7 +200,8 @@ class AIOrchestrator:
         user_role: str = "SUPER_ADMIN",
         user_key: Optional[str] = None,
         file_bytes: Optional[bytes] = None,
-        mime_type: Optional[str] = None
+        mime_type: Optional[str] = None,
+        db: Optional[Session] = None
     ) -> str:
         """
         Multi-tier generative fallback:
@@ -225,7 +228,15 @@ class AIOrchestrator:
         if user_key:
             history_text = ConversationMemory.get_history_text(user_key)
 
-        # ─── TIER 1: GEMINI 3.6 FLASH ───
+        # ─── TIER 1: KNOWLEDGE BASE SEARCH (Highest Priority Fact Checking) ───
+        try:
+            kb_res = query_knowledge_base(prompt, db=db, user_role=user_role)
+            if kb_res:
+                return f"📖 {kb_res}"
+        except Exception as e:
+            logger.warning(f"Tier 1 (Knowledge Base) fallback failed: {e}")
+
+        # ─── TIER 2: GEMINI 3.6 FLASH ───
         if settings.GEMINI_API_KEY and settings.GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
             try:
                 model = genai.GenerativeModel(
@@ -264,15 +275,7 @@ class AIOrchestrator:
                 if text:
                     return text.strip()
             except Exception as e:
-                logger.warning(f"Tier 2 (Groq) fallback failed: {e}. Attempting Tier 3 (Knowledge Base)...")
-
-        # ─── TIER 3: KNOWLEDGE BASE SEARCH ───
-        try:
-            kb_res = query_knowledge_base(prompt)
-            if kb_res and kb_res.get("found"):
-                return f"📖 {kb_res['answer']}"
-        except Exception as e:
-            logger.warning(f"Tier 3 (Knowledge Base) fallback failed: {e}")
+                logger.warning(f"Tier 2 (Groq) fallback failed: {e}. Attempting Tier 4 (Safe Response)...")
 
         # ─── TIER 4: SAFE LOCALIZED GRACEFUL RESPONSE ───
         return f"আমি আপনার প্রশ্নটি বুঝতে পেরেছি। {role_guide}"
@@ -590,7 +593,7 @@ class AIOrchestrator:
         gemini_text = cls._call_gemini_fallback(
             prompt, role_guide,
             context=AIContext.SUPERVISOR_AI, user_role=user_role,
-            file_bytes=file_bytes, mime_type=mime_type
+            file_bytes=file_bytes, mime_type=mime_type, db=db
         )
         return AIResponsePayload(
             text=gemini_text,
@@ -796,7 +799,7 @@ class AIOrchestrator:
         gemini_text = cls._call_gemini_fallback(
             prompt, role_guide,
             context=AIContext.STUDENT_AI, user_role="STUDENT", user_key=student_phone,
-            file_bytes=file_bytes, mime_type=mime_type
+            file_bytes=file_bytes, mime_type=mime_type, db=db
         )
         return AIResponsePayload(
             text=gemini_text,
@@ -1147,11 +1150,72 @@ class AIOrchestrator:
         gemini_text = cls._call_gemini_fallback(
             prompt, role_guide,
             context=AIContext.OFFICE_AI, user_role=user_role,
-            file_bytes=file_bytes, mime_type=mime_type
+            file_bytes=file_bytes, mime_type=mime_type, db=db
         )
         return AIResponsePayload(
             text=gemini_text,
             context=AIContext.OFFICE_AI,
+            role=user_role,
+            confidence=DataConfidence.FACT
+        )
+
+    @classmethod
+    def _handle_security_ai(
+        cls,
+        db: Session,
+        prompt: str,
+        user_role: str,
+        tools_used: List[str]
+    ) -> AIResponsePayload:
+        if user_role not in ["SUPER_ADMIN", "ADMIN"]:
+            return AIResponsePayload(
+                text="আপনার সিকিউরিটি এআই ব্যবহার করার অনুমতি নেই।",
+                context=AIContext.SECURITY_AI,
+                role=user_role,
+                confidence=DataConfidence.FACT
+            )
+            
+        from app.ai.tools.security_tools import get_security_status, block_ip, unblock_ip
+        import re
+        
+        # Simple intent routing
+        if "status" in prompt or "অবস্থা" in prompt or "হ্যাক" in prompt:
+            tools_used.append("get_security_status")
+            status_text = get_security_status(db)
+            return AIResponsePayload(
+                text=f"🛡️ **সিকিউরিটি স্ট্যাটাস:**\n\n{status_text}",
+                context=AIContext.SECURITY_AI,
+                role=user_role,
+                confidence=DataConfidence.FACT
+            )
+        elif "block" in prompt or "ব্লক" in prompt:
+            ip_match = re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', prompt)
+            if ip_match:
+                ip = ip_match.group(0)
+                tools_used.append("block_ip")
+                res = block_ip(db, ip_address=ip, reason="Blocked by Admin via Security AI", blocked_by=user_role)
+                return AIResponsePayload(text=res, context=AIContext.SECURITY_AI, role=user_role, confidence=DataConfidence.FACT)
+            else:
+                return AIResponsePayload(text="কোন আইপি অ্যাড্রেসটি ব্লক করতে চান তা উল্লেখ করুন।", context=AIContext.SECURITY_AI, role=user_role, confidence=DataConfidence.FACT)
+        elif "unblock" in prompt or "আনব্লক" in prompt or "খুলে" in prompt:
+            ip_match = re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', prompt)
+            if ip_match:
+                ip = ip_match.group(0)
+                tools_used.append("unblock_ip")
+                res = unblock_ip(db, ip_address=ip, admin_user=user_role)
+                return AIResponsePayload(text=res, context=AIContext.SECURITY_AI, role=user_role, confidence=DataConfidence.FACT)
+            else:
+                return AIResponsePayload(text="কোন আইপি অ্যাড্রেসটি আনব্লক করতে চান তা উল্লেখ করুন।", context=AIContext.SECURITY_AI, role=user_role, confidence=DataConfidence.FACT)
+        
+        # Fallback to LLM
+        gemini_text = cls._call_gemini_fallback(
+            prompt, "আপনি সিকিউরিটি এআই। আপনি ব্লক করা আইপি বা সিস্টেমের সিকিউরিটি অবস্থা সম্পর্কে প্রশ্ন করতে পারেন।",
+            context=AIContext.SECURITY_AI, user_role=user_role,
+            db=db
+        )
+        return AIResponsePayload(
+            text=gemini_text,
+            context=AIContext.SECURITY_AI,
             role=user_role,
             confidence=DataConfidence.FACT
         )

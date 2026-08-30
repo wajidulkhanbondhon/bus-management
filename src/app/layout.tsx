@@ -3,6 +3,7 @@ import './globals.css';
 import { AppShell } from '@/components/layout/app-shell';
 import { AppContextProvider } from '@/lib/context';
 import { getCurrentUser } from '@/lib/auth';
+import { AutoLogout } from '@/components/AutoLogout';
 
 export const metadata: Metadata = {
   title: {
@@ -63,6 +64,7 @@ export default async function RootLayout({
       </head>
       <body className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen antialiased transition-colors duration-200" suppressHydrationWarning>
         <AppContextProvider>
+          <AutoLogout isLoggedIn={!!user} />
           <AppShell currentUser={user}>
             {children}
           </AppShell>

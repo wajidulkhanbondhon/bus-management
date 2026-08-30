@@ -225,14 +225,36 @@ export async function verifyCredentials(email: string, passwordPlain: string) {
 
   if (res && res.ok) {
     const data = await res.json();
+    if (data.requires_otp) {
+      return { requiresOtp: true, userId: data.user_id, email: data.email };
+    }
     return {
-      id: data.user?.id || 'admin-super-001',
-      email: data.user?.email || email,
-      fullName: data.user?.full_name || 'Kamrul Hasan',
-      role: { name: data.user?.role || 'SUPER_ADMIN' }
+      id: data.id || 'admin-super-001',
+      email: data.email || email,
+      fullName: data.full_name || 'Kamrul Hasan',
+      role: { name: data.role || 'SUPER_ADMIN' }
     };
   }
 
   // No fallback — credentials must be verified against the backend
+  return null;
+}
+
+export async function verifyOtpCredentials(userId: string, otp: string) {
+  const res = await fetch('http://localhost:8000/api/v1/auth/login/verify-otp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, otp })
+  }).catch(() => null);
+
+  if (res && res.ok) {
+    const data = await res.json();
+    return {
+      id: data.id || userId,
+      email: data.email,
+      fullName: data.full_name,
+      role: { name: data.role }
+    };
+  }
   return null;
 }

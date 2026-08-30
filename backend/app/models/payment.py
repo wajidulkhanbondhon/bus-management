@@ -2,7 +2,33 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Float, DateTime, Text, ForeignKey
 from sqlalchemy.orm import relationship
+from sqlalchemy.types import TypeDecorator
+from cryptography.fernet import Fernet
+from app.core.config import settings
 from app.db.session import Base
+
+try:
+    fernet = Fernet(settings.FERNET_SECRET_KEY.encode())
+except Exception:
+    # Fallback or error if key is invalid, though config should have valid default
+    fernet = None
+
+class EncryptedString(TypeDecorator):
+    impl = String
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None and fernet:
+            return fernet.encrypt(value.encode()).decode()
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and fernet:
+            try:
+                return fernet.decrypt(value.encode()).decode()
+            except Exception:
+                return value
+        return value
 
 
 class Payment(Base):
@@ -30,7 +56,7 @@ class PaymentTransaction(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     payment_id = Column(String, ForeignKey("payments.id", ondelete="CASCADE"), nullable=False)
-    transaction_id = Column(String, index=True, nullable=False)  # "BKA928192837"
+    transaction_id = Column(EncryptedString, nullable=False)  # Encrypted at rest
     sender_reference = Column(String, nullable=True)
     verification_status = Column(String, default="VERIFIED")     # "PENDING", "VERIFIED", "REJECTED"
     verified_at = Column(DateTime, nullable=True)

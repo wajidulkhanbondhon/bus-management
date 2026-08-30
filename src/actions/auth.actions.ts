@@ -1,6 +1,6 @@
 'use server';
 
-import { createSession, destroySession, verifyCredentials } from '@/lib/auth';
+import { createSession, destroySession, verifyCredentials, verifyOtpCredentials } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function loginAction(formData: FormData) {
@@ -11,9 +11,28 @@ export async function loginAction(formData: FormData) {
     return { success: false, error: 'Email and password are required' };
   }
 
-  const user = await verifyCredentials(email, password);
-  if (!user) {
+  const result = await verifyCredentials(email, password);
+  if (!result) {
     return { success: false, error: 'Invalid email or password. Please try again.' };
+  }
+
+  if ('requiresOtp' in result) {
+    return { success: true, requiresOtp: true, userId: result.userId, email: result.email };
+  }
+
+  await createSession(result.id);
+  revalidatePath('/');
+  return { success: true, role: result.role.name };
+}
+
+export async function verifyOtpAction(userId: string, otp: string) {
+  if (!userId || !otp) {
+    return { success: false, error: 'OTP is required' };
+  }
+
+  const user = await verifyOtpCredentials(userId, otp);
+  if (!user) {
+    return { success: false, error: 'Invalid or expired OTP' };
   }
 
   await createSession(user.id);

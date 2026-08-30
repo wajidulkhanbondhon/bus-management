@@ -10,13 +10,34 @@ from app.api.v1.api import api_router
 from app.db.session import engine, Base
 import app.models  # Ensure all models are registered with Base metadata
 
+import asyncio
+from app.ai.learning_agent import run_autonomous_learning
+from app.ai.security_agent import process_warning_timeouts
+
+async def autonomous_learning_loop():
+    while True:
+        # Run in a separate thread so it doesn't block the async event loop
+        await asyncio.to_thread(run_autonomous_learning)
+        # Sleep for 4 hours
+        await asyncio.sleep(4 * 60 * 60)
+
+async def security_monitoring_loop():
+    while True:
+        await asyncio.to_thread(process_warning_timeouts)
+        # Sleep for 1 minute
+        await asyncio.sleep(60)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Auto-create all tables on startup if not already created
     Base.metadata.create_all(bind=engine)
+    
+    # Start the autonomous learning loop
+    task_learning = asyncio.create_task(autonomous_learning_loop())
+    task_security = asyncio.create_task(security_monitoring_loop())
     yield
-
+    task_learning.cancel()
+    task_security.cancel()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -42,6 +63,9 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+from app.core.firewall import FirewallMiddleware
+app.add_middleware(FirewallMiddleware)
 
 
 from app.services.booking_service import SeatAlreadyBookedException

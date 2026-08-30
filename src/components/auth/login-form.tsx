@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Lock, Mail, ArrowRight, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { loginAction } from '@/actions/auth.actions';
+import { loginAction, verifyOtpAction } from '@/actions/auth.actions';
 import { UserRoleQuickSelector } from './user-role-quick-selector';
 
 interface LoginFormProps {
@@ -25,6 +25,10 @@ export function LoginForm({
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  const [requiresOtp, setRequiresOtp] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [otp, setOtp] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,10 +42,38 @@ export function LoginForm({
 
       const res = await loginAction(formData);
       if (res.success) {
+        if (res.requiresOtp) {
+          setRequiresOtp(true);
+          setUserId(res.userId!);
+          setIsLoading(false);
+        } else {
+          router.push(onSuccessRedirect);
+          router.refresh();
+        }
+      } else {
+        setErrorMessage(res.error || 'Invalid email or password');
+        setIsLoading(false);
+      }
+    } catch {
+      setErrorMessage('A network error occurred. Please try again.');
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId) return;
+    
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await verifyOtpAction(userId, otp);
+      if (res.success) {
         router.push(onSuccessRedirect);
         router.refresh();
       } else {
-        setErrorMessage(res.error || 'Invalid email or password');
+        setErrorMessage(res.error || 'Invalid OTP');
         setIsLoading(false);
       }
     } catch {
@@ -65,70 +97,101 @@ export function LoginForm({
         </div>
       )}
 
-      <form onSubmit={handleLogin} className="space-y-4">
-        {/* Email Field */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-            <Mail className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            Office Email / Staff ID
-          </label>
-          <Input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="e.g. staff@transport.office"
-            className="bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 rounded-xl focus:border-blue-500 shadow-2xs"
-            required
-          />
-        </div>
-
-        {/* Password Field */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-            <span className="flex items-center gap-1.5">
+      {requiresOtp ? (
+        <form onSubmit={handleVerifyOtp} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
               <Lock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              Password
-            </span>
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors flex items-center gap-1 cursor-pointer font-medium"
-            >
-              {showPassword ? (
-                <>
-                  <EyeOff className="w-3 h-3" /> Hide
-                </>
-              ) : (
-                <>
-                  <Eye className="w-3 h-3" /> Show
-                </>
-              )}
-            </button>
-          </label>
-          <div className="relative">
+              Two-Factor Authentication (OTP)
+            </label>
+            <p className="text-[11px] text-slate-500 mb-2">Check the backend console for the OTP.</p>
             <Input
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 rounded-xl focus:border-blue-500 pr-10 shadow-2xs"
+              type="text"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              placeholder="Enter 6-digit OTP"
+              className="bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 rounded-xl focus:border-blue-500 shadow-2xs text-center tracking-widest font-mono text-lg"
+              required
+              maxLength={6}
+            />
+          </div>
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            isLoading={isLoading}
+            className="w-full font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-600/25 rounded-xl py-3 cursor-pointer"
+          >
+            <span>Verify OTP</span>
+            <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
+        </form>
+      ) : (
+        <form onSubmit={handleLogin} className="space-y-4">
+          {/* Email Field */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Mail className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              Office Email / Staff ID
+            </label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="e.g. staff@transport.office"
+              className="bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 rounded-xl focus:border-blue-500 shadow-2xs"
               required
             />
           </div>
-        </div>
 
-        {/* Submit Button */}
-        <Button
-          type="submit"
-          variant="primary"
-          size="lg"
-          isLoading={isLoading}
-          className="w-full font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-600/25 rounded-xl py-3 cursor-pointer"
-        >
-          <span>Sign In to Terminal Desk</span>
-          <ArrowRight className="w-4 h-4 ml-2" />
-        </Button>
-      </form>
+          {/* Password Field */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                Password
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors flex items-center gap-1 cursor-pointer font-medium"
+              >
+                {showPassword ? (
+                  <>
+                    <EyeOff className="w-3 h-3" /> Hide
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-3 h-3" /> Show
+                  </>
+                )}
+              </button>
+            </label>
+            <div className="relative">
+              <Input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 rounded-xl focus:border-blue-500 pr-10 shadow-2xs"
+                required
+              />
+            </div>
+          </div>
+
+          {/* Submit Button */}
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            isLoading={isLoading}
+            className="w-full font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-600/25 rounded-xl py-3 cursor-pointer"
+          >
+            <span>Sign In to Terminal Desk</span>
+            <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
+        </form>
+      )}
 
       {/* Quick Demo Role AutoFill Buttons */}
       <UserRoleQuickSelector

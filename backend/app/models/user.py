@@ -48,6 +48,12 @@ class User(Base):
     role_id = Column(String, ForeignKey("roles.id"), nullable=False)
     is_active = Column(Boolean, default=True)
     discount_limit = Column(Float, default=0.0)
+    
+    # 2FA / OTP Fields
+    otp_secret = Column(String, nullable=True)
+    current_otp = Column(String, nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

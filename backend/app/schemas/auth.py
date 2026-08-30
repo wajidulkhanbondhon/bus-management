@@ -21,6 +21,10 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+class VerifyOTPRequest(BaseModel):
+    user_id: str
+    otp: str
+
 
 class UserBase(BaseModel):
     email: EmailStr

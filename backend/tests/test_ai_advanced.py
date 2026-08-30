@@ -7,7 +7,13 @@ Automated test suite for AI advanced features:
 """
 
 import json
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, engine
+from app.db.session import Base
+import app.models  # Ensure models are loaded
+
+# Create all tables before running tests
+Base.metadata.create_all(bind=engine)
+
 from app.ai.context import AIContext, DataConfidence
 from app.ai.orchestrator import AIOrchestrator
 from app.core.rate_limiter import RateLimiter
@@ -103,6 +109,45 @@ def test_stream_query_generator():
         db.close()
 
 
+def test_ai_dynamic_learning():
+    db = SessionLocal()
+    try:
+        from app.models.knowledge import KnowledgeRule
+        from app.ai.tools.office_tools import learn_business_rule
+
+        # 1. Teach the AI a private financial rule
+        learn_res = learn_business_rule(
+            db=db,
+            topic="office lunch policy",
+            content="Our office lunch time is 2:00 PM",
+            allowed_roles=["SUPER_ADMIN"],
+            admin_user_id="test_admin"
+        )
+        assert learn_res["success"] is True
+
+        # 2. Ask as SUPER_ADMIN -> should retrieve the rule
+        res_admin = AIOrchestrator.process_query(
+            db=db,
+            prompt="what is our office lunch policy?",
+            context=AIContext.OFFICE_AI,
+            role="SUPER_ADMIN"
+        )
+        assert "2:00 PM" in res_admin.text
+
+        # 3. Ask as STUDENT -> should NOT retrieve the rule
+        res_student = AIOrchestrator.process_query(
+            db=db,
+            prompt="what is our office lunch policy?",
+            context=AIContext.STUDENT_AI,
+            role="STUDENT"
+        )
+        assert "2:00 PM" not in res_student.text
+
+        print("[PASS] Dynamic RBAC AI Learning: PASSED")
+    finally:
+        db.close()
+
+
 if __name__ == "__main__":
     print("\nRunning Advanced AI Test Suite...")
     test_rate_limiter()
@@ -110,4 +155,5 @@ if __name__ == "__main__":
     test_extended_audit_logging()
     test_stream_query_generator()
     test_supervisor_fallback_no_crash()
+    test_ai_dynamic_learning()
     print("\n[PASS] ALL ADVANCED AI TESTS PASSED 100%!\n")

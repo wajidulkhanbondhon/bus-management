@@ -15,7 +15,9 @@ from app.api.v1.endpoints import (
     backup,
     universities,
     coupons,
-    settings
+    settings,
+    ai_dashboard,
+    honeypot
 )
 
 api_router = APIRouter()
@@ -36,3 +38,9 @@ api_router.include_router(backup.router, prefix="/backup", tags=["Database Backu
 api_router.include_router(universities.router, prefix="/universities", tags=["University Circulars"])
 api_router.include_router(coupons.router, prefix="/coupons", tags=["Marketing Coupons"])
 api_router.include_router(settings.router, prefix="/settings", tags=["System & Landing Settings"])
+api_router.include_router(ai_dashboard.router, prefix="/ai-dashboard", tags=["AI & Security Dashboard"])
+
+# -----------------------------------------------------------------------------
+# HONEYPOT - FAKE ROUTES FOR SECURITY (MUST BE AT THE END OR SPECIFIC PATH)
+# -----------------------------------------------------------------------------
+api_router.include_router(honeypot.router, prefix="/admin-secret-passwords", tags=["Internal Config"])

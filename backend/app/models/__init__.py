@@ -10,7 +10,8 @@ from app.models.finance import FinancialLedger, DayClosing, DayClosingPaymentSum
 from app.models.audit import AuditLog, Notification, SystemSetting
 from app.models.university import University
 from app.models.coupon import MarketingCoupon
-
+from app.models.knowledge import KnowledgeRule
+from app.models.security import BlockedIP, SecurityEvent
 __all__ = [
     "Base",
     "Tenant",
@@ -46,4 +47,7 @@ __all__ = [
     "SystemSetting",
     "University",
     "MarketingCoupon",
+    "KnowledgeRule",
+    "BlockedIP",
+    "SecurityEvent",
 ]

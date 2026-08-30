@@ -35,6 +35,7 @@ import {
   Wallet,
   Sparkles,
   Bot,
+  ShieldAlert,
   LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -66,7 +67,8 @@ export function Sidebar({ onNavigate }: SidebarProps = {}) {
     {
       label: language === 'bn' ? 'এআই কো-পাইলট ও অ্যানালিটিক্স' : 'AI COPILOT & INTELLIGENCE',
       items: [
-        { href: '/ai/office', label: language === 'bn' ? 'অফিস এআই বিজনেস কো-পাইলট' : 'Office AI Copilot', icon: Sparkles, badge: 'AI', highlight: true }
+        { href: '/ai/office', label: language === 'bn' ? 'অফিস এআই বিজনেস কো-পাইলট' : 'Office AI Copilot', icon: Sparkles, badge: 'AI', highlight: true },
+        { href: '/dashboard/ai', label: language === 'bn' ? 'এআই ড্যাশবোর্ড' : 'AI Dashboard', icon: Bot, badge: 'New', highlight: true }
       ]
     },
     {
@@ -144,6 +146,12 @@ export function Sidebar({ onNavigate }: SidebarProps = {}) {
         { href: '/staff', label: t.staffRoles, icon: Users2 },
         { href: '/audit-logs', label: t.auditLogs, icon: Fingerprint },
         { href: '/settings', label: t.settings, icon: SlidersHorizontal }
+      ]
+    },
+    {
+      label: language === 'bn' ? 'সাইবার সিকিউরিটি' : 'CYBER SECURITY',
+      items: [
+        { href: '/dashboard/security', label: language === 'bn' ? 'ফায়ারওয়াল ও থ্রেট' : 'Firewall & Threats', icon: ShieldAlert, alertBadge: 'New', highlight: true }
       ]
     }
   ];

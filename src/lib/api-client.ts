@@ -169,9 +169,14 @@ export const fastApiClient = {
   getDbStats: () => apiRequest('/backup/stats'),
   exportDbBackup: () => apiRequest('/backup/export'),
 
-  // AI Assistant
+  // AI Assistant & Dashboard
   queryAi: (prompt: string) =>
     apiRequest('/ai/query-assistant', { method: 'POST', body: JSON.stringify({ prompt }) }),
+  getAiRules: () => apiRequest('/ai-dashboard/rules'),
+  getSecurityEvents: () => apiRequest('/ai-dashboard/security-events'),
+  getBlockedIps: () => apiRequest('/ai-dashboard/blocked-ips'),
+  unblockIp: (id: string) => apiRequest(`/ai-dashboard/blocked-ips/${id}/unblock`, { method: 'POST' }),
+  blockIp: (id: string) => apiRequest(`/ai-dashboard/blocked-ips/${id}/block`, { method: 'POST' }),
 };
 
 export default fastApiClient;

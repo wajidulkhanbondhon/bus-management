@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.session import get_db
@@ -11,6 +11,7 @@ from app.models.trip import Trip
 from app.models.payment import Payment
 from app.models.finance import FinancialLedger
 from app.models.user import User
+from app.models.audit import AuditLog
 
 router = APIRouter()
 
@@ -81,10 +82,23 @@ def get_dashboard_kpi(
 
 @router.get("/financial-ledger")
 def get_financial_ledger(
+    request: Request,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT"]))
 ) -> List[Dict[str, Any]]:
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    audit_entry = AuditLog(
+        user_id=current_user.id,
+        action="LEDGER_VIEWED",
+        entity="FinancialLedger",
+        entity_id="ALL",
+        ip_address=client_ip,
+        user_agent=request.headers.get("user-agent", "Unknown")
+    )
+    db.add(audit_entry)
+    db.commit()
+    
     query = db.query(FinancialLedger).outerjoin(Booking, FinancialLedger.booking_id == Booking.id)
     if current_user.role and current_user.role.name != "SUPER_ADMIN":
         query = query.filter(Booking.tenant_id == current_user.tenant_id)

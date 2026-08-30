@@ -619,3 +619,45 @@ def generate_business_report_csv(
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+
+# --- 9. AUTOMATED AI LEARNING TOOL ---
+
+from app.models.knowledge import KnowledgeRule
+
+@AIToolRegistry.register(
+    name="learn_business_rule",
+    description="Learns a new business rule, policy, or fact and saves it to the database for future retrieval. Supports role-based access control.",
+    allowed_contexts=[AIContext.OFFICE_AI],
+    required_roles=["SUPER_ADMIN", "ADMIN", "MANAGER"],
+    is_action=False
+)
+def learn_business_rule(
+    db: Session,
+    topic: str,
+    content: str,
+    allowed_roles: List[str] = ["ALL"],
+    admin_user_id: Optional[str] = None
+) -> Dict[str, Any]:
+    try:
+        new_rule = KnowledgeRule(
+            topic_keywords=topic,
+            content=content,
+            added_by=admin_user_id or "SYSTEM"
+        )
+        # Using the property setter we defined
+        new_rule.allowed_roles = allowed_roles
+        
+        db.add(new_rule)
+        db.commit()
+        db.refresh(new_rule)
+        
+        return {
+            "success": True,
+            "message": f"নিয়মটি সফলভাবে সেভ করা হয়েছে। টপিক: {topic}",
+            "learned_rule_id": new_rule.id,
+            "confidence": "FACT"
+        }
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": f"Failed to learn rule: {str(e)}"}
+

@@ -148,9 +148,23 @@ ADMISSION_TRANSPORT_KNOWLEDGE: Dict[str, Any] = {
 }
 
 
-def query_knowledge_base(topic: str) -> str:
+from sqlalchemy.orm import Session
+from app.models.knowledge import KnowledgeRule
+
+def query_knowledge_base(topic: str, db: Optional[Session] = None, user_role: str = "VIEWER") -> str:
     """Searches the verified knowledge base for Rajshahi-Origin Admission Bus policy guidelines."""
     topic_lower = topic.lower()
+    
+    # 0. Check Dynamic Learned Rules first (RBAC enforced)
+    if db:
+        keywords = topic_lower.split()
+        for kw in keywords:
+            if len(kw) > 3: # Search with meaningful words
+                # Using like for basic keyword matching in MVP (compatible with SQLite)
+                rules = db.query(KnowledgeRule).filter(KnowledgeRule.topic_keywords.like(f"%{kw}%")).all()
+                for rule in rules:
+                    if "ALL" in rule.allowed_roles or user_role in rule.allowed_roles or user_role == "SUPER_ADMIN":
+                        return f"🧠 **[AI Learned Rule]:**\n{rule.content}"
     
     # 1. Pickup, Boarding, and Highway Intermediate Stops Policy
     if any(k in topic_lower for k in ["pickup", "পিকআপ", "স্টপ", "stop", "লোকাল", "মাঝপথে", "কোথায় উঠবে", "বোর্ডিং", "তালাইমারী", "ভদ্রা", "রেলগেট", "শিরোইল", "সাভার", "চন্দ্রা", "নবীনগর"]):
