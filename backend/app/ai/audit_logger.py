@@ -3,6 +3,7 @@ AI Observability & Audit Logger for Bus Management System.
 Tracks user questions, context, tools used, latency, action execution, and 👍/👎 user feedback.
 """
 
+import json
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
@@ -20,7 +21,13 @@ class AIAuditLogger:
         tools_used: List[str],
         action_performed: Optional[str] = None,
         latency_ms: float = 0.0,
-        success: bool = True
+        success: bool = True,
+        detected_intent: Optional[str] = None,
+        confidence_score: Optional[float] = None,
+        model_used: Optional[str] = None,
+        token_count: Optional[int] = None,
+        response_length: Optional[int] = None,
+        error_type: Optional[str] = None
     ) -> None:
         """Stores AI request & action audit record in the database."""
         try:
@@ -30,6 +37,12 @@ class AIAuditLogger:
                 "question": question[:250],
                 "tools_used": tools_used,
                 "action_performed": action_performed,
+                "detected_intent": detected_intent,
+                "confidence_score": confidence_score,
+                "model_used": model_used,
+                "input_tokens": token_count,
+                "response_chars": response_length,
+                "error_type": error_type,
                 "latency_ms": round(latency_ms, 2),
                 "success": success,
                 "timestamp": datetime.now(timezone.utc).isoformat()
@@ -40,7 +53,7 @@ class AIAuditLogger:
                 action=f"AI_{ai_context}_{action_performed or 'QUERY'}",
                 entity="AIAssistant",
                 entity_id=user_id or "ANONYMOUS",
-                new_value=str(summary)
+                new_value=json.dumps(summary, ensure_ascii=False)
             )
             db.add(audit)
             db.commit()
@@ -48,3 +61,4 @@ class AIAuditLogger:
             db.rollback()
             # Do not fail request if logging errors
             print(f"[AIAuditLogger] Warning: failed to write audit log: {e}")
+

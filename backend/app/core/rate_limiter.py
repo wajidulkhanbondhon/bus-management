@@ -63,3 +63,32 @@ def rate_limit(requests_per_minute: int, key_prefix: str = "rl"):
             _rate_limit_store[key] = hits
 
     return rate_limiter_dependency
+
+
+class RateLimiter:
+    """
+    Sliding-window in-memory rate limiter per key (user_id, IP, etc.)
+    """
+    def __init__(self, max_requests: int = 30, window_seconds: int = 60):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._store = {}
+
+    def allow(self, key: str) -> bool:
+        now = time.time()
+        window_start = now - self.window_seconds
+        hits = self._store.get(key, [])
+        hits = [h for h in hits if h > window_start]
+        if len(hits) >= self.max_requests:
+            self._store[key] = hits
+            return False
+        hits.append(now)
+        self._store[key] = hits
+        return True
+
+    def reset(self, key: Optional[str] = None):
+        if key:
+            self._store.pop(key, None)
+        else:
+            self._store.clear()
+

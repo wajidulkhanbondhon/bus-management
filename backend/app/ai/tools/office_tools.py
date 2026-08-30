@@ -97,8 +97,8 @@ def get_sales_by_date_range(db: Session, days: int = 30, tenant_id: Optional[str
         day_str = b.created_at.strftime("%Y-%m-%d")
         daily_map[day_str] = daily_map.get(day_str, 0.0) + b.net_amount
 
-    best_day = max(daily_map.items(), key=lambda x: x[1]) if daily_map else ("2026-08-25", 145000.0)
-    avg_booking_val = (total_sales / len(bookings)) if bookings else 1300.0
+    best_day = max(daily_map.items(), key=lambda x: x[1]) if daily_map else (now.strftime("%Y-%m-%d"), 0.0)
+    avg_booking_val = (total_sales / len(bookings)) if bookings else 0.0
 
     return {
         "period_days": days,

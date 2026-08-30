@@ -5,23 +5,103 @@ Student AI, and Office AI sub-roles (Super Admin, Manager, Booking Staff, Accoun
 Exclusively optimized for Rajshahi-Origin Point-to-Point Admission Exam Express Service.
 """
 
+import re
+import json
 import time
-from typing import Dict, Any, List, Optional
+import logging
+from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy.orm import Session
-from app.ai.context import AIContext, DataConfidence, AIResponsePayload, AIActionPreview, ROLE_REFUSAL_MESSAGES
+from app.ai.context import (
+    AIContext, DataConfidence, AIResponsePayload, AIActionPreview,
+    ROLE_REFUSAL_MESSAGES,
+    SUPERVISOR_AI_SYSTEM_PROMPT, STUDENT_AI_SYSTEM_PROMPT,
+    OFFICE_AI_SUPER_ADMIN_PROMPT, OFFICE_AI_MANAGER_PROMPT,
+    OFFICE_AI_BOOKING_STAFF_PROMPT, OFFICE_AI_ACCOUNTANT_PROMPT
+)
 from app.ai.tools.registry import AIToolRegistry
 from app.ai.audit_logger import AIAuditLogger
 from app.models.user import User
 from app.core.config import settings
 import google.generativeai as genai
+from groq import Groq
+from app.ai.knowledge_base import query_knowledge_base
 
-if settings.GEMINI_API_KEY:
+logger = logging.getLogger(__name__)
+
+if settings.GEMINI_API_KEY and settings.GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
     genai.configure(api_key=settings.GEMINI_API_KEY)
 
 # Ensure tools are imported & registered
 import app.ai.tools.office_tools
 import app.ai.tools.student_tools
 import app.ai.tools.supervisor_tools
+
+# ═══════════════════════════════════════════════════════════════
+# SYSTEM PROMPT MAP — wires context.py prompts to Gemini calls
+# ═══════════════════════════════════════════════════════════════
+_SYSTEM_PROMPT_MAP = {
+    AIContext.SUPERVISOR_AI: SUPERVISOR_AI_SYSTEM_PROMPT,
+    AIContext.STUDENT_AI: STUDENT_AI_SYSTEM_PROMPT,
+}
+_OFFICE_PROMPT_MAP = {
+    "SUPER_ADMIN": OFFICE_AI_SUPER_ADMIN_PROMPT,
+    "MANAGER": OFFICE_AI_MANAGER_PROMPT,
+    "BOOKING_STAFF": OFFICE_AI_BOOKING_STAFF_PROMPT,
+    "ACCOUNTANT": OFFICE_AI_ACCOUNTANT_PROMPT,
+}
+
+
+# ═══════════════════════════════════════════════════════════════
+# BANGLA TEXT NORMALIZATION
+# ═══════════════════════════════════════════════════════════════
+def normalize_bangla_prompt(prompt: str) -> str:
+    """Normalizes Bangla/English mixed text for robust intent matching."""
+    # Collapse multiple whitespace / newlines into single space
+    prompt = re.sub(r'\s+', ' ', prompt.strip())
+    # Normalize common Bangla spelling variations
+    _SPELLING_MAP = {
+        "বাসসে": "বাসে", "টিকেট": "টিকিট", "বুকিংস": "বুকিং",
+        "প্যাসেন্জার": "প্যাসেঞ্জার", "স্টেশান": "স্টেশন",
+        "ষ্টাফ": "স্টাফ", "ড্রাইভার্স": "ড্রাইভার",
+    }
+    for old, new in _SPELLING_MAP.items():
+        prompt = prompt.replace(old, new)
+    return prompt.lower().strip()
+
+
+# ═══════════════════════════════════════════════════════════════
+# CONVERSATION MEMORY (per-user, in-process)
+# ═══════════════════════════════════════════════════════════════
+class ConversationMemory:
+    """Lightweight in-memory conversation history per user."""
+    _MAX_TURNS = 10
+    _store: Dict[str, List[Dict[str, str]]] = {}
+
+    @classmethod
+    def add_turn(cls, user_key: str, role: str, content: str) -> None:
+        if user_key not in cls._store:
+            cls._store[user_key] = []
+        cls._store[user_key].append({"role": role, "content": content[:500]})
+        cls._store[user_key] = cls._store[user_key][-cls._MAX_TURNS:]
+
+    @classmethod
+    def get_history(cls, user_key: str) -> List[Dict[str, str]]:
+        return cls._store.get(user_key, [])
+
+    @classmethod
+    def get_history_text(cls, user_key: str) -> str:
+        history = cls.get_history(user_key)
+        if not history:
+            return ""
+        lines = []
+        for turn in history[-6:]:  # last 6 turns for context
+            label = "User" if turn["role"] == "user" else "AI"
+            lines.append(f"{label}: {turn['content']}")
+        return "\n".join(lines)
+
+    @classmethod
+    def clear(cls, user_key: str) -> None:
+        cls._store.pop(user_key, None)
 
 
 class AIOrchestrator:
@@ -41,7 +121,7 @@ class AIOrchestrator:
         mime_type: Optional[str] = None
     ) -> AIResponsePayload:
         start_time = time.time()
-        prompt_lower = prompt.lower().strip()
+        prompt_lower = normalize_bangla_prompt(prompt)
         tools_used: List[str] = []
 
         # Determine effective user role
@@ -80,6 +160,9 @@ class AIOrchestrator:
 
         # 3. AUDIT LOGGING
         latency_ms = (time.time() - start_time) * 1000
+        detected_intent = tools_used[0] if tools_used else "general_assistant"
+        confidence_score = 1.0 if tools_used else 0.85
+        model_used = "grounded-db-tools" if tools_used else "gemini-3.6-flash"
         AIAuditLogger.log_interaction(
             db=db,
             user_id=user_id,
@@ -88,11 +171,22 @@ class AIOrchestrator:
             question=prompt,
             tools_used=tools_used,
             latency_ms=latency_ms,
-            success=True
+            success=True,
+            detected_intent=detected_intent,
+            confidence_score=confidence_score,
+            model_used=model_used,
+            token_count=len(prompt.split()) + len(response.text.split()),
+            response_length=len(response.text)
         )
 
         response.tools_used = tools_used
         response.role = user_role
+
+        # 4. CONVERSATION MEMORY — store interaction
+        memory_key = user_id or student_phone or "anonymous"
+        ConversationMemory.add_turn(memory_key, "user", prompt)
+        ConversationMemory.add_turn(memory_key, "assistant", response.text[:500])
+
         return response
 
     @classmethod
@@ -100,37 +194,200 @@ class AIOrchestrator:
         cls,
         prompt: str,
         role_guide: str,
+        context: AIContext = AIContext.OFFICE_AI,
+        user_role: str = "SUPER_ADMIN",
+        user_key: Optional[str] = None,
         file_bytes: Optional[bytes] = None,
         mime_type: Optional[str] = None
     ) -> str:
-        """Helper to invoke Gemini 1.5 Flash for multimodal processing or generative fallback."""
+        """
+        Multi-tier generative fallback:
+        Tier 1: Gemini 3.6 Flash with role system instructions & conversation memory
+        Tier 2: Groq LLaMA-3.3-70b / LLaMA-3.1-8b
+        Tier 3: Static Knowledge Base Grounded Q&A
+        Tier 4: Graceful role-based refusal / safe Bengali response
+        """
+        # Select the correct system prompt from context.py
+        if context == AIContext.OFFICE_AI:
+            base_prompt = _OFFICE_PROMPT_MAP.get(user_role, _OFFICE_PROMPT_MAP["SUPER_ADMIN"])
+        else:
+            base_prompt = _SYSTEM_PROMPT_MAP.get(context, STUDENT_AI_SYSTEM_PROMPT)
+
+        system_instruction = (
+            f"{base_prompt}\n\n"
+            f"Additional role context: {role_guide}\n\n"
+            f"CRITICAL SECURITY RULE: You must NEVER ask for, process, or output any passwords, "
+            f"credentials, or highly sensitive internal data. If asked, politely refuse.\n"
+            f"Always answer in Bengali (বাংলা)."
+        )
+
+        history_text = ""
+        if user_key:
+            history_text = ConversationMemory.get_history_text(user_key)
+
+        # ─── TIER 1: GEMINI 3.6 FLASH ───
+        if settings.GEMINI_API_KEY and settings.GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
+            try:
+                model = genai.GenerativeModel(
+                    model_name='gemini-3.6-flash',
+                    system_instruction=system_instruction
+                )
+                contents = []
+                if history_text:
+                    contents.append(f"[Previous conversation context]:\n{history_text}\n")
+                if file_bytes and mime_type:
+                    contents.append({"mime_type": mime_type, "data": file_bytes})
+                contents.append(prompt)
+
+                response = model.generate_content(contents)
+                if response and response.text:
+                    return response.text.strip()
+            except Exception as e:
+                logger.warning(f"Tier 1 (Gemini) fallback failed: {e}. Attempting Tier 2 (Groq)...")
+
+        # ─── TIER 2: GROQ LLAMA ───
+        if settings.GROQ_API_KEY and settings.GROQ_API_KEY != "YOUR_GROQ_API_KEY_HERE":
+            try:
+                groq_client = Groq(api_key=settings.GROQ_API_KEY)
+                messages = [{"role": "system", "content": system_instruction}]
+                if history_text:
+                    messages.append({"role": "system", "content": f"Previous conversation:\n{history_text}"})
+                messages.append({"role": "user", "content": prompt})
+
+                resp = groq_client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=messages,
+                    temperature=0.4,
+                    max_tokens=800
+                )
+                text = resp.choices[0].message.content
+                if text:
+                    return text.strip()
+            except Exception as e:
+                logger.warning(f"Tier 2 (Groq) fallback failed: {e}. Attempting Tier 3 (Knowledge Base)...")
+
+        # ─── TIER 3: KNOWLEDGE BASE SEARCH ───
         try:
-            if not getattr(genai, "get_api_key", lambda: settings.GEMINI_API_KEY)():
-                return f"আমি আপনার প্রশ্নটি বুঝতে পেরেছি। {role_guide}"
-
-            model = genai.GenerativeModel('gemini-flash-latest')
-            contents = []
-            
-            # Add system instruction dynamically with strict security
-            sys_instruct = (
-                f"You are ATOMS AI, a supportive and helpful bus management assistant. "
-                f"Strictly follow this role constraint: {role_guide}. "
-                f"CRITICAL SECURITY RULE: You must NEVER ask for, process, or output any passwords, "
-                f"credentials, or highly sensitive internal data. If asked, politely refuse. "
-                f"Answer in Bengali."
-            )
-            contents.append(sys_instruct)
-
-            # Add file if multimodal
-            if file_bytes and mime_type:
-                contents.append({"mime_type": mime_type, "data": file_bytes})
-
-            contents.append(prompt)
-            
-            response = model.generate_content(contents)
-            return response.text
+            kb_res = query_knowledge_base(prompt)
+            if kb_res and kb_res.get("found"):
+                return f"📖 {kb_res['answer']}"
         except Exception as e:
-            return f"আমি আপনার প্রশ্নটি বুঝতে পেরেছি। {role_guide} (Gemini AI Error: {str(e)})"
+            logger.warning(f"Tier 3 (Knowledge Base) fallback failed: {e}")
+
+        # ─── TIER 4: SAFE LOCALIZED GRACEFUL RESPONSE ───
+        return f"আমি আপনার প্রশ্নটি বুঝতে পেরেছি। {role_guide}"
+
+    # Alias to prevent AttributeError on legacy callers
+    _call_ai_fallback = _call_gemini_fallback
+
+    @classmethod
+    def _classify_intent(cls, prompt: str, context: AIContext) -> Tuple[Optional[str], float]:
+        """
+        Fast intent classification to map natural queries to registered tool branches.
+        """
+        intent_map = {
+            AIContext.SUPERVISOR_AI: {
+                "manifest": "প্যাসেঞ্জার তালিকা, হাজিরা, কে বাকি, কারা উঠেছে",
+                "stops": "বোর্ডিং পয়েন্ট, স্টপ, পিকআপ, ল্যান্ডমার্ক",
+                "cash": "হাতে ক্যাশ, অন-ট্রিপ খরচ, ব্যালেন্স, খরচ বিবরণী",
+                "emergency": "জরুরি সাহায্য, হেল্পলাইন, ড্রাইভার, পুলিশ, ব্রেকডাউন"
+            },
+            AIContext.STUDENT_AI: {
+                "exam_buffer": "পরীক্ষার সময়, কখন রওনা দেব, বাফার সময়",
+                "my_booking": "আমার বাস, আমার সিট, বুকিং তথ্য",
+                "my_dues": "বকেয়া টাকা, পেমেন্ট স্ট্যাটাস",
+                "guardian": "অভিভাবক নীতিমালা, ছাত্রী কোচ",
+                "available_trips": "বাস আছে কি না, সিট খালি, ট্রিপ শিডিউল"
+            },
+            AIContext.OFFICE_AI: {
+                "today_sales": "আজকের বিক্রয়, আজকের আয়, আজকের টিকিট",
+                "profit_loss": "লাভ ক্ষতি, প্রফিট মার্জিন",
+                "demand_forecast": "চাহিদা পূর্বাভাস, কয়টি বাস লাগবে",
+                "fleet_occupancy": "বাসের অকুপেন্সি, বহর অবস্থা",
+                "day_closing": "ডে ক্লোজিং, ক্যাশ হিসেব, ফুয়েল ভাউচার",
+                "insights": "স্মার্ট ইনসাইট, সমস্যা, সুপারিশ"
+            }
+        }
+        allowed_intents = intent_map.get(context, {})
+        if not allowed_intents or len(prompt) < 3:
+            return None, 0.0
+
+        prompt_summary = ", ".join([f"'{k}': {v}" for k, v in allowed_intents.items()])
+        classification_prompt = (
+            f"Classify the following user message in a bus transportation system into exactly one of these intents: {list(allowed_intents.keys())} or 'none'.\n"
+            f"Intent meanings: {prompt_summary}.\n"
+            f"User message: \"{prompt}\"\n"
+            f"Respond with JSON only: {{\"intent\": \"<intent_name_or_none>\", \"confidence\": 0.9}}"
+        )
+
+        try:
+            if settings.GROQ_API_KEY and settings.GROQ_API_KEY != "YOUR_GROQ_API_KEY_HERE":
+                groq_client = Groq(api_key=settings.GROQ_API_KEY)
+                resp = groq_client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[{"role": "user", "content": classification_prompt}],
+                    temperature=0.0,
+                    max_tokens=40
+                )
+                content = resp.choices[0].message.content.strip()
+                if content.startswith("```"):
+                    content = content.strip("`").replace("json", "").strip()
+                data = json.loads(content)
+                intent = data.get("intent")
+                conf = float(data.get("confidence", 0.8))
+                if intent in allowed_intents:
+                    return intent, conf
+        except Exception:
+            pass
+
+        return None, 0.0
+
+    @classmethod
+    def stream_query(
+        cls,
+        db: Session,
+        prompt: str,
+        context: AIContext,
+        current_user: Optional[User] = None,
+        role: Optional[str] = None,
+        student_phone: Optional[str] = None,
+        trip_id: Optional[str] = None,
+        tenant_id: Optional[str] = None
+    ):
+        """
+        Streaming generator for chat endpoint (Server-Sent Events).
+        Yields text chunks and final payload metadata.
+        """
+        payload = cls.process_query(
+            db=db,
+            prompt=prompt,
+            context=context,
+            current_user=current_user,
+            role=role,
+            student_phone=student_phone,
+            trip_id=trip_id,
+            tenant_id=tenant_id
+        )
+
+        full_text = payload.text
+        words = full_text.split(" ")
+        chunk_size = 4
+        for i in range(0, len(words), chunk_size):
+            chunk = " ".join(words[i:i+chunk_size])
+            if i + chunk_size < len(words):
+                chunk += " "
+            yield f"data: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
+            time.sleep(0.02)
+
+        meta = {
+            "done": True,
+            "confidence": payload.confidence.value if hasattr(payload.confidence, "value") else str(payload.confidence),
+            "tools_used": payload.tools_used,
+            "data_cards": payload.data_cards,
+            "action_preview": payload.action_preview.model_dump() if payload.action_preview and hasattr(payload.action_preview, "model_dump") else None,
+            "download_url": payload.download_url
+        }
+        yield f"data: {json.dumps(meta, ensure_ascii=False)}\n\n"
 
     # ═════════════════════════════════════════════════════════════════════════
     # SUPERVISOR AI: ON-TRIP BUS CONDUCTOR & TRIP SCOPE ONLY
@@ -241,12 +498,6 @@ class AIOrchestrator:
                 data_cards=data_cards
             )
 
-            return AIResponsePayload(
-                text=text,
-                context=AIContext.SUPERVISOR_AI,
-                confidence=DataConfidence.FACT
-            )
-
         # E. On-Trip Cash Balance & Expenses
         elif any(k in prompt for k in ["cash", "ক্যাশ", "টাকা", "হাতে", "খরচ", "expense", "টোল", "toll", "ডিজেল", "ফুয়েল", "fuel", "খাবার", "বকেয়া"]):
             tools_used.append("get_supervisor_cash_and_expenses")
@@ -295,9 +546,52 @@ class AIOrchestrator:
                 confidence=DataConfidence.FACT
             )
 
+        # Hybrid Intent Detection: Check if natural query maps to a known supervisor tool
+        intent, conf = cls._classify_intent(prompt, AIContext.SUPERVISOR_AI)
+        if intent == "manifest":
+            tools_used.append("get_supervisor_trip_manifest")
+            res = AIToolRegistry.execute_tool("get_supervisor_trip_manifest", AIContext.SUPERVISOR_AI, "SUPERVISOR", db=db, trip_id=trip_id)
+            d = res["data"]
+            return AIResponsePayload(
+                text=f"📋 **প্যাসেঞ্জার ও লাইভ হাজিরা রিপোর্ট:**\n- মোট বরাদ্দকৃত আসন: {d['total_seats']} টি\n- বোর্ডেড: {d['boarded_count']} জন\n- অপেক্ষমাণ: {d['waiting_count']} জন\n- অনুপস্থিত: {d['absent_count']} জন",
+                context=AIContext.SUPERVISOR_AI,
+                confidence=DataConfidence.FACT
+            )
+        elif intent == "stops":
+            tools_used.append("get_supervisor_stops_summary")
+            res = AIToolRegistry.execute_tool("get_supervisor_stops_summary", AIContext.SUPERVISOR_AI, "SUPERVISOR", db=db, trip_id=trip_id)
+            d = res["data"]
+            return AIResponsePayload(
+                text=f"📍 **রাজশাহী বোর্ডিং হাব ও ক্যাম্পাস ড্রপিং গাইড:**\n- অরিজিন: {d['origin_city']}\n- মোট বোর্ডিং পয়েন্ট: {d['total_boarding_points']} টি\n- হাইওয়ে পলিসি: {d['intermediate_highway_stops']}",
+                context=AIContext.SUPERVISOR_AI,
+                confidence=DataConfidence.FACT
+            )
+        elif intent == "cash":
+            tools_used.append("get_supervisor_cash_and_expenses")
+            res = AIToolRegistry.execute_tool("get_supervisor_cash_and_expenses", AIContext.SUPERVISOR_AI, "SUPERVISOR", db=db, trip_id=trip_id)
+            d = res["data"]
+            return AIResponsePayload(
+                text=f"💵 **অন-ট্রিপ ক্যাশ ব্যালেন্স:**\n- ইস্যুকৃত ক্যাশ: ৳{d['issued_cash_bdt']:,.2f}\n- মোট খরচ: ৳{d['total_expenses_bdt']:,.2f}\n- হাতে অবশিষ্ট ক্যাশ: **৳{d['remaining_cash_in_hand_bdt']:,.2f}**",
+                context=AIContext.SUPERVISOR_AI,
+                confidence=DataConfidence.FACT
+            )
+        elif intent == "emergency":
+            tools_used.append("get_supervisor_emergency_contacts")
+            res = AIToolRegistry.execute_tool("get_supervisor_emergency_contacts", AIContext.SUPERVISOR_AI, "SUPERVISOR")
+            d = res["data"]
+            return AIResponsePayload(
+                text=f"🚨 **জরুরি হেল্পলাইন:**\n- ড্রাইভার: {d['driver_name']} ({d['driver_phone']})\n- কন্ট্রোল রুম: {d['head_office_control_room']}\n- জাতীয় সেবা: {d['highway_police_national_emergency']}",
+                context=AIContext.SUPERVISOR_AI,
+                confidence=DataConfidence.FACT
+            )
+
         # Default fallback for Supervisor AI
         role_guide = "আপনি সুপারভাইজার। আপনার কাজ শুধু বাসের যাত্রী ওঠানামা, ট্রিপ সম্পর্কিত সমস্যা সমাধান এবং যাত্রীদের সঠিক বোর্ডিং পয়েন্টে উঠতে সাহায্য করা।"
-        gemini_text = cls._call_ai_fallback(prompt, role_guide, file_bytes, mime_type)
+        gemini_text = cls._call_gemini_fallback(
+            prompt, role_guide,
+            context=AIContext.SUPERVISOR_AI, user_role=user_role,
+            file_bytes=file_bytes, mime_type=mime_type
+        )
         return AIResponsePayload(
             text=gemini_text,
             context=AIContext.SUPERVISOR_AI,
@@ -378,7 +672,11 @@ class AIOrchestrator:
         # C. Personal Trip / Bus / Seat inquiry
         elif any(k in prompt for k in ["আমার bus", "আমার seat", "আমার বাস", "আমার সিট", "কখন ছাড়বে", "pickup point", "পিকআপ", "বোর্ডিং"]):
             if not student_phone:
-                student_phone = "01712345678"
+                return AIResponsePayload(
+                    text="আপনার বাস ও সিট বুকিং তথ্য দেখতে অনুগ্রহ করে আপনার মোবাইল নম্বরটি প্রদান করুন (যেমন: 017xxxxxxxx)।",
+                    context=AIContext.STUDENT_AI,
+                    confidence=DataConfidence.FACT
+                )
 
             tools_used.append("get_my_active_booking")
             res = AIToolRegistry.execute_tool("get_my_active_booking", AIContext.STUDENT_AI, "STUDENT", db=db, student_phone=student_phone)
@@ -411,7 +709,11 @@ class AIOrchestrator:
         # D. Dues & Payment Status Inquiry
         elif any(k in prompt for k in ["due", "বকেয়া", "payment", "টাকা", "status"]):
             if not student_phone:
-                student_phone = "01712345678"
+                return AIResponsePayload(
+                    text="আপনার পেমেন্ট ও বকেয়া হিসাব দেখতে অনুগ্রহ করে আপনার মোবাইল নম্বরটি প্রদান করুন (যেমন: 017xxxxxxxx)।",
+                    context=AIContext.STUDENT_AI,
+                    confidence=DataConfidence.FACT
+                )
 
             tools_used.append("get_my_payment_and_due")
             res = AIToolRegistry.execute_tool("get_my_payment_and_due", AIContext.STUDENT_AI, "STUDENT", db=db, student_phone=student_phone)
@@ -461,9 +763,41 @@ class AIOrchestrator:
                 confidence=DataConfidence.FACT
             )
 
+        # Hybrid Intent Detection for Student AI
+        intent, conf = cls._classify_intent(prompt, AIContext.STUDENT_AI)
+        if intent == "exam_buffer":
+            tools_used.append("get_exam_buffer_guidance")
+            res = AIToolRegistry.execute_tool("get_exam_buffer_guidance", AIContext.STUDENT_AI, "STUDENT", destination_campus="DU", exam_start_time="10:00 AM")
+            d = res["data"]
+            return AIResponsePayload(
+                text=f"⏱️ **ভর্তি পরীক্ষার নিরাপদ যাত্রা বাফার গাইড:**\n- রাজশাহী ছাড়ার সময়: **{d['recommended_departure_from_rajshahi']}**\n- ক্যাম্পাস পৌঁছানোর সময়: {d['expected_campus_arrival']}\n- রেস্ট বাফার: **{d['rest_and_revision_buffer_hours']} ঘণ্টা**",
+                context=AIContext.STUDENT_AI,
+                confidence=DataConfidence.CALCULATED
+            )
+        elif intent == "guardian":
+            tools_used.append("get_guardian_policy")
+            res = AIToolRegistry.execute_tool("get_guardian_policy", AIContext.STUDENT_AI, "STUDENT")
+            return AIResponsePayload(
+                text=f"👥 **অভিভাবক ও ছাত্রী কোচ নীতিমালা:**\n{res['data']['policy']}",
+                context=AIContext.STUDENT_AI,
+                confidence=DataConfidence.FACT
+            )
+        elif intent == "available_trips":
+            tools_used.append("search_available_trips")
+            res = AIToolRegistry.execute_tool("search_available_trips", AIContext.STUDENT_AI, "STUDENT", db=db)
+            return AIResponsePayload(
+                text="🚌 **উপলব্ধ ভর্তি স্পেশাল এক্সপ্রেস ট্রিপসমূহ:**\nসকল বাস রাজশাহী (তালাইমারী/ভদ্রা/রেলগেট/শিরোইল) থেকে সরাসরি ক্যাম্পাসে যাবে।",
+                context=AIContext.STUDENT_AI,
+                confidence=DataConfidence.FACT
+            )
+
         # Fallback Student AI
         role_guide = "আমি আপনার রাজশাহী ভর্তি এক্সপ্রেস ব্যক্তিগত সহকারী 🎓। আপনি রাজশাহী থেকে বিশ্ববিদ্যালয় ক্যাম্পাসে ছাড়ার সময়, ৩-৪ ঘণ্টার বাফার হিসাব, সিট নম্বর, বোর্ডিং পয়েন্ট বা ছাত্রী কোচ নীতিমালা সম্পর্কে যেকোনো প্রশ্ন করতে পারেন।"
-        gemini_text = cls._call_ai_fallback(prompt, role_guide, file_bytes, mime_type)
+        gemini_text = cls._call_gemini_fallback(
+            prompt, role_guide,
+            context=AIContext.STUDENT_AI, user_role="STUDENT", user_key=student_phone,
+            file_bytes=file_bytes, mime_type=mime_type
+        )
         return AIResponsePayload(
             text=gemini_text,
             context=AIContext.STUDENT_AI,
@@ -736,6 +1070,72 @@ class AIOrchestrator:
                 confidence=DataConfidence.RECOMMENDATION
             )
 
+        # Hybrid Intent Detection for Office AI
+        intent, conf = cls._classify_intent(prompt, AIContext.OFFICE_AI)
+        if intent == "today_sales":
+            tools_used.append("get_today_sales")
+            res = AIToolRegistry.execute_tool("get_today_sales", AIContext.OFFICE_AI, user_role, db=db, tenant_id=tenant_id)
+            d = res["data"]
+            return AIResponsePayload(
+                text=f"📊 **আজকের বিক্রয় বিবরণী:**\n- মোট বিক্রয়: ৳{d['total_sales_bdt']:,.2f}\n- বিক্রিত টিকিট: {d['total_tickets_sold']} টি\n- মোট সংগৃহীত: ৳{d['total_collected_bdt']:,.2f}\n- অবশিষ্ট বকেয়া: ৳{d['total_due_bdt']:,.2f}",
+                context=AIContext.OFFICE_AI,
+                role=user_role,
+                confidence=DataConfidence.FACT
+            )
+        elif intent == "profit_loss":
+            tools_used.append("get_profit_loss")
+            res = AIToolRegistry.execute_tool("get_profit_loss", AIContext.OFFICE_AI, user_role, db=db, tenant_id=tenant_id)
+            d = res["data"]
+            return AIResponsePayload(
+                text=f"📈 **আর্থিক লাভ-ক্ষতি বিবরণী:**\n- মোট আয়: ৳{d['revenue_bdt']:,.2f}\n- মোট খরচ: ৳{d['total_expenses_bdt']:,.2f}\n- নেট প্রফিট: ৳{d['net_profit_bdt']:,.2f} (মার্জিন: {d['profit_margin_percent']}%)",
+                context=AIContext.OFFICE_AI,
+                role=user_role,
+                confidence=DataConfidence.CALCULATED
+            )
+        elif intent == "demand_forecast":
+            tools_used.append("get_admission_demand_forecast")
+            res = AIToolRegistry.execute_tool("get_admission_demand_forecast", AIContext.OFFICE_AI, user_role, db=db)
+            d = res["data"]
+            return AIResponsePayload(
+                text=f"🎯 **বিশ্ববিদ্যালয় ভর্তি বাস চাহিদা পূর্বাভাস:**\n- প্রাক্কলিত বাস চাহিদা: {d['forecasted_buses_needed']} টি\n- ছাত্রী কোচ বরাদ্দ: {d['female_dedicated_coaches_recommended']} টি\n- মোট আবেদনকারী: {d['estimated_student_travelers_from_rajshahi']:,} জন",
+                context=AIContext.OFFICE_AI,
+                role=user_role,
+                confidence=DataConfidence.FORECAST
+            )
+        elif intent == "fleet_occupancy":
+            tools_used.append("get_fleet_live_occupancy")
+            res = AIToolRegistry.execute_tool("get_fleet_live_occupancy", AIContext.OFFICE_AI, user_role, db=db, tenant_id=tenant_id)
+            d = res["data"]
+            return AIResponsePayload(
+                text=f"🚌 **বাস বহর অকুপেন্সি রিপোর্ট:**\n- সক্রিয় বাস: {d['active_buses_count']} টি\n- গড় বহর অকুপেন্সি: {d['average_fleet_occupancy_percent']}%\n- মোট বিক্রি হওয়া আসন: {d['total_seats_sold']} টি",
+                context=AIContext.OFFICE_AI,
+                role=user_role,
+                confidence=DataConfidence.FACT
+            )
+        elif intent == "day_closing":
+            tools_used.append("get_fuel_and_day_closing_summary")
+            res = AIToolRegistry.execute_tool("get_fuel_and_day_closing_summary", AIContext.OFFICE_AI, user_role, db=db, tenant_id=tenant_id)
+            d = res["data"]
+            return AIResponsePayload(
+                text=f"🧾 **আজকের ডে-ক্লোজিং রিপোর্ট:**\n- ক্যাশ সেলস: ৳{d['cash_sales_bdt']:,.2f}\n- ডিজিটাল এমএফএস: ৳{d['mfs_sales_bdt']:,.2f}\n- স্ট্যাটাস: {d['reconciliation_status']}",
+                context=AIContext.OFFICE_AI,
+                role=user_role,
+                confidence=DataConfidence.FACT
+            )
+        elif intent == "insights":
+            tools_used.append("get_smart_insights")
+            res = AIToolRegistry.execute_tool("get_smart_insights", AIContext.OFFICE_AI, user_role, db=db, tenant_id=tenant_id)
+            insights = res["data"]["insights"]
+            text = "🧠 **অফিস এআই স্মার্ট ইনসাইটস:**\n"
+            for item in insights[:3]:
+                text += f"- **{item['title']}**: {item['recommended_action']}\n"
+            return AIResponsePayload(
+                text=text,
+                context=AIContext.OFFICE_AI,
+                role=user_role,
+                confidence=DataConfidence.RECOMMENDATION
+            )
+
         # Fallback Office AI tailored by role
         role_guide = {
             "SUPER_ADMIN": "আপনি আজকের সেলস, ৩০ দিনের P&L, ভর্তি বাস চাহিদা পূর্বাভাস, বাস বহর পারফরম্যান্স বা বিজনেস ইনসাইটস জানতে পারেন।",
@@ -744,7 +1144,11 @@ class AIOrchestrator:
             "ACCOUNTANT": "আপনি আজকের ডে-ক্লোজিং, ক্যাশ ও এমএফএস সংগ্রহ, ফুয়েল ভাউচার এবং আর্থিক বিবরণী জানতে পারেন।"
         }.get(user_role, "আপনি আজকের সেলস, পরীক্ষার চাহিদা পূর্বাভাস বা লাভ-ক্ষতি সম্পর্কে জিজ্ঞাসা করতে পারেন।")
 
-        gemini_text = cls._call_ai_fallback(prompt, role_guide, file_bytes, mime_type)
+        gemini_text = cls._call_gemini_fallback(
+            prompt, role_guide,
+            context=AIContext.OFFICE_AI, user_role=user_role,
+            file_bytes=file_bytes, mime_type=mime_type
+        )
         return AIResponsePayload(
             text=gemini_text,
             context=AIContext.OFFICE_AI,

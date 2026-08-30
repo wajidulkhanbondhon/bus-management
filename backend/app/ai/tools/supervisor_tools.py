@@ -14,6 +14,7 @@ from app.ai.tools.registry import AIToolRegistry
 from app.models.trip import Trip, TripStop
 from app.models.booking import Booking, BookingSeat
 from app.models.bus import Bus
+from app.models.finance import BusExpense
 
 
 # Rajshahi-Origin Express Boarding Hubs (Point-to-Point, NO highway stops)
@@ -48,7 +49,7 @@ RAJSHAHI_BOARDING_HUBS = [
     }
 ]
 
-# Realistic passenger manifest for Rajshahi-Origin express demo
+# Standard passenger manifest for Rajshahi-Origin express demo fallback
 DEFAULT_SUPERVISOR_PASSENGERS = [
     {"name": "তানজিলা রহমান", "phone": "01711223344", "seats": ["A1", "A2"], "boarding_point": "তালাইমারী প্রধান কাউন্টার", "status": "BOARDED", "due": 0},
     {"name": "আব্দুল্লাহ আল নোমান", "phone": "01819887766", "seats": ["A3", "A4"], "boarding_point": "তালাইমারী প্রধান কাউন্টার", "status": "BOARDED", "due": 500},
@@ -84,7 +85,31 @@ def get_supervisor_trip_manifest(
     route_name = trip.route.route_name if trip and trip.route else "রাজশাহী (তালাইমারী) ➔ ঢাকা বিশ্ববিদ্যালয় সরাসরি নন-স্টপ এক্সপ্রেস"
     total_capacity = trip.bus.capacity if trip and trip.bus else 40
 
-    passengers = DEFAULT_SUPERVISOR_PASSENGERS
+    # Query authentic bookings from DB
+    passengers = []
+    if trip:
+        bookings = db.query(Booking).filter(
+            Booking.trip_id == trip.id,
+            Booking.booking_status.in_(["CONFIRMED", "COMPLETED", "BOARDED"])
+        ).all()
+        if bookings:
+            for b in bookings:
+                seat_nums = [s.seat.seat_number for s in b.seats if s.seat] or ["A1"]
+                status = "BOARDED" if b.booking_status == "BOARDED" else "WAITING"
+                due_amt = max(0.0, float(b.net_amount or 0.0) - float(b.paid_amount or 0.0))
+                passengers.append({
+                    "name": b.contact_name or "যাত্রী",
+                    "phone": b.contact_phone or "N/A",
+                    "seats": seat_nums,
+                    "boarding_point": b.boarding_point or "তালাইমারী প্রধান কাউন্টার",
+                    "status": status,
+                    "due": due_amt
+                })
+
+    # If no DB bookings found on default lookup, fall back to realistic demo passengers
+    if not passengers and not trip_id:
+        passengers = DEFAULT_SUPERVISOR_PASSENGERS
+
     boarded_count = sum(1 for p in passengers if p["status"] == "BOARDED")
     waiting_count = sum(1 for p in passengers if p["status"] == "WAITING")
     absent_count = sum(1 for p in passengers if p["status"] == "ABSENT")
@@ -146,15 +171,35 @@ def get_supervisor_stops_summary(
     required_roles=["SUPERVISOR", "SUPER_ADMIN", "ADMIN", "MANAGER"]
 )
 def get_supervisor_cash_and_expenses(
+    db: Optional[Session] = None,
+    trip_id: Optional[str] = None,
     issued_cash: float = 15000.0,
-    collected_dues: float = 500.0
+    collected_dues: float = 0.0
 ) -> Dict[str, Any]:
-    expenses = [
-        {"category": "FUEL", "amount": 5000.0, "desc": "রাজশাহী সেন্ট্রাল পাম্প ডিজেল রিফিল"},
-        {"category": "FOOD", "amount": 450.0, "desc": "ড্রাইভার ও সুপারভাইজার নাস্তা/ডিনার"},
-        {"category": "TOLL", "amount": 400.0, "desc": "বঙ্গবন্ধু যমুনা সেতু টোল প্লাজা"}
-    ]
-    total_expenses = sum(e["amount"] for e in expenses)
+    expenses = []
+    total_expenses = 0.0
+
+    if db and trip_id:
+        db_expenses = db.query(BusExpense).filter(BusExpense.trip_id == trip_id).all()
+        for e in db_expenses:
+            expenses.append({
+                "category": e.category,
+                "amount": float(e.amount),
+                "desc": e.description or e.category
+            })
+            total_expenses += float(e.amount)
+        trip_bookings = db.query(Booking).filter(Booking.trip_id == trip_id).all()
+        collected_dues = sum(float(b.paid_amount or 0.0) for b in trip_bookings if b.payment_status == "PARTIAL")
+
+    if not expenses and not trip_id:
+        expenses = [
+            {"category": "FUEL", "amount": 5000.0, "desc": "রাজশাহী সেন্ট্রাল পাম্প ডিজেল রিফিল"},
+            {"category": "FOOD", "amount": 450.0, "desc": "ড্রাইভার ও সুপারভাইজার নাস্তা/ডিনার"},
+            {"category": "TOLL", "amount": 400.0, "desc": "বঙ্গবন্ধু যমুনা সেতু টোল প্লাজা"}
+        ]
+        total_expenses = sum(e["amount"] for e in expenses)
+        collected_dues = 500.0
+
     remaining_balance = (issued_cash + collected_dues) - total_expenses
 
     return {

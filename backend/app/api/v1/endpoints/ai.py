@@ -2,10 +2,12 @@ from typing import Dict, Any, Optional, List
 import uuid
 import os
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.core.deps import get_current_user, get_optional_user, get_current_tenant_id
+from app.core.rate_limiter import RateLimiter
 from app.models.user import User
 from app.ai.context import AIContext, AIResponsePayload
 from app.ai.orchestrator import AIOrchestrator
@@ -15,6 +17,8 @@ from app.ai.tools.student_tools import get_exam_buffer_guidance, search_availabl
 from app.ai.tools.office_tools import get_admission_demand_forecast
 
 router = APIRouter()
+
+AI_RATE_LIMIT = RateLimiter(max_requests=30, window_seconds=60)
 
 
 class AIChatRequest(BaseModel):
@@ -49,6 +53,13 @@ def ai_chat_endpoint(
     Universal AI Orchestration Endpoint for Rajshahi Admission Express Bus.
     Routes queries to SUPERVISOR_AI, STUDENT_AI, or OFFICE_AI with strict role authorization and grounded tool execution.
     """
+    user_key = current_user.id if current_user else (req.student_phone or "anonymous")
+    if not AI_RATE_LIMIT.allow(user_key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="AI সিস্টেমে অতিরিক্ত অনুরোধ। অনুগ্রহ করে কিছুক্ষণ পর চেষ্টা করুন।"
+        )
+
     if not req.prompt or not req.prompt.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt cannot be empty")
 
@@ -62,6 +73,40 @@ def ai_chat_endpoint(
         trip_id=req.trip_id,
         tenant_id=tenant_id
     )
+
+
+@router.post("/chat/stream")
+def ai_chat_stream_endpoint(
+    req: AIChatRequest,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+    tenant_id: Optional[str] = Depends(get_current_tenant_id)
+):
+    """
+    Streaming AI chat endpoint utilizing Server-Sent Events (SSE).
+    Yields chunks formatted as: data: {"text": "..."}\n\n
+    """
+    user_key = current_user.id if current_user else (req.student_phone or "anonymous")
+    if not AI_RATE_LIMIT.allow(user_key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="AI সিস্টেমে অতিরিক্ত অনুরোধ। অনুগ্রহ করে কিছুক্ষণ পর চেষ্টা করুন।"
+        )
+
+    if not req.prompt or not req.prompt.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt cannot be empty")
+
+    generator = AIOrchestrator.stream_query(
+        db=db,
+        prompt=req.prompt,
+        context=req.context,
+        current_user=current_user,
+        role=req.role,
+        student_phone=req.student_phone,
+        trip_id=req.trip_id,
+        tenant_id=tenant_id
+    )
+    return StreamingResponse(generator, media_type="text/event-stream")
 
 
 @router.post("/action/confirm")
