@@ -22,11 +22,19 @@ import {
   TrackBookingSchema
 } from '@/lib/validations';
 
+import { cookies } from 'next/headers';
+
 function formatZodErrors(error: any): string {
   if (error?.issues) {
     return error.issues.map((i: any) => `${i.path.join('.')}: ${i.message}`).join('; ');
   }
   return 'Invalid input data';
+}
+
+async function getAuthOptions() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('fastapi_token')?.value;
+  return token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
 }
 
 export async function createBookingAction(input: Omit<CreateBookingInput, 'createdById'>) {
@@ -38,10 +46,11 @@ export async function createBookingAction(input: Omit<CreateBookingInput, 'creat
     }
 
     const user = await requirePermission('booking:create');
+    const options = await getAuthOptions();
     const booking = await createBooking({
       ...parsed.data,
       createdById: user.id
-    } as CreateBookingInput);
+    } as CreateBookingInput, options);
 
     revalidatePath('/dashboard');
     revalidatePath('/bookings');
@@ -60,7 +69,8 @@ export async function cancelBookingAction(bookingId: string, reason: string) {
     }
 
     const user = await requirePermission('booking:cancel');
-    const booking = await cancelBooking(bookingId, reason.trim(), user.id);
+    const options = await getAuthOptions();
+    const booking = await cancelBooking(bookingId, reason.trim(), options);
     revalidatePath('/bookings');
     revalidatePath('/dashboard');
     return { success: true, booking };
@@ -87,11 +97,12 @@ export async function createPreBookingAction(input: CreatePreBookingInput) {
       }
     }
 
+    const options = await getAuthOptions();
     const booking = await createPreBooking({
       ...parsed.data,
       createdById: user?.id || undefined,
       source: user ? 'COUNTER' : 'ONLINE'
-    });
+    }, options);
 
     revalidatePath('/bookings/online-requests');
     revalidatePath('/dashboard');
@@ -119,10 +130,11 @@ export async function verifyAndStartTimerAction(params: {
     }
 
     const user = await requireUser();
+    const options = await getAuthOptions();
     const booking = await verifyAndStartPaymentTimer({
       ...parsed.data,
       staffId: user.id
-    });
+    }, options);
 
     revalidatePath('/bookings/online-requests');
     revalidatePath('/bookings');
@@ -152,10 +164,11 @@ export async function confirmPreBookingPaymentAction(params: {
     }
 
     const user = await requireUser();
+    const options = await getAuthOptions();
     const booking = await confirmPreBookingPayment({
       ...parsed.data,
       staffId: user.id
-    });
+    }, undefined, options);
 
     revalidatePath('/bookings/online-requests');
     revalidatePath('/bookings');
@@ -178,11 +191,8 @@ export async function rejectPreBookingAction(bookingId: string, reason: string) 
     }
 
     const user = await requireUser();
-    const booking = await rejectPreBooking({
-      bookingId,
-      staffId: user.id,
-      reason: reason.trim()
-    });
+    const options = await getAuthOptions();
+    const booking = await rejectPreBooking(bookingId, reason.trim(), options);
 
     revalidatePath('/bookings/online-requests');
     revalidatePath('/dashboard');

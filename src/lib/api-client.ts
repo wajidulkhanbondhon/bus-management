@@ -72,24 +72,25 @@ export const fastApiClient = {
   getSeatMap: (tripId: string) => apiRequest(`/inventory/${tripId}/seat-map`),
 
   // Bookings & Pre-Booking
-  createCounterBooking: (data: any) =>
-    apiRequest('/bookings', { method: 'POST', body: JSON.stringify(data) }),
-  createPreBooking: (data: any) =>
-    apiRequest('/bookings/pre-booking', { method: 'POST', body: JSON.stringify(data) }),
-  verifyTimer: (data: any) =>
-    apiRequest('/bookings/verify-timer', { method: 'POST', body: JSON.stringify(data) }),
-  confirmPayment: (data: any, idempotencyKey?: string) =>
+  createCounterBooking: (data: any, options?: RequestInit) =>
+    apiRequest('/bookings', { method: 'POST', body: JSON.stringify(data), ...options }),
+  createPreBooking: (data: any, options?: RequestInit) =>
+    apiRequest('/bookings/pre-booking', { method: 'POST', body: JSON.stringify(data), ...options }),
+  verifyTimer: (data: any, options?: RequestInit) =>
+    apiRequest('/bookings/verify-timer', { method: 'POST', body: JSON.stringify(data), ...options }),
+  confirmPayment: (data: any, idempotencyKey?: string, options?: RequestInit) =>
     apiRequest('/bookings/confirm-payment', {
       method: 'POST',
-      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
-      body: JSON.stringify(data)
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey, ...(options?.headers as any || {}) } : options?.headers,
+      body: JSON.stringify(data),
+      ...options
     }),
   trackBooking: (query: string) =>
     apiRequest(`/bookings/track/${encodeURIComponent(query)}`),
-  cancelBooking: (bookingId: string, reason: string = 'Customer Request') =>
-    apiRequest(`/bookings/${bookingId}/cancel?reason=${encodeURIComponent(reason)}`, { method: 'POST' }),
-  rejectPreBooking: (bookingId: string, reason: string = 'Verification Failed') =>
-    apiRequest(`/bookings/${bookingId}/reject?reason=${encodeURIComponent(reason)}`, { method: 'POST' }),
+  cancelBooking: (bookingId: string, reason: string = 'Customer Request', options?: RequestInit) =>
+    apiRequest(`/bookings/${bookingId}/cancel?reason=${encodeURIComponent(reason)}`, { method: 'POST', ...options }),
+  rejectPreBooking: (bookingId: string, reason: string = 'Verification Failed', options?: RequestInit) =>
+    apiRequest(`/bookings/${bookingId}/reject?reason=${encodeURIComponent(reason)}`, { method: 'POST', ...options }),
 
   // Inventory & Locking
   lockSeat: (tripId: string, data: any) =>

@@ -20,9 +20,9 @@ export async function loginAction(formData: FormData) {
     return { success: true, requiresOtp: true, userId: result.userId, email: result.email };
   }
 
-  await createSession(result.id);
+  await createSession(result.id, result.token);
   revalidatePath('/');
-  return { success: true, role: result.role.name };
+  return { success: true, role: result.role.name, token: result.token };
 }
 
 export async function verifyOtpAction(userId: string, otp: string) {
@@ -35,9 +35,9 @@ export async function verifyOtpAction(userId: string, otp: string) {
     return { success: false, error: 'Invalid or expired OTP' };
   }
 
-  await createSession(user.id);
+  await createSession(user.id, user.token);
   revalidatePath('/');
-  return { success: true, role: user.role.name };
+  return { success: true, role: user.role.name, token: user.token };
 }
 
 export async function logoutAction() {
@@ -48,21 +48,15 @@ export async function logoutAction() {
 
 export async function switchDemoUserAction(email?: string) {
   const normalizedEmail = (email || '').toLowerCase().trim();
-  const demoUsers: Record<string, { id: string; name: string; role: string }> = {
-    'admin@transport.office': { id: 'admin-super-001', name: 'Kamrul Hasan (Director)', role: 'SUPER_ADMIN' },
-    'manager@transport.office': { id: 'usr-2', name: 'Tariqul Islam (Manager)', role: 'MANAGER' },
-    'staff@transport.office': { id: 'usr-3', name: 'Rahim Chowdhury (Desk Officer)', role: 'BOOKING_STAFF' },
-    'accountant@transport.office': { id: 'usr-4', name: 'Zubair Ahmed (Chief Cashier)', role: 'ACCOUNTANT' }
-  };
+  const targetEmail = normalizedEmail || 'admin@transport.office';
 
-  const user = demoUsers[normalizedEmail] || {
-    id: 'admin-super-001',
-    name: 'Kamrul Hasan (Director)',
-    role: 'SUPER_ADMIN'
-  };
+  const result = await verifyCredentials(targetEmail, 'admin1234');
+  if (!result) {
+    return { success: false, error: 'Failed to authenticate demo user. Please make sure the backend is seeded with admin1234 passwords.' };
+  }
 
-  await createSession(user.id);
+  await createSession(result.id, result.token);
   revalidatePath('/');
-  return { success: true, role: user.role, name: user.name };
+  return { success: true, role: result.role.name, name: result.fullName };
 }
 

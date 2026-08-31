@@ -77,10 +77,12 @@ export async function getCurrentUser(): Promise<AuthSessionUser | null> {
       return null;
     }
 
+    const fastapiToken = cookieStore.get('fastapi_token')?.value;
+
     // ── Fetch user from FastAPI backend ──
-    const res = await fetch(`http://localhost:8000/api/v1/users/${userId}`, {
+    const res = await fetch(`http://localhost:8000/api/v1/auth/me`, {
       cache: 'no-store',
-      headers: { 'X-Session-Token': rawToken }
+      headers: fastapiToken ? { 'Authorization': `Bearer ${fastapiToken}` } : { 'X-Session-Token': rawToken }
     }).catch(() => null);
 
     if (res && res.ok) {
@@ -91,10 +93,10 @@ export async function getCurrentUser(): Promise<AuthSessionUser | null> {
         fullName: data.full_name ?? data.fullName ?? 'ব্যবহারকারী',
         phone: data.phone ?? null,
         role: {
-          id: data.role?.id ?? '',
-          name: data.role?.name ?? 'VIEWER',
-          description: data.role?.description ?? null,
-          permissions: data.role?.permissions ?? [],
+          id: data.role ?? '', // Role ID isn't provided directly, using name
+          name: data.role ?? 'VIEWER',
+          description: null,
+          permissions: data.permissions ?? [],
         },
         discountLimit: data.discount_limit ?? 0,
       };
@@ -199,7 +201,7 @@ export async function requirePermission(permissionCode: string): Promise<AuthSes
   return user;
 }
 
-export async function createSession(userId: string) {
+export async function createSession(userId: string, fastapiToken?: string) {
   const cookieStore = await cookies();
   const token = signSessionToken(userId);
   cookieStore.set(SESSION_COOKIE_NAME, token, {
@@ -209,11 +211,21 @@ export async function createSession(userId: string) {
     path: '/',
     maxAge: 60 * 60 * 24 * 7
   });
+  if (fastapiToken) {
+    cookieStore.set('fastapi_token', fastapiToken, {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 7
+    });
+  }
 }
 
 export async function destroySession() {
   const cookieStore = await cookies();
   cookieStore.delete(SESSION_COOKIE_NAME);
+  cookieStore.delete('fastapi_token');
 }
 
 export async function verifyCredentials(email: string, passwordPlain: string) {
@@ -232,7 +244,8 @@ export async function verifyCredentials(email: string, passwordPlain: string) {
       id: data.id || 'admin-super-001',
       email: data.email || email,
       fullName: data.full_name || 'Kamrul Hasan',
-      role: { name: data.role || 'SUPER_ADMIN' }
+      role: { name: data.role || 'SUPER_ADMIN' },
+      token: data.access_token
     };
   }
 
@@ -253,7 +266,8 @@ export async function verifyOtpCredentials(userId: string, otp: string) {
       id: data.id || userId,
       email: data.email,
       fullName: data.full_name,
-      role: { name: data.role }
+      role: { name: data.role },
+      token: data.access_token
     };
   }
   return null;

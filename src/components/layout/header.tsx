@@ -84,6 +84,7 @@ export function Header({ currentUser, onMobileMenuToggle }: HeaderProps) {
   };
 
   const handleLogout = async () => {
+    localStorage.removeItem('fastapi_token');
     await logoutAction();
     router.push('/login');
     router.refresh();

@@ -101,7 +101,7 @@ export async function getBookingByTrackingNumber(trackingNumber: string) {
   return all.find((b: any) => b.booking_number === trackingNumber || b.contact_phone === trackingNumber) || null;
 }
 
-export async function createBooking(input: CreateBookingInput) {
+export async function createBooking(input: CreateBookingInput, options?: RequestInit) {
   const res = await fastApiClient.createCounterBooking({
     trip_id: input.tripId,
     seats: input.seats.map(s => ({ seat_id: s.seatId, fare: s.fare })),
@@ -125,7 +125,7 @@ export async function createBooking(input: CreateBookingInput) {
     transaction_id: input.transactionId,
     sender_reference: input.senderReference,
     notes: input.notes
-  });
+  }, options);
 
   if (res.success && res.data) {
     return res.data;
@@ -133,7 +133,7 @@ export async function createBooking(input: CreateBookingInput) {
   throw new Error(res.error || 'Failed to create booking');
 }
 
-export async function createPreBooking(input: CreatePreBookingInput) {
+export async function createPreBooking(input: CreatePreBookingInput, options?: RequestInit) {
   const res = await fastApiClient.createPreBooking({
     trip_id: input.tripId,
     seat_ids: input.seatIds,
@@ -148,7 +148,7 @@ export async function createPreBooking(input: CreatePreBookingInput) {
     passenger_legs_json: input.passengerLegsJson,
     source: input.source || 'ONLINE',
     notes: input.notes
-  });
+  }, options);
 
   if (res.success && res.data) {
     return res.data;
@@ -156,7 +156,7 @@ export async function createPreBooking(input: CreatePreBookingInput) {
   throw new Error(res.error || 'Failed to create pre-booking');
 }
 
-export async function verifyAndStartPaymentTimer(input: VerifyAndStartTimerInput) {
+export async function verifyAndStartPaymentTimer(input: VerifyAndStartTimerInput, options?: RequestInit) {
   const res = await fastApiClient.verifyTimer({
     booking_id: input.bookingId,
     duration_minutes: input.durationMinutes || 15,
@@ -164,7 +164,7 @@ export async function verifyAndStartPaymentTimer(input: VerifyAndStartTimerInput
     is_student: input.isStudent,
     student_admission_id: input.studentAdmissionId,
     notes: input.notes
-  });
+  }, options);
 
   if (res.success && res.data) {
     return res.data;
@@ -172,7 +172,7 @@ export async function verifyAndStartPaymentTimer(input: VerifyAndStartTimerInput
   throw new Error(res.error || 'Failed to verify booking');
 }
 
-export async function confirmPreBookingPayment(input: ConfirmPreBookingPaymentInput, idempotencyKey?: string) {
+export async function confirmPreBookingPayment(input: ConfirmPreBookingPaymentInput, idempotencyKey?: string, options?: RequestInit) {
   const res = await fastApiClient.confirmPayment({
     booking_id: input.bookingId,
     payment_method: input.paymentMethod,
@@ -180,7 +180,7 @@ export async function confirmPreBookingPayment(input: ConfirmPreBookingPaymentIn
     transaction_id: input.transactionId,
     sender_reference: input.senderReference,
     notes: input.notes
-  }, idempotencyKey);
+  }, idempotencyKey, options);
 
   if (res.success && res.data) {
     return res.data;
@@ -188,20 +188,20 @@ export async function confirmPreBookingPayment(input: ConfirmPreBookingPaymentIn
   throw new Error(res.error || 'Failed to confirm payment');
 }
 
-export async function cancelBooking(bookingIdOrInput: any, reason?: string, staffId?: string) {
+export async function cancelBooking(bookingIdOrInput: any, reason?: string, options?: RequestInit) {
   const bookingId = typeof bookingIdOrInput === 'string' ? bookingIdOrInput : bookingIdOrInput?.bookingId;
   const cancellationReason = reason || (typeof bookingIdOrInput === 'object' ? bookingIdOrInput?.reason : 'Customer Request') || 'Customer Request';
-  const res = await fastApiClient.cancelBooking(bookingId, cancellationReason);
+  const res = await fastApiClient.cancelBooking(bookingId, cancellationReason, options);
   if (!res.success) {
     throw new Error(res.error || 'Failed to cancel booking');
   }
   return res.data;
 }
 
-export async function rejectPreBooking(bookingIdOrInput: any, reason?: string, staffId?: string) {
+export async function rejectPreBooking(bookingIdOrInput: any, reason?: string, options?: RequestInit) {
   const bookingId = typeof bookingIdOrInput === 'string' ? bookingIdOrInput : bookingIdOrInput?.bookingId;
   const rejectionReason = reason || (typeof bookingIdOrInput === 'object' ? bookingIdOrInput?.reason : 'Verification Failed') || 'Verification Failed';
-  const res = await fastApiClient.rejectPreBooking(bookingId, rejectionReason);
+  const res = await fastApiClient.rejectPreBooking(bookingId, rejectionReason, options);
   if (!res.success) {
     throw new Error(res.error || 'Failed to reject pre-booking');
   }

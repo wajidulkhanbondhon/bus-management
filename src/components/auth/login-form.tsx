@@ -47,6 +47,9 @@ export function LoginForm({
           setUserId(res.userId!);
           setIsLoading(false);
         } else {
+          if (res.token) {
+            localStorage.setItem('fastapi_token', res.token);
+          }
           router.push(onSuccessRedirect);
           router.refresh();
         }
@@ -70,6 +73,9 @@ export function LoginForm({
     try {
       const res = await verifyOtpAction(userId, otp);
       if (res.success) {
+        if (res.token) {
+          localStorage.setItem('fastapi_token', res.token);
+        }
         router.push(onSuccessRedirect);
         router.refresh();
       } else {

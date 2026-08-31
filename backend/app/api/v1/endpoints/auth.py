@@ -21,15 +21,16 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
             detail="Incorrect email or password"
         )
         
-    if user.role.name in ["SUPER_ADMIN", "ADMIN", "MANAGER"]:
-        otp = str(random.randint(100000, 999999))
-        user.current_otp = otp
-        user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-        db.commit()
-        print(f"\n==================================================")
-        print(f"*** SECURITY OTP for {user.email}: {otp} ***")
-        print(f"==================================================\n")
-        return {"requires_otp": True, "user_id": user.id, "email": user.email}
+    # TODO: Re-enable OTP implementation later
+    # if user.role.name in ["SUPER_ADMIN", "ADMIN", "MANAGER"]:
+    #     otp = str(random.randint(100000, 999999))
+    #     user.current_otp = otp
+    #     user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    #     db.commit()
+    #     print(f"\n==================================================")
+    #     print(f"*** SECURITY OTP for {user.email}: {otp} ***")
+    #     print(f"==================================================\n")
+    #     return {"requires_otp": True, "user_id": user.id, "email": user.email}
 
     access_token = create_access_token(
         subject=user.id,
