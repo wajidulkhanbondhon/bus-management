@@ -4,6 +4,21 @@ import { AppShell } from '@/components/layout/app-shell';
 import { AppContextProvider } from '@/lib/context';
 import { getCurrentUser } from '@/lib/auth';
 import { AutoLogout } from '@/components/AutoLogout';
+import { Inter, Noto_Sans_Bengali } from 'next/font/google';
+
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700', '800'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+const notoBengali = Noto_Sans_Bengali({
+  subsets: ['bengali'],
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-noto-bengali',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: {
@@ -52,17 +67,15 @@ export default async function RootLayout({
   const user = await getCurrentUser();
 
   return (
-    <html lang="bn" data-color-theme="blue" suppressHydrationWarning>
+    <html lang="bn" data-color-theme="blue" suppressHydrationWarning className={`${inter.variable} ${notoBengali.variable}`}>
       <head>
-        {/* Google Fonts — Premium Bengali & Latin Typography */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap"
-          rel="stylesheet"
-        />
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#4f46e5" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen antialiased transition-colors duration-200" suppressHydrationWarning>
+      <body className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen antialiased transition-colors duration-200 font-sans" suppressHydrationWarning>
         <AppContextProvider>
           <AutoLogout isLoggedIn={!!user} />
           <AppShell currentUser={user}>
@@ -73,3 +86,4 @@ export default async function RootLayout({
     </html>
   );
 }
+

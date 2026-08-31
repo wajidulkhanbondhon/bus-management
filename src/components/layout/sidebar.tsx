@@ -37,6 +37,14 @@ import {
   Bot,
   ShieldAlert,
   Activity,
+  Zap,
+  ShoppingCart,
+  Megaphone,
+  TicketPercent,
+  Palette,
+  Star,
+  Banknote,
+  Bell,
   LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -58,9 +66,29 @@ interface NavGroup {
 
 interface SidebarProps {
   onNavigate?: () => void;
+  userRole?: string;
 }
 
-export function Sidebar({ onNavigate }: SidebarProps = {}) {
+// Define which sidebar groups are visible per role
+const ROLE_ACCESS: Record<string, string[]> = {
+  admin: ['all'], // Admin sees everything
+  manager: ['all'],
+  counter_staff: [
+    'AI COPILOT & INTELLIGENCE',
+    'OVERVIEW',
+    'COUNTER & BOOKINGS',
+    'REVENUE & DISCOUNTS',
+    'COLLECTIONS & PAYMENTS',
+  ],
+  supervisor: [
+    'OVERVIEW',
+    'COUNTER & BOOKINGS',
+    'SCHEDULES & TRIPS',
+    'PORTALS & ADMISSION',
+  ],
+};
+
+export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
   const pathname = usePathname();
   const { t, language, navFontSize, currentColor } = useApp();
 
@@ -136,11 +164,11 @@ export function Sidebar({ onNavigate }: SidebarProps = {}) {
     {
       label: language === 'bn' ? 'মার্কেটিং ও গ্রোথ' : 'MARKETING & GROWTH',
       items: [
-        { href: '/marketing/coupons', label: language === 'bn' ? 'মার্কেটিং কুপন' : 'Discount Coupons', icon: Tag },
-        { href: '/marketing/loyalty', label: language === 'bn' ? 'লয়্যালটি ও পয়েন্ট' : 'Loyalty Program', icon: Sparkles, badge: 'New' },
-        { href: '/marketing/flash-sales', label: language === 'bn' ? 'ফ্ল্যাশ সেল ও প্রাইসিং' : 'Flash Sales', icon: CircleDollarSign },
-        { href: '/marketing/referrals', label: language === 'bn' ? 'রেফারেল প্রোগ্রাম' : 'Referral Program', icon: Users2 },
-        { href: '/marketing/abandoned-cart', label: language === 'bn' ? 'অ্যাবানডনড কার্ট' : 'Abandoned Cart', icon: PhoneIncoming },
+        { href: '/marketing/coupons', label: language === 'bn' ? 'মার্কেটিং কুপন' : 'Discount Coupons', icon: TicketPercent },
+        { href: '/marketing/loyalty', label: language === 'bn' ? 'লয়্যালটি ও পয়েন্ট' : 'Loyalty Program', icon: Sparkles, badge: 'New' },
+        { href: '/marketing/flash-sales', label: language === 'bn' ? 'ফ্ল্যাশ সেল ও প্রাইসিং' : 'Flash Sales', icon: Zap },
+        { href: '/marketing/referrals', label: language === 'bn' ? 'রেফারেল প্রোগ্রাম' : 'Referral Program', icon: Megaphone },
+        { href: '/marketing/abandoned-cart', label: language === 'bn' ? 'অ্যাবানডনড কার্ট' : 'Abandoned Cart', icon: ShoppingCart },
         { href: '/marketing/social-proof', label: language === 'bn' ? 'সোশ্যাল প্রুফ (FOMO)' : 'Social Proof', icon: MessageCircle },
       ]
     },
@@ -149,13 +177,16 @@ export function Sidebar({ onNavigate }: SidebarProps = {}) {
       items: [
         { href: '/supervisor', label: language === 'bn' ? 'সুপারভাইজার পোর্টাল' : 'Supervisor Portal', icon: UserCheck },
         { href: '/universities/manage', label: language === 'bn' ? 'বিশ্ববিদ্যালয় সার্কুলার' : 'University Circulars', icon: GraduationCap },
-        { href: '/dashboard/landing-control', label: language === 'bn' ? 'ল্যান্ডিং কন্ট্রোল' : 'Landing Control', icon: SlidersHorizontal }
+        { href: '/dashboard/landing-control', label: language === 'bn' ? 'ল্যান্ডিং কন্ট্রোল' : 'Landing Control', icon: Palette }
       ]
     },
     {
       label: language === 'bn' ? 'প্রশাসন ও সিকিউরিটি' : 'GOVERNANCE & ADMIN',
       items: [
         { href: '/staff', label: t.staffRoles, icon: Users2 },
+        { href: '/staff/payroll', label: language === 'bn' ? 'স্টাফ পে-রোল' : 'Staff Payroll', icon: Banknote },
+        { href: '/settings/notifications', label: language === 'bn' ? 'SMS নোটিফিকেশন' : 'SMS Notifications', icon: Bell, badge: 'New' },
+        { href: '/reviews', label: language === 'bn' ? 'রিভিউ ও রেটিং' : 'Reviews & Ratings', icon: Star },
         { href: '/audit-logs', label: t.auditLogs, icon: Fingerprint },
         { href: '/settings', label: t.settings, icon: SlidersHorizontal }
       ]
@@ -244,7 +275,15 @@ export function Sidebar({ onNavigate }: SidebarProps = {}) {
 
       {/* Navigation Links */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5 scrollbar-thin">
-        {navGroups.map((group, gIdx) => (
+        {navGroups
+          .filter((group) => {
+            const allowed = ROLE_ACCESS[userRole] || ROLE_ACCESS['admin'];
+            if (allowed.includes('all')) return true;
+            // Match English label (the key used in ROLE_ACCESS)
+            const englishLabel = group.label.toUpperCase();
+            return allowed.some(a => englishLabel.includes(a));
+          })
+          .map((group, gIdx) => (
           <div key={gIdx} className="space-y-1">
             <h4 className={cn('px-3 font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 font-mono', fontStyles.groupLabel)}>
               {group.label}

@@ -1,0 +1,19 @@
+{
+  "name": "ATOMS Transit - অ্যাডমিশন বাস ম্যানেজমেন্ট",
+  "short_name": "ATOMS Transit",
+  "description": "বাংলাদেশ বিশ্ববিদ্যালয় ভর্তি স্পেশাল এক্সপ্রেস বাস সার্ভিস ও লাইভ সিট বুকিং",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait-primary",
+  "categories": ["travel", "transportation"],
+  "lang": "bn",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ]
+}
