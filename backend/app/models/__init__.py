@@ -12,6 +12,7 @@ from app.models.university import University
 from app.models.coupon import MarketingCoupon
 from app.models.knowledge import KnowledgeRule
 from app.models.security import BlockedIP, SecurityEvent
+from app.models.analytics import DailyAnalytics
 __all__ = [
     "Base",
     "Tenant",
@@ -50,4 +51,5 @@ __all__ = [
     "KnowledgeRule",
     "BlockedIP",
     "SecurityEvent",
+    "DailyAnalytics",
 ]

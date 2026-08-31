@@ -36,6 +36,7 @@ import {
   Sparkles,
   Bot,
   ShieldAlert,
+  Activity,
   LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -128,8 +129,19 @@ export function Sidebar({ onNavigate }: SidebarProps = {}) {
     {
       label: language === 'bn' ? 'অ্যানালিটিক্স ও রিপোর্ট' : 'ANALYTICS & REPORTS',
       items: [
-        { href: '/reports', label: t.reports, icon: BarChart3 },
-        { href: '/marketing/coupons', label: language === 'bn' ? 'মার্কেটিং কুপন' : 'Discount Coupons', icon: Tag }
+        { href: '/admin/dashboard', label: language === 'bn' ? 'রিয়েল-টাইম ড্যাশবোর্ড' : 'Real-time Dashboard', icon: Activity, badge: 'Live', highlight: true },
+        { href: '/reports', label: t.reports, icon: BarChart3 }
+      ]
+    },
+    {
+      label: language === 'bn' ? 'মার্কেটিং ও গ্রোথ' : 'MARKETING & GROWTH',
+      items: [
+        { href: '/marketing/coupons', label: language === 'bn' ? 'মার্কেটিং কুপন' : 'Discount Coupons', icon: Tag },
+        { href: '/marketing/loyalty', label: language === 'bn' ? 'লয়্যালটি ও পয়েন্ট' : 'Loyalty Program', icon: Sparkles, badge: 'New' },
+        { href: '/marketing/flash-sales', label: language === 'bn' ? 'ফ্ল্যাশ সেল ও প্রাইসিং' : 'Flash Sales', icon: CircleDollarSign },
+        { href: '/marketing/referrals', label: language === 'bn' ? 'রেফারেল প্রোগ্রাম' : 'Referral Program', icon: Users2 },
+        { href: '/marketing/abandoned-cart', label: language === 'bn' ? 'অ্যাবানডনড কার্ট' : 'Abandoned Cart', icon: PhoneIncoming },
+        { href: '/marketing/social-proof', label: language === 'bn' ? 'সোশ্যাল প্রুফ (FOMO)' : 'Social Proof', icon: MessageCircle },
       ]
     },
     {

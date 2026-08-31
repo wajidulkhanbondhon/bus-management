@@ -46,7 +46,8 @@ import {
   UserCheck,
   Clock3,
   Send,
-  ExternalLink
+  ExternalLink,
+  BarChart
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -67,6 +68,7 @@ import {
 } from '@/services/passenger-directory.service';
 import { StudentAIAssistant } from '@/components/ai/student-ai-assistant';
 import { AIAvatar } from '@/components/ai/ai-avatar';
+import { StudentDashboard } from '@/components/passenger/StudentDashboard';
 
 // ═══════════════════════════════════════════════════════════════
 // 1. OFFICIAL BRAND SVG ICONS (WHATSAPP, SMS, ROCKET)
@@ -200,7 +202,7 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
   const [loading, setLoading] = useState(false);
 
   // Dashboard Tab
-  const [activeTab, setActiveTab] = useState<'tickets' | 'accommodation' | 'payment_gateway' | 'circulars' | 'support' | 'ai_assistant'>('tickets');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tickets' | 'accommodation' | 'payment_gateway' | 'circulars' | 'support' | 'ai_assistant'>('dashboard');
 
   // Modals
   const [ticketModalOpen, setTicketModalOpen] = useState(false);
@@ -1188,6 +1190,18 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
           {/* Navigation Tabs (Accommodation strictly only shows if enabled for this bus) */}
           <div className="flex flex-wrap border-b border-slate-200 dark:border-slate-800 gap-2 sm:gap-4 text-xs sm:text-sm font-bold">
             <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`pb-3 px-2 flex items-center gap-1.5 transition-all ${
+                activeTab === 'dashboard'
+                  ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <BarChart className="w-4 h-4" />
+              {language === 'bn' ? 'আমার ড্যাশবোর্ড' : 'My Dashboard'}
+            </button>
+
+            <button
               onClick={() => setActiveTab('tickets')}
               className={`pb-3 px-2 flex items-center gap-1.5 transition-all ${
                 activeTab === 'tickets'
@@ -1263,6 +1277,51 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
               <Badge variant="success" className="text-[9px] py-0 px-1.5 font-bold animate-pulse">LIVE</Badge>
             </button>
           </div>
+
+          {/* TAB 0: DASHBOARD */}
+          {activeTab === 'dashboard' && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <StudentDashboard 
+                language={language}
+                bookings={[
+                  {
+                    id: bookingData?.id || 'BK-1',
+                    tripId: bookingData?.trip?.id || 'T-1',
+                    route: bookingData?.trip?.route?.origin && bookingData?.trip?.route?.destination 
+                      ? `${bookingData.trip.route.origin} - ${bookingData.trip.route.destination}` 
+                      : 'Dhaka - Rajshahi',
+                    status: 'CONFIRMED',
+                    totalFare: bookingData?.total_fare || 1200,
+                    date: bookingData?.trip?.departure_date || new Date().toISOString(),
+                    boardingPoint: bookingData?.boarding_point || 'Kallyanpur'
+                  },
+                  // Add a fake past booking for the chart
+                  {
+                    id: 'BK-2',
+                    tripId: 'T-0',
+                    route: 'Rajshahi - Dhaka',
+                    status: 'COMPLETED',
+                    totalFare: 1100,
+                    date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+                    boardingPoint: 'Rajshahi University'
+                  },
+                  // Add another fake past booking
+                  {
+                    id: 'BK-3',
+                    tripId: 'T-X',
+                    route: 'Dhaka - Chittagong',
+                    status: 'COMPLETED',
+                    totalFare: 1500,
+                    date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+                    boardingPoint: 'Sayedabad'
+                  }
+                ]} 
+              />
+            </motion.div>
+          )}
 
           {/* TAB 1: TICKETS & SEATS */}
           {activeTab === 'tickets' && (

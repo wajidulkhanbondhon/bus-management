@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Any, List
 from app.db.session import get_db
-from app.api.deps import get_current_active_user
+from app.core.deps import get_current_user
 from app.models.security import BlockedIP, SecurityEvent
 from app.models.user import User
 from pydantic import BaseModel
@@ -35,7 +35,7 @@ class SecurityEventResponse(BaseModel):
 @router.get("/blocked-ips", response_model=List[BlockedIPResponse])
 def get_blocked_ips(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user)
 ) -> Any:
     """
     Retrieve all blocked IPs. Only accessible to SUPER_ADMIN.
@@ -48,7 +48,7 @@ def get_blocked_ips(
 def unblock_ip(
     ip_address: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user)
 ) -> Any:
     """
     Unblocks a specific IP address.
@@ -68,7 +68,7 @@ def unblock_ip(
 @router.get("/events", response_model=List[SecurityEventResponse])
 def get_security_events(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user)
 ) -> Any:
     """
     Retrieve recent security events.

@@ -22,7 +22,7 @@ export async function loginAction(formData: FormData) {
 
   await createSession(result.id, result.token);
   revalidatePath('/');
-  return { success: true, role: result.role.name, token: result.token };
+  return { success: true, role: result.role?.name, token: result.token };
 }
 
 export async function verifyOtpAction(userId: string, otp: string) {
@@ -37,7 +37,7 @@ export async function verifyOtpAction(userId: string, otp: string) {
 
   await createSession(user.id, user.token);
   revalidatePath('/');
-  return { success: true, role: user.role.name, token: user.token };
+  return { success: true, role: user.role?.name, token: user.token };
 }
 
 export async function logoutAction() {
@@ -57,6 +57,6 @@ export async function switchDemoUserAction(email?: string) {
 
   await createSession(result.id, result.token);
   revalidatePath('/');
-  return { success: true, role: result.role.name, name: result.fullName };
+  return { success: true, role: result.role?.name, name: result.fullName };
 }
 
