@@ -6,6 +6,7 @@ import { ToastProvider } from '@/components/ui/toast';
 export type Language = 'bn' | 'en';
 export type Theme = 'light' | 'dark';
 export type FontSize = 'sm' | 'base' | 'lg' | 'xl';
+export type SidebarAccordionMode = 'single' | 'multiple';
 export type ColorTheme =
   | 'blue'
   | 'emerald'
@@ -550,6 +551,10 @@ interface AppContextType {
   setCustomLogo: (key: string, url: string) => void;
   resetCustomLogo: (key: string) => void;
   resetAllCustomLogos: () => void;
+  sidebarAccordionMode: SidebarAccordionMode;
+  setSidebarAccordionMode: (mode: SidebarAccordionMode) => void;
+  marketingIntegrations: { gaId: string; pixelId: string; gtmId: string; customGaHtml: string; customPixelHtml: string; customGtmHtml: string };
+  setMarketingIntegrations: (data: { gaId: string; pixelId: string; gtmId: string; customGaHtml: string; customPixelHtml: string; customGtmHtml: string }) => void;
   t: typeof translations.bn;
 }
 
@@ -562,7 +567,9 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
   const [navFontSize, setNavFontSizeState] = useState<FontSize>('base');
   const [headerFontSize, setHeaderFontSizeState] = useState<FontSize>('base');
   const [contentFontSize, setContentFontSizeState] = useState<FontSize>('base');
+  const [sidebarAccordionModeState, setSidebarAccordionModeState] = useState<SidebarAccordionMode>('single');
   const [customLogos, setCustomLogosState] = useState<Record<string, string>>({});
+  const [marketingIntegrationsState, setMarketingIntegrationsState] = useState({ gaId: '', pixelId: '', gtmId: '', customGaHtml: '', customPixelHtml: '', customGtmHtml: '' });
 
   useEffect(() => {
     const savedLang = (localStorage.getItem('atoms_language') as Language) || 'bn';
@@ -583,6 +590,9 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
     setColorThemeState(savedColor);
     document.documentElement.setAttribute('data-color-theme', savedColor);
 
+    const savedAccordionMode = (localStorage.getItem('atoms_sidebar_accordion_mode') as SidebarAccordionMode) || 'single';
+    setSidebarAccordionModeState(savedAccordionMode);
+
     const savedNavFont = (localStorage.getItem('atoms_nav_font_size') as FontSize) || 'base';
     setNavFontSizeState(savedNavFont);
 
@@ -596,6 +606,15 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
       const savedLogos = localStorage.getItem('atoms_payment_logos');
       if (savedLogos) {
         setCustomLogosState(JSON.parse(savedLogos));
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const savedIntegrations = localStorage.getItem('atoms_marketing_integrations');
+      if (savedIntegrations) {
+        setMarketingIntegrationsState(JSON.parse(savedIntegrations));
       }
     } catch {
       // ignore
@@ -663,6 +682,16 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
     localStorage.removeItem('atoms_payment_logos');
   };
 
+  const setSidebarAccordionMode = (mode: SidebarAccordionMode) => {
+    setSidebarAccordionModeState(mode);
+    localStorage.setItem('atoms_sidebar_accordion_mode', mode);
+  };
+
+  const setMarketingIntegrations = (data: { gaId: string; pixelId: string; gtmId: string; customGaHtml: string; customPixelHtml: string; customGtmHtml: string }) => {
+    setMarketingIntegrationsState(data);
+    localStorage.setItem('atoms_marketing_integrations', JSON.stringify(data));
+  };
+
   const currentColor = colorThemesList.find((c) => c.id === colorTheme) || colorThemesList[0];
   const t = translations[language] || translations.bn;
 
@@ -686,6 +715,10 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
         setCustomLogo,
         resetCustomLogo,
         resetAllCustomLogos,
+        sidebarAccordionMode: sidebarAccordionModeState,
+        setSidebarAccordionMode,
+        marketingIntegrations: marketingIntegrationsState,
+        setMarketingIntegrations,
         t
       }}
     >

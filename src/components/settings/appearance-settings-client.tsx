@@ -35,6 +35,8 @@ export function AppearanceSettingsClient() {
     setHeaderFontSize,
     contentFontSize,
     setContentFontSize,
+    sidebarAccordionMode,
+    setSidebarAccordionMode,
     t
   } = useApp();
 
@@ -313,7 +315,92 @@ export function AppearanceSettingsClient() {
         </CardContent>
       </Card>
 
-      {/* 5. Global Language & Theme Quick Controls */}
+      {/* 5. Sidebar Dropdown Accordion Behavior Mode */}
+      <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
+        <CardHeader className="bg-gradient-to-r from-slate-50 to-transparent dark:from-slate-800/40">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-xs transition-colors"
+              style={{ backgroundColor: currentColor?.primaryHex || '#2563eb' }}
+            >
+              <Navigation className="w-4 h-4" />
+            </div>
+            <div>
+              <CardTitle className="text-base">
+                {language === 'bn' ? 'সাইডবার ড্রপডাউন মোড (Sidebar Accordion Behavior)' : 'Sidebar Accordion Behavior'}
+              </CardTitle>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {language === 'bn'
+                  ? 'একটি ক্যাটাগরি খুললে অন্যগুলো স্বয়ংক্রিয়ভাবে বন্ধ হবে কিনা তা নির্ধারণ করুন'
+                  : 'Choose whether opening one dropdown automatically closes other open sections'}
+              </p>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4 pt-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Single Accordion Mode */}
+            <button
+              type="button"
+              onClick={() => setSidebarAccordionMode('single')}
+              className={`p-4 rounded-2xl border text-left transition-all relative group flex flex-col justify-between cursor-pointer ${
+                sidebarAccordionMode === 'single'
+                  ? 'border-slate-900 dark:border-white bg-slate-50 dark:bg-slate-800/90 shadow-md ring-2 ring-slate-400/30'
+                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'
+              }`}
+            >
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                    {language === 'bn' ? 'একক ড্রপডাউন মোড (সিঙ্গেল)' : 'Single Accordion Mode'}
+                    <Badge variant="primary" className="text-[10px] bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400">
+                      {language === 'bn' ? 'সুপারিশকৃত' : 'Recommended'}
+                    </Badge>
+                  </span>
+                  {sidebarAccordionMode === 'single' && (
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 stroke-[3]" />
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {language === 'bn'
+                    ? 'একটি ক্যাটাগরি খুললে বাকিগুলো নিজে থেকেই বন্ধ হয়ে যাবে — সাইডবার কখনো লম্বা হবে না এবং ক্লিন থাকবে।'
+                    : 'Opening one category automatically collapses other categories — keeps the sidebar compact & clean.'}
+                </p>
+              </div>
+            </button>
+
+            {/* Multiple Accordion Mode */}
+            <button
+              type="button"
+              onClick={() => setSidebarAccordionMode('multiple')}
+              className={`p-4 rounded-2xl border text-left transition-all relative group flex flex-col justify-between cursor-pointer ${
+                sidebarAccordionMode === 'multiple'
+                  ? 'border-slate-900 dark:border-white bg-slate-50 dark:bg-slate-800/90 shadow-md ring-2 ring-slate-400/30'
+                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'
+              }`}
+            >
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-slate-900 dark:text-white">
+                    {language === 'bn' ? 'মাল্টি ড্রপডাউন মোড (একাধিক)' : 'Multiple Accordion Mode'}
+                  </span>
+                  {sidebarAccordionMode === 'multiple' && (
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 stroke-[3]" />
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {language === 'bn'
+                    ? 'একসাথে একাধিক ক্যাটাগরি ড্রপডাউন খুলে রাখা যাবে।'
+                    : 'Keep multiple category dropdowns open simultaneously.'}
+                </p>
+              </div>
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 6. Global Language & Theme Quick Controls */}
       <Card>
         <CardHeader>
           <CardTitle>
