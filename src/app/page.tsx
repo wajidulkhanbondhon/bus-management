@@ -5,6 +5,26 @@ import { PublicHomeView } from '@/components/home';
 
 export const dynamic = 'force-dynamic';
 
+interface RouteData {
+  origin: string;
+  destination: string;
+  routeName?: string;
+}
+
+interface TripData {
+  id: string;
+  bus?: {
+    busName?: string;
+    busNumber?: string;
+    capacity?: number;
+    seatLayout?: { totalSeats: number };
+  };
+  bookings?: any[];
+  route?: RouteData;
+  [key: string]: any;
+}
+
+
 export default async function PublicHomePage({
   searchParams,
 }: {
@@ -20,7 +40,7 @@ export default async function PublicHomePage({
   });
 
   // Transform trips with inventory statistics
-  const tripsWithInventory = (trips || []).map((trip: any) => {
+  const tripsWithInventory = (trips || []).map((trip: TripData) => {
     const totalSeats =
       trip.bus?.seatLayout?.totalSeats || trip.bus?.capacity || 40;
     const bookedCount = trip.bookings?.length || 1;
@@ -46,14 +66,14 @@ export default async function PublicHomePage({
 
   const allRoutes = await getAllRoutes();
   const origins: string[] = Array.from(
-    new Set(allRoutes.map((r: any) => (r.origin as string) || 'Dhaka Gabtoli'))
+    new Set(allRoutes.map((r: RouteData) => (r.origin as string) || 'Dhaka Gabtoli'))
   );
   if (origins.length === 0) origins.push('Dhaka Gabtoli', 'Chittagong GEC', 'Sylhet');
 
   const destinations: string[] = Array.from(
     new Set(
       allRoutes.map(
-        (r: any) => (r.destination as string) || 'Rajshahi University'
+        (r: RouteData) => (r.destination as string) || 'Rajshahi University'
       )
     )
   );

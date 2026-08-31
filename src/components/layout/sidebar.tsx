@@ -188,6 +188,7 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
         { href: '/settings/notifications', label: language === 'bn' ? 'SMS নোটিফিকেশন' : 'SMS Notifications', icon: Bell, badge: 'New' },
         { href: '/reviews', label: language === 'bn' ? 'রিভিউ ও রেটিং' : 'Reviews & Ratings', icon: Star },
         { href: '/audit-logs', label: t.auditLogs, icon: Fingerprint },
+        { href: '/settings/security', label: language === 'bn' ? 'অ্যাকাউন্ট সিকিউরিটি (2FA)' : 'Security & 2FA', icon: ShieldAlert },
         { href: '/settings', label: t.settings, icon: SlidersHorizontal }
       ]
     },

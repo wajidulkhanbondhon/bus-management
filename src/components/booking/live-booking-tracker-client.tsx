@@ -18,8 +18,10 @@ import {
   RotateCcw,
   Sparkles,
   Lock,
-  ArrowRight
+  ArrowRight,
+  QrCode
 } from 'lucide-react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -27,6 +29,8 @@ import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import { trackBookingAction } from '@/actions/booking.actions';
 import { PrintTicketButton } from './print-ticket-button';
 import { PaymentReceiptModal } from './payment-receipt';
+import { PaymentGatewayModal } from './payment-gateway-modal';
+import { LiveBusMapModal } from './live-bus-map-modal';
 
 interface Props {
   initialBooking: any;
@@ -39,6 +43,8 @@ export function LiveBookingTrackerClient({ initialBooking }: Props) {
   const [isExpired, setIsExpired] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
 
   // Poll / Refresh status periodically
   const refreshStatus = async () => {
@@ -150,6 +156,23 @@ export function LiveBookingTrackerClient({ initialBooking }: Props) {
                 <p className="text-xs text-slate-300 max-w-md mx-auto">
                   আপনার পেমেন্ট ভেরিফাই হয়েছে এবং আসন নিশ্চিত করা হয়েছে। যাত্রা শুরুর পূর্বে ডিজিটাল টিকিটটি সাথে রাখুন।
                 </p>
+                <div className="mt-6 inline-flex flex-col items-center bg-white p-4 rounded-xl shadow-lg border-2 border-emerald-500/20">
+                  <div className="mb-2 flex items-center justify-between w-full">
+                    <span className="text-xs font-black text-slate-800 uppercase">ATOMS PASS</span>
+                    <QrCode className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <Image
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(booking.bookingNumber)}&margin=10`}
+                    alt="Digital Ticket QR"
+                    width={128}
+                    height={128}
+                    className="w-32 h-32 rounded-lg"
+                  />
+                  <div className="mt-3 text-center">
+                    <div className="text-xs text-slate-500 font-medium">Tracking Number</div>
+                    <div className="text-sm font-black font-mono text-slate-900 mt-0.5">{booking.bookingNumber}</div>
+                  </div>
+                </div>
               </div>
             ) : isTimerActive ? (
               <div className="space-y-3">
@@ -210,7 +233,16 @@ export function LiveBookingTrackerClient({ initialBooking }: Props) {
                 className="font-bold text-xs bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-600/20 cursor-pointer"
               >
                 <Printer className="w-4 h-4 mr-1.5" />
-                অফিসিয়াল পেমেন্ট রসিদ দেখুন ও প্রিন্ট করুন
+                অফিসিয়াল পেমেন্ট রসিদ
+              </Button>
+              <Button
+                variant="outline"
+                size="md"
+                onClick={() => setIsMapModalOpen(true)}
+                className="font-bold text-xs bg-transparent border-emerald-500 text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
+              >
+                <MapPin className="w-4 h-4 mr-1.5" />
+                বাসের লাইভ অবস্থান
               </Button>
             </div>
           )}
@@ -223,38 +255,22 @@ export function LiveBookingTrackerClient({ initialBooking }: Props) {
           <CardHeader className="pb-2 border-b border-slate-800">
             <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-amber-400" />
-              পেমেন্ট নির্দেশিকা (Payment Instructions)
+              অনলাইন পেমেন্ট (Secure Online Payment)
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-5 space-y-4 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                <span className="font-bold text-rose-400 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                  বিকাশ মার্চেন্ট / পার্সোনাল
-                </span>
-                <div className="space-y-1 text-slate-300 font-mono text-[13px]">
-                  <div>নম্বর: <strong className="text-white">01711000001</strong></div>
-                  <div>অ্যামাউন্ট: <strong className="text-emerald-400">{formatCurrency(booking.netAmount)}</strong></div>
-                  <div>রেফারেন্স: <strong className="text-blue-400">{booking.bookingNumber.slice(-5)}</strong></div>
-                </div>
-              </div>
-
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                <span className="font-bold text-amber-400 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                  নগদ / রকেট
-                </span>
-                <div className="space-y-1 text-slate-300 font-mono text-[13px]">
-                  <div>নম্বর: <strong className="text-white">01811000002</strong></div>
-                  <div>অ্যামাউন্ট: <strong className="text-emerald-400">{formatCurrency(booking.netAmount)}</strong></div>
-                  <div>রেফারেন্স: <strong className="text-blue-400">{booking.bookingNumber.slice(-5)}</strong></div>
-                </div>
-              </div>
-            </div>
-
-            <p className="text-[11px] text-slate-400 leading-relaxed bg-slate-950 p-3 rounded-lg border border-slate-800">
-              💡 <strong>পরামর্শ:</strong> টাকা পাঠানোর পর আপনার ট্রানজেকশন আইডি (TrxID) কল সেন্টারের প্রতিনিধিকে জানান অথবা সরাসরি কাউন্টারে ক্যাশ প্রদান করে কনফার্ম করুন।
+          <CardContent className="p-5 space-y-4 text-xs text-center">
+            <p className="text-slate-300">
+              আপনার সিটটি সফলভাবে লক করা হয়েছে। নিচের বাটনে ক্লিক করে সরাসরি বিকাশ বা নগদের মাধ্যমে পেমেন্ট সম্পন্ন করুন।
+            </p>
+            <Button 
+              size="lg" 
+              onClick={() => setIsPaymentModalOpen(true)}
+              className="bg-[#e2136e] hover:bg-[#b00f56] text-white font-bold px-8 py-6 h-auto text-base w-full sm:w-auto shadow-lg shadow-[#e2136e]/20"
+            >
+              Pay Now with bKash / Nagad
+            </Button>
+            <p className="text-[11px] text-slate-500 mt-4">
+              SSLCommerz দ্বারা সুরক্ষিত পেমেন্ট গেটওয়ে। কোনো অতিরিক্ত চার্জ নেই।
             </p>
           </CardContent>
         </Card>
@@ -355,6 +371,28 @@ export function LiveBookingTrackerClient({ initialBooking }: Props) {
           isOpen={isReceiptModalOpen}
           booking={booking}
           onClose={() => setIsReceiptModalOpen(false)}
+        />
+      )}
+
+      {/* Payment Gateway Modal */}
+      {isPaymentModalOpen && (
+        <PaymentGatewayModal
+          isOpen={isPaymentModalOpen}
+          booking={booking}
+          onClose={() => setIsPaymentModalOpen(false)}
+          onSuccess={() => {
+            // Mocking a successful payment by updating the status locally to 'CONFIRMED'
+            setBooking({ ...booking, bookingStatus: 'CONFIRMED' });
+          }}
+        />
+      )}
+
+      {/* Live Bus Map Modal */}
+      {isMapModalOpen && (
+        <LiveBusMapModal
+          isOpen={isMapModalOpen}
+          booking={booking}
+          onClose={() => setIsMapModalOpen(false)}
         />
       )}
     </div>
