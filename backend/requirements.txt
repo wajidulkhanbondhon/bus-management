@@ -38,4 +38,4 @@ requests>=2.32.0
 
 # AI Services
 google-generativeai>=0.7.0
-groq>=0.9.0
+groq>=1.7.0
