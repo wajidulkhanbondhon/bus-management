@@ -31,7 +31,7 @@ structlog>=24.4.0
 sentry-sdk[fastapi]>=2.13.0
 
 # Utility & Date Handling
-python-dotenv>=1.0.1
+python-dotenv>=1.2.3
 email-validator>=2.2.0
 httpx>=0.27.0
 requests>=2.32.0
