@@ -11,7 +11,7 @@ pydantic-settings>=2.4.0
 
 # Database & ORM Layer (PostgreSQL Asynchronous)
 sqlalchemy>=2.0.32
-asyncpg>=0.29.0
+asyncpg>=0.31.0
 alembic>=1.13.2
 
 # Authentication & Cryptography (Argon2id + python-jose)
