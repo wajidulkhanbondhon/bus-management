@@ -24,7 +24,7 @@ casbin>=1.36.0
 
 # Rate Limiting & DDoS Protection (SlowAPI)
 slowapi>=0.1.9
-redis>=5.0.8
+redis>=8.1.0
 
 # Structured Logging & Observability (Structlog + Sentry)
 structlog>=24.4.0
