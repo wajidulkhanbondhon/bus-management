@@ -101,92 +101,92 @@ export function DashboardView({ data, currentUser }: Props) {
       {/* Top 5 KPI Metrics Cards - Fully Responsive & Visual Hierarchy */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* 1. Gross Sales */}
-        <Card className="p-4 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:shadow-md transition-all">
+        <Card className="p-4 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800/80 shadow-lg hover:shadow-xl transition-all rounded-3xl">
           <div className="flex items-center justify-between">
-            <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase font-mono">
+            <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase font-mono tracking-wider">
               {t.grossSales}
             </span>
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-slate-700 to-slate-900 text-white flex items-center justify-center shadow-xs">
-              <Coins className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-900 text-white flex items-center justify-center shadow-md">
+              <Coins className="w-4.5 h-4.5" />
             </div>
           </div>
-          <div className="text-xl md:text-2xl font-black text-slate-900 dark:text-white font-mono mt-2">
+          <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white font-mono mt-3">
             {formatCurrency(kpis.grossSales)}
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
-            <span className="font-bold text-slate-700 dark:text-slate-300 font-mono">{kpis.bookingsCount}</span>
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mt-1.5 font-medium">
+            <span className="font-black text-slate-700 dark:text-slate-300 font-mono">{kpis.bookingsCount}</span>
             <span>{language === 'bn' ? 'টি টিকিট বিক্রয়' : 'tickets booked'}</span>
           </div>
         </Card>
 
         {/* 2. Discounts */}
-        <Card className="p-4 bg-white dark:bg-slate-900 border-purple-200/60 dark:border-purple-900/40 hover:shadow-md transition-all">
+        <Card className="p-4 bg-purple-50/60 dark:bg-purple-950/40 backdrop-blur-xl border border-purple-200/80 dark:border-purple-900/60 shadow-lg hover:shadow-xl transition-all rounded-3xl">
           <div className="flex items-center justify-between">
-            <span className="text-purple-700 dark:text-purple-400 text-xs font-bold uppercase font-mono">
+            <span className="text-purple-700 dark:text-purple-400 text-xs font-bold uppercase font-mono tracking-wider">
               {t.discounts}
             </span>
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-500 to-indigo-600 text-white flex items-center justify-center shadow-xs">
-              <Percent className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-purple-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-purple-500/20">
+              <Percent className="w-4.5 h-4.5" />
             </div>
           </div>
-          <div className="text-xl md:text-2xl font-black text-purple-700 dark:text-purple-400 font-mono mt-2">
+          <div className="text-2xl md:text-3xl font-black text-purple-700 dark:text-purple-400 font-mono mt-3">
             {formatCurrency(kpis.totalDiscount)}
           </div>
-          <span className="text-xs text-purple-600/80 dark:text-purple-400/80 mt-1 block font-medium">
+          <span className="text-xs text-purple-600/80 dark:text-purple-400/80 mt-1.5 block font-bold">
             {language === 'bn' ? 'অনুমোদিত ছাড় ও কুপন' : 'Approved concessions'}
           </span>
         </Card>
 
         {/* 3. Net Sales */}
-        <Card className="p-4 bg-gradient-to-br from-blue-50/50 via-white to-indigo-50/40 dark:from-blue-950/30 dark:via-slate-900 dark:to-indigo-950/20 border-blue-200 dark:border-blue-800 hover:shadow-md transition-all">
+        <Card className="p-4 bg-gradient-to-br from-blue-50/80 via-white/70 to-indigo-50/60 dark:from-blue-950/50 dark:via-slate-900/70 dark:to-indigo-950/40 backdrop-blur-xl border border-blue-200/80 dark:border-blue-800/80 shadow-lg hover:shadow-xl transition-all rounded-3xl">
           <div className="flex items-center justify-between">
-            <span className="text-blue-900 dark:text-blue-300 text-xs font-bold uppercase font-mono">
+            <span className="text-blue-800 dark:text-blue-300 text-xs font-bold uppercase font-mono tracking-wider">
               {t.netSales}
             </span>
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
-              <TrendingUp className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/30">
+              <TrendingUp className="w-4.5 h-4.5" />
             </div>
           </div>
-          <div className="text-xl md:text-2xl font-black text-blue-900 dark:text-blue-300 font-mono mt-2">
+          <div className="text-2xl md:text-3xl font-black text-blue-900 dark:text-blue-300 font-mono mt-3">
             {formatCurrency(kpis.netSales)}
           </div>
-          <span className="text-xs text-blue-600 dark:text-blue-400 mt-1 block font-medium">
+          <span className="text-xs text-blue-600 dark:text-blue-400 mt-1.5 block font-bold">
             {language === 'bn' ? 'ছাড় বাদে প্রদেয় ভাড়া' : 'After discounts'}
           </span>
         </Card>
 
         {/* 4. Total Collected */}
-        <Card className="p-4 bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/40 dark:from-emerald-950/30 dark:via-slate-900 dark:to-teal-950/20 border-emerald-200 dark:border-emerald-800 hover:shadow-md transition-all">
+        <Card className="p-4 bg-gradient-to-br from-emerald-50/80 via-white/70 to-teal-50/60 dark:from-emerald-950/50 dark:via-slate-900/70 dark:to-teal-950/40 backdrop-blur-xl border border-emerald-200/80 dark:border-emerald-800/80 shadow-lg hover:shadow-xl transition-all rounded-3xl">
           <div className="flex items-center justify-between">
-            <span className="text-emerald-800 dark:text-emerald-300 text-xs font-bold uppercase font-mono">
+            <span className="text-emerald-800 dark:text-emerald-300 text-xs font-bold uppercase font-mono tracking-wider">
               {t.collected}
             </span>
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
-              <CreditCard className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30">
+              <CreditCard className="w-4.5 h-4.5" />
             </div>
           </div>
-          <div className="text-xl md:text-2xl font-black text-emerald-700 dark:text-emerald-300 font-mono mt-2">
+          <div className="text-2xl md:text-3xl font-black text-emerald-800 dark:text-emerald-300 font-mono mt-3">
             {formatCurrency(kpis.totalCollected)}
           </div>
-          <span className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 block font-medium">
+          <span className="text-xs text-emerald-600 dark:text-emerald-400 mt-1.5 block font-bold">
             {language === 'bn' ? 'ক্যাশ ও ডিজিটাল জমা' : 'Cash & MFS Received'}
           </span>
         </Card>
 
         {/* 5. Due Remaining */}
-        <Card className="p-4 bg-gradient-to-br from-rose-50/50 via-white to-amber-50/40 dark:from-rose-950/30 dark:via-slate-900 dark:to-amber-950/20 border-rose-200 dark:border-rose-800 hover:shadow-md transition-all sm:col-span-2 lg:col-span-1">
+        <Card className="p-4 bg-gradient-to-br from-rose-50/80 via-white/70 to-amber-50/60 dark:from-rose-950/50 dark:via-slate-900/70 dark:to-amber-950/40 backdrop-blur-xl border border-rose-200/80 dark:border-rose-800/80 shadow-lg hover:shadow-xl transition-all sm:col-span-2 lg:col-span-1 rounded-3xl">
           <div className="flex items-center justify-between">
-            <span className="text-rose-800 dark:text-rose-300 text-xs font-bold uppercase font-mono">
+            <span className="text-rose-800 dark:text-rose-300 text-xs font-bold uppercase font-mono tracking-wider">
               {t.due}
             </span>
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-red-600 text-white flex items-center justify-center shadow-md shadow-rose-500/20">
-              <AlertTriangle className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-rose-500 to-red-600 text-white flex items-center justify-center shadow-lg shadow-rose-500/30">
+              <AlertTriangle className="w-4.5 h-4.5" />
             </div>
           </div>
-          <div className="text-xl md:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono mt-2">
+          <div className="text-2xl md:text-3xl font-black text-rose-600 dark:text-rose-400 font-mono mt-3">
             {formatCurrency(kpis.totalDue)}
           </div>
-          <span className="text-xs text-rose-500 mt-1 block font-medium">
+          <span className="text-xs text-rose-500 mt-1.5 block font-bold">
             {language === 'bn' ? 'বকেয়া কালেকশন বাকি' : 'Outstanding due'}
           </span>
         </Card>

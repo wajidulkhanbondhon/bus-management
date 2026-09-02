@@ -18,7 +18,8 @@ from app.api.v1.endpoints import (
     settings,
     ai_dashboard,
     honeypot,
-    analytics
+    analytics,
+    uploads
 )
 
 api_router = APIRouter()
@@ -41,6 +42,7 @@ api_router.include_router(coupons.router, prefix="/coupons", tags=["Marketing Co
 api_router.include_router(settings.router, prefix="/settings", tags=["System & Landing Settings"])
 api_router.include_router(ai_dashboard.router, prefix="/ai-dashboard", tags=["AI & Security Dashboard"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics & WebSockets"])
+api_router.include_router(uploads.router, prefix="/uploads", tags=["File & Media Uploads"])
 
 # -----------------------------------------------------------------------------
 # HONEYPOT - FAKE ROUTES FOR SECURITY (MUST BE AT THE END OR SPECIFIC PATH)

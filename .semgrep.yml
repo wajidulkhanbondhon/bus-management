@@ -1,0 +1,30 @@
+rules:
+  - id: python-hardcoded-secret-key
+    patterns:
+      - pattern-either:
+          - pattern: SECRET_KEY = "..."
+          - pattern: password = "..."
+    message: "Hardcoded secret or password detected. Use environment variables instead."
+    languages: [python]
+    severity: ERROR
+
+  - id: insecure-jwt-none-algorithm
+    pattern: jose.jwt.decode(..., algorithms=[..., "none", ...], ...)
+    message: "Insecure JWT decoding allows 'none' algorithm. Always enforce strong cryptographic algorithms."
+    languages: [python]
+    severity: ERROR
+
+  - id: missing-httponly-cookie
+    pattern: response.set_cookie(..., httponly=False, ...)
+    message: "Authentication cookies must have httponly=True to protect against XSS credential theft."
+    languages: [python]
+    severity: WARNING
+
+  - id: direct-localstorage-jwt
+    patterns:
+      - pattern-either:
+          - pattern: localStorage.setItem("access_token", ...)
+          - pattern: localStorage.setItem("token", ...)
+    message: "Storing raw JWT in localStorage is vulnerable to XSS. Use HttpOnly cookies instead."
+    languages: [javascript, typescript]
+    severity: WARNING

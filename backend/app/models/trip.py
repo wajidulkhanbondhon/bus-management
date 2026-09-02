@@ -16,8 +16,8 @@ class BusRoute(Base):
     destination = Column(String, nullable=False)
     distance_km = Column(Float, nullable=True)
     est_duration = Column(String, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     tenant = relationship("Tenant", back_populates="routes")
@@ -53,8 +53,8 @@ class Trip(Base):
     status = Column(String, default="SCHEDULED", index=True)  # "SCHEDULED", "BOARDING", "ON_ROUTE", "COMPLETED", "CANCELLED"
     base_price = Column(Money, nullable=False)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     tenant = relationship("Tenant", back_populates="trips")
@@ -90,7 +90,7 @@ class SeatHold(Base):
     staff_id = Column(String, nullable=False)
     hold_token = Column(String, unique=True, index=True, nullable=False)
     expires_at = Column(DateTime, nullable=False, index=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     __table_args__ = (UniqueConstraint("trip_id", "seat_id", name="uq_trip_seat_hold"),)
 
@@ -111,8 +111,8 @@ class SeatLock(Base):
     locked_by = Column(String, nullable=False)
     locked_until = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     trip = relationship("Trip", back_populates="seat_locks")
@@ -124,7 +124,7 @@ class SupervisorAssignment(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     trip_id = Column(String, ForeignKey("trips.id", ondelete="CASCADE"), nullable=False, index=True)
     supervisor_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
-    assigned_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    assigned_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     status = Column(String, default="ASSIGNED")  # "ASSIGNED", "ACTIVE", "COMPLETED", "CANCELLED"
     notes = Column(Text, nullable=True)
 

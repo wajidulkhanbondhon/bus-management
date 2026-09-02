@@ -2,6 +2,7 @@ import json
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from app.db.session import get_db
 from app.core.deps import require_role
 from app.models.audit import SystemSetting
@@ -12,14 +13,14 @@ router = APIRouter()
 
 
 @router.get("/")
-def get_all_settings(db: Session = Depends(get_db)) -> Dict[str, str]:
-    settings = db.query(SystemSetting).all()
+async def get_all_settings(db: WrappedAsyncSession = Depends(get_db)) -> Dict[str, str]:
+    settings = await db.query(SystemSetting).all()
     return {s.key: s.value for s in settings}
 
 
 @router.get("/landing-control", response_model=LandingControlSettings)
-def get_landing_settings(db: Session = Depends(get_db)):
-    setting = db.query(SystemSetting).filter(SystemSetting.key == "landing_control_config").first()
+async def get_landing_settings(db: WrappedAsyncSession = Depends(get_db)):
+    setting = await db.query(SystemSetting).filter(SystemSetting.key == "landing_control_config").first()
     if not setting or not setting.value:
         return LandingControlSettings()
 
@@ -31,12 +32,12 @@ def get_landing_settings(db: Session = Depends(get_db)):
 
 
 @router.post("/landing-control", response_model=LandingControlSettings)
-def save_landing_settings(
+async def save_landing_settings(
     req: LandingControlSettings,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN"]))
 ):
-    setting = db.query(SystemSetting).filter(SystemSetting.key == "landing_control_config").first()
+    setting = await db.query(SystemSetting).filter(SystemSetting.key == "landing_control_config").first()
     json_val = json.dumps(req.model_dump())
     if setting:
         setting.value = json_val
@@ -48,17 +49,17 @@ def save_landing_settings(
         )
         db.add(setting)
 
-    db.commit()
+    await db.commit()
     return req
 
 
 @router.post("/update-key")
-def update_setting_key(
+async def update_setting_key(
     req: SystemSettingUpdate,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN"]))
 ):
-    setting = db.query(SystemSetting).filter(SystemSetting.key == req.key).first()
+    setting = await db.query(SystemSetting).filter(SystemSetting.key == req.key).first()
     if setting:
         setting.value = req.value
         if req.description:
@@ -71,5 +72,5 @@ def update_setting_key(
         )
         db.add(setting)
 
-    db.commit()
+    await db.commit()
     return {"success": True, "key": req.key, "value": req.value}

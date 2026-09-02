@@ -1,8 +1,10 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from app.db.session import get_db
 from app.core.deps import require_role, get_current_tenant_id, apply_tenant_filter
+from app.core.square_guard import square_double_layer_guard
 from app.models.payment import Payment, Refund
 from app.models.booking import Booking
 from app.models.finance import FinancialLedger
@@ -20,23 +22,23 @@ router = APIRouter()
 
 @router.get("", response_model=List[PaymentOut], include_in_schema=False)
 @router.get("/", response_model=List[PaymentOut])
-def list_payments(
+async def list_payments(
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT", "MANAGER", "VIEWER"]))
 ):
     query = db.query(Payment).join(Booking, Payment.booking_id == Booking.id)
     query = apply_tenant_filter(query, Booking, current_user, tenant_id)
-    return query.order_by(Payment.created_at.desc()).limit(100).all()
+    return await query.order_by(Payment.created_at.desc()).limit(100).all()
 
 
 @router.post("/record", response_model=PaymentOut, status_code=status.HTTP_201_CREATED)
-def record_counter_payment(
+async def record_counter_payment(
     req: PaymentCreate,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT", "BOOKING_STAFF"]))
 ):
-    booking = db.query(Booking).filter(Booking.id == req.booking_id).first()
+    booking = await db.query(Booking).filter(Booking.id == req.booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
@@ -75,19 +77,19 @@ def record_counter_payment(
     )
     db.add(ledger)
 
-    db.commit()
-    db.refresh(payment)
+    await db.commit()
+    await db.refresh(payment)
     return payment
 
 
 @router.post("/refund", response_model=RefundOut, status_code=status.HTTP_201_CREATED)
-def issue_refund(
+async def issue_refund(
     req: RefundCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT"]))
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: User = Depends(square_double_layer_guard)
 ):
     # Verify booking exists and belongs to the caller's tenant
-    booking = db.query(Booking).filter(Booking.id == req.booking_id).first()
+    booking = await db.query(Booking).filter(Booking.id == req.booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
@@ -96,7 +98,7 @@ def issue_refund(
             raise HTTPException(status_code=403, detail="Access denied for this tenant's booking")
 
     try:
-        return create_refund_service(
+        return await create_refund_service(
             db=db,
             booking_id=req.booking_id,
             amount=req.amount,
@@ -110,11 +112,11 @@ def issue_refund(
 
 
 @router.get("/refunds", response_model=List[RefundOut])
-def list_refunds(
+async def list_refunds(
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT", "MANAGER"]))
 ):
     query = db.query(Refund).join(Booking, Refund.booking_id == Booking.id)
     query = apply_tenant_filter(query, Booking, current_user, tenant_id)
-    return query.order_by(Refund.created_at.desc()).limit(100).all()
+    return await query.order_by(Refund.created_at.desc()).limit(100).all()

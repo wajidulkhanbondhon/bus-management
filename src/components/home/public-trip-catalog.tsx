@@ -141,19 +141,19 @@ export function PublicTripCatalog({ trips }: PublicTripCatalogProps) {
               return (
                 <motion.div
                   key={trip.id}
-                  className={`relative bg-white dark:bg-slate-900/90 border rounded-3xl overflow-hidden transition-all hover:shadow-2xl hover:shadow-blue-500/10 group flex flex-col justify-between ${
+                  className={`relative bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border rounded-3xl overflow-hidden transition-all duration-300 hover:-translate-y-2 group flex flex-col justify-between ${
                     isSoldOut
-                      ? 'border-red-300 dark:border-red-900/40 opacity-80'
-                      : 'border-slate-200 dark:border-slate-800 hover:border-blue-500/50'
+                      ? 'border-red-300 dark:border-red-900/40 opacity-80 shadow-none'
+                      : 'border-slate-200/80 dark:border-slate-800/80 hover:border-blue-400/60 shadow-lg hover:shadow-2xl hover:shadow-blue-500/20'
                   }`}
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: idx * 0.05 }}
+                  viewport={{ once: true, margin: '-50px' }}
+                  transition={{ delay: idx * 0.08, type: 'spring', stiffness: 100 }}
                 >
                   {/* Top Gradient Stripe */}
                   <div
-                    className={`h-2 w-full bg-gradient-to-r ${
+                    className={`h-2.5 w-full bg-gradient-to-r shadow-sm ${
                       trip.tripBusType === 'FEMALE'
                         ? 'from-pink-500 via-rose-500 to-purple-500'
                         : trip.tripBusType === 'MALE'
@@ -167,10 +167,10 @@ export function PublicTripCatalog({ trips }: PublicTripCatalogProps) {
                     <div className="space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="space-y-0.5">
-                          <span className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400 block uppercase">
+                          <span className="text-[10px] font-mono font-black text-blue-600 dark:text-blue-400 block uppercase tracking-wider">
                             {trip.tripCode}
                           </span>
-                          <h3 className="font-bold text-base text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
+                          <h3 className="font-black text-base md:text-lg text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2 leading-tight">
                             {trip.bus?.busName}
                           </h3>
                         </div>
@@ -178,14 +178,14 @@ export function PublicTripCatalog({ trips }: PublicTripCatalogProps) {
                       </div>
 
                       {/* Coach Badges */}
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
                         <span
-                          className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
+                          className={`px-2.5 py-0.5 rounded-xl font-bold text-[10px] shadow-sm ${
                             trip.tripBusType === 'FEMALE'
-                              ? 'bg-pink-100 text-pink-700 border border-pink-200 dark:bg-pink-500/15 dark:text-pink-400 dark:border-pink-500/30'
+                              ? 'bg-gradient-to-r from-pink-100 to-rose-100 text-pink-700 border border-pink-200 dark:from-pink-900/30 dark:to-rose-900/30 dark:text-pink-300 dark:border-pink-800/50'
                               : trip.tripBusType === 'MALE'
-                              ? 'bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/30'
-                              : 'bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-500/15 dark:text-slate-400 dark:border-slate-500/30'
+                              ? 'bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 border border-blue-200 dark:from-blue-900/30 dark:to-indigo-900/30 dark:text-blue-300 dark:border-blue-800/50'
+                              : 'bg-gradient-to-r from-slate-100 to-gray-100 text-slate-700 border border-slate-200 dark:from-slate-800/60 dark:to-gray-800/60 dark:text-slate-300 dark:border-slate-700/50'
                           }`}
                         >
                           {trip.tripBusType === 'FEMALE'
@@ -196,8 +196,8 @@ export function PublicTripCatalog({ trips }: PublicTripCatalogProps) {
                         </span>
 
                         {hasAccommodation && (
-                          <span className="px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30 flex items-center gap-1">
-                            <Building className="w-3 h-3" />
+                          <span className="px-2.5 py-0.5 rounded-xl font-bold text-[10px] bg-gradient-to-r from-amber-100 to-orange-100 text-amber-800 border border-amber-300 dark:from-amber-900/30 dark:to-orange-900/30 dark:text-amber-300 dark:border-amber-800/50 flex items-center gap-1 shadow-sm">
+                            <Building className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                             আবাসন প্যাকেজ অন্তর্ভুক্ত
                           </span>
                         )}
@@ -205,60 +205,60 @@ export function PublicTripCatalog({ trips }: PublicTripCatalogProps) {
                     </div>
 
                     {/* Route Box */}
-                    <div className="bg-slate-50 dark:bg-slate-950/80 rounded-2xl p-3.5 border border-slate-200 dark:border-slate-800/80 space-y-2.5">
+                    <div className="bg-slate-50/80 dark:bg-slate-900/50 backdrop-blur-md rounded-2xl p-4 border border-slate-200/80 dark:border-slate-800/80 space-y-3 group-hover:bg-blue-50/40 dark:group-hover:bg-blue-900/10 transition-colors">
                       <div className="flex items-center justify-between gap-2 text-xs">
                         <div className="flex-1">
-                          <div className="text-[10px] text-slate-500 font-medium mb-0.5">
+                          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">
                             {language === 'bn' ? 'কোথা থেকে' : 'Origin'}
                           </div>
-                          <div className="font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1">
-                            <MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                          <div className="font-black text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+                            <MapPin className="w-4 h-4 text-blue-500 shrink-0" />
                             <span className="truncate">{trip.route?.origin}</span>
                           </div>
                         </div>
                         <div className="flex flex-col items-center px-1">
-                          <ArrowRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+                          <ArrowRight className="w-5 h-5 text-slate-400/80 dark:text-slate-600" />
                         </div>
                         <div className="flex-1 text-right">
-                          <div className="text-[10px] text-slate-500 font-medium mb-0.5">
+                          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">
                             {language === 'bn' ? 'কোথায় যাবে' : 'Destination'}
                           </div>
-                          <div className="font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1 justify-end">
+                          <div className="font-black text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 justify-end">
                             <span className="truncate">{trip.route?.destination}</span>
-                            <MapPin className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <MapPin className="w-4 h-4 text-emerald-500 shrink-0" />
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200 dark:border-slate-800/50 font-medium">
-                        <span className="flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400 pt-2.5 border-t border-slate-200 dark:border-slate-800/50 font-medium">
+                        <span className="flex items-center gap-1.5 bg-white dark:bg-slate-800 px-2 py-1 rounded-lg border border-slate-100 dark:border-slate-700 shadow-sm">
+                          <Calendar className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                           {formatDate(trip.departureDate)}
                         </span>
-                        <span className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-white font-mono">
-                          <Clock className="w-3.5 h-3.5 text-blue-500" />
+                        <span className="flex items-center gap-1.5 font-black text-slate-900 dark:text-white font-mono bg-white dark:bg-slate-800 px-2 py-1 rounded-lg border border-slate-100 dark:border-slate-700 shadow-sm">
+                          <Clock className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
                           {formatTime(trip.departureTime)}
                         </span>
                       </div>
                     </div>
 
                     {/* Price & Availability */}
-                    <div className="flex items-end justify-between pt-1">
+                    <div className="flex items-end justify-between pt-2">
                       <div>
-                        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                        <div className="text-[10px] text-slate-500 font-black uppercase tracking-wider">
                           {language === 'bn' ? 'ভাড়া (প্রতি সিট)' : 'Fare'}
                         </div>
-                        <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                        <div className="text-2xl md:text-3xl font-black bg-gradient-to-r from-emerald-600 to-teal-500 dark:from-emerald-400 dark:to-teal-300 bg-clip-text text-transparent font-mono">
                           {formatCurrency(trip.basePrice)}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                        <div className="text-[10px] text-slate-500 font-black uppercase tracking-wider">
                           {language === 'bn' ? 'ফাঁকা আসন' : 'Seats Available'}
                         </div>
-                        <div className="flex items-center gap-1.5 font-bold">
+                        <div className="flex items-center justify-end gap-1.5 font-bold">
                           <span
-                            className={`text-xl font-mono ${
+                            className={`text-2xl font-black font-mono ${
                               isSoldOut
                                 ? 'text-red-500 dark:text-red-400'
                                 : trip.availableCount > 5
@@ -268,7 +268,7 @@ export function PublicTripCatalog({ trips }: PublicTripCatalogProps) {
                           >
                             {trip.availableCount}
                           </span>
-                          <span className="text-slate-400 text-xs font-mono">
+                          <span className="text-slate-400 text-xs font-mono font-medium">
                             / {trip.totalSeats}
                           </span>
                         </div>
@@ -276,29 +276,29 @@ export function PublicTripCatalog({ trips }: PublicTripCatalogProps) {
                     </div>
 
                     {/* Progress Bar */}
-                    <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                    <div className="w-full bg-slate-100 dark:bg-slate-800/80 rounded-full h-2.5 overflow-hidden shadow-inner border border-slate-200/50 dark:border-slate-700/50">
                       <motion.div
                         className={`h-full rounded-full ${
                           isSoldOut
                             ? 'bg-red-500'
                             : occupancy > 80
-                            ? 'bg-amber-500'
-                            : 'bg-blue-600 dark:bg-blue-500'
+                            ? 'bg-gradient-to-r from-amber-400 to-orange-500'
+                            : 'bg-gradient-to-r from-blue-500 to-indigo-500'
                         }`}
                         initial={{ width: 0 }}
                         whileInView={{ width: `${occupancy}%` }}
                         viewport={{ once: true }}
-                        transition={{ duration: 1, delay: 0.2 }}
+                        transition={{ duration: 1.2, delay: 0.3, type: 'spring' }}
                       />
                     </div>
 
                     {/* Action Button */}
                     <Link
                       href={`/book/${trip.id}`}
-                      className={`flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl font-bold text-xs transition-all cursor-pointer shadow-md ${
+                      className={`flex items-center justify-center gap-2 w-full py-3.5 sm:py-4 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer shadow-md ${
                         isSoldOut
-                          ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed pointer-events-none shadow-none'
-                          : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/25 hover:shadow-lg hover:shadow-blue-600/40 hover:scale-[1.01]'
+                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed pointer-events-none shadow-none border border-slate-200 dark:border-slate-700'
+                          : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/30 hover:shadow-xl hover:shadow-blue-600/50 hover:-translate-y-0.5'
                       }`}
                     >
                       {isSoldOut ? (
@@ -308,7 +308,7 @@ export function PublicTripCatalog({ trips }: PublicTripCatalogProps) {
                           {language === 'bn'
                             ? 'সিট দেখুন ও প্রি-বুকিং করুন'
                             : 'View Seats & Pre-Book'}
-                          <ArrowRight className="w-4 h-4" />
+                          <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" />
                         </>
                       )}
                     </Link>

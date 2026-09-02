@@ -27,38 +27,38 @@ ACTIVE_BOOKING_STATUSES = [
 ]
 
 
-def generate_unique_booking_number(db: Session) -> str:
+async def generate_unique_booking_number(db: Session) -> str:
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     random_part = secrets.token_hex(2).upper()
-    count = db.query(Booking).count()
+    count = await db.query(Booking).count()
     return f"BK-{date_str}-{random_part}-{count + 10001:05d}"
 
 
-def generate_unique_receipt_number(db: Session) -> str:
+async def generate_unique_receipt_number(db: Session) -> str:
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     random_part = secrets.token_hex(2).upper()
-    count = db.query(Payment).count()
+    count = await db.query(Payment).count()
     return f"RCT-{date_str}-{random_part}-{count + 1:04d}"
 
 
-def generate_unique_ledger_number(db: Session) -> str:
+async def generate_unique_ledger_number(db: Session) -> str:
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     random_part = secrets.token_hex(2).upper()
-    count = db.query(FinancialLedger).count()
+    count = await db.query(FinancialLedger).count()
     return f"LED-{date_str}-{random_part}-{count + 1:05d}"
 
 
-def generate_unique_refund_number(db: Session) -> str:
+async def generate_unique_refund_number(db: Session) -> str:
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     random_part = secrets.token_hex(2).upper()
-    count = db.query(Refund).count()
+    count = await db.query(Refund).count()
     return f"RF-{date_str}-{random_part}-{count + 1:04d}"
 
 
 # =====================================================================
 # 1. COUNTER BOOKING WITH PESSIMISTIC ROW LOCKING (with_for_update)
 # =====================================================================
-def create_counter_booking(
+async def create_counter_booking(
     db: Session,
     req: CreateBookingRequest,
     staff_id: str,
@@ -68,7 +68,7 @@ def create_counter_booking(
     now = datetime.now(timezone.utc)
 
     # 1. Pessimistic Row Locking on the target Trip
-    trip = db.query(Trip).filter(Trip.id == req.trip_id).with_for_update(nowait=False).first()
+    trip = await db.query(Trip).filter(Trip.id == req.trip_id).with_for_update(nowait=False).first()
     if not trip:
         raise ValueError("Trip not found")
     if trip.status in ["CANCELLED", "COMPLETED"]:
@@ -164,7 +164,7 @@ def create_counter_booking(
         notes=req.notes
     )
     db.add(booking)
-    db.flush()
+    await db.flush()
 
     # 5. Attach Seats & Release Redis Holds
     for s in req.seats:
@@ -224,7 +224,7 @@ def create_counter_booking(
             notes=req.notes or "Initial Counter Payment"
         )
         db.add(payment)
-        db.flush()
+        await db.flush()
 
         if req.transaction_id:
             trx = PaymentTransaction(
@@ -257,21 +257,21 @@ def create_counter_booking(
         new_value=f"Booking {booking.booking_number} created with {len(req.seats)} seats."
     ))
 
-    db.commit()
-    db.refresh(booking)
+    await db.commit()
+    await db.refresh(booking)
     return booking
 
 
 # =====================================================================
 # 2. ONLINE PRE-BOOKING WITH REDIS 15-MINUTE ANTI-HOARDING LOCK
 # =====================================================================
-def create_pre_booking(
+async def create_pre_booking(
     db: Session,
     req: CreatePreBookingRequest,
     tenant_id: Optional[str] = None
 ) -> Booking:
     now = datetime.now(timezone.utc)
-    trip = db.query(Trip).filter(Trip.id == req.trip_id).with_for_update(nowait=False).first()
+    trip = await db.query(Trip).filter(Trip.id == req.trip_id).with_for_update(nowait=False).first()
     if not trip:
         raise ValueError("Trip not found")
 
@@ -358,7 +358,7 @@ def create_pre_booking(
         notes=req.notes
     )
     db.add(booking)
-    db.flush()
+    await db.flush()
 
     for seat_id in req.seat_ids:
         db.add(BookingSeat(
@@ -375,16 +375,16 @@ def create_pre_booking(
             seat_number=seat_id
         ))
 
-    db.commit()
-    db.refresh(booking)
+    await db.commit()
+    await db.refresh(booking)
     return booking
 
 
 # =====================================================================
 # 3. VERIFICATION & LIVE 15-MINUTE PAYMENT COUNTDOWN TIMER
 # =====================================================================
-def verify_and_start_timer(db: Session, req: VerifyTimerRequest, staff_id: str) -> Booking:
-    booking = db.query(Booking).filter(Booking.id == req.booking_id).with_for_update(nowait=False).first()
+async def verify_and_start_timer(db: Session, req: VerifyTimerRequest, staff_id: str) -> Booking:
+    booking = await db.query(Booking).filter(Booking.id == req.booking_id).with_for_update(nowait=False).first()
     if not booking:
         raise ValueError("Booking not found")
     if booking.booking_status in ["CANCELLED", "EXPIRED", "REJECTED"]:
@@ -418,15 +418,15 @@ def verify_and_start_timer(db: Session, req: VerifyTimerRequest, staff_id: str) 
         booking.student_admission_id = req.student_admission_id
     booking.verification_notes = req.notes or f"Verified by staff. {req.duration_minutes}-minute live payment window active."
 
-    db.commit()
-    db.refresh(booking)
+    await db.commit()
+    await db.refresh(booking)
     return booking
 
 
 # =====================================================================
 # 4. IDEMPOTENT PAYMENT CONFIRMATION WITH PESSIMISTIC ROW LOCKING
 # =====================================================================
-def confirm_pre_booking_payment(
+async def confirm_pre_booking_payment(
     db: Session,
     req: ConfirmPreBookingPaymentRequest,
     staff_id: str,
@@ -438,11 +438,11 @@ def confirm_pre_booking_payment(
         if state == "PROCESSING":
             raise ValueError("This payment request is currently being handled. Please wait.")
         elif state == "COMPLETED" and cached_res:
-            return db.query(Booking).filter(Booking.id == cached_res.get("id", req.booking_id)).first()
+            return await db.query(Booking).filter(Booking.id == cached_res.get("id", req.booking_id)).first()
 
     try:
         # 2. Pessimistic Row Locking on the target Booking
-        booking = db.query(Booking).filter(Booking.id == req.booking_id).with_for_update(nowait=False).first()
+        booking = await db.query(Booking).filter(Booking.id == req.booking_id).with_for_update(nowait=False).first()
         if not booking:
             raise ValueError("Booking not found")
         if booking.booking_status == "CONFIRMED":
@@ -462,7 +462,7 @@ def confirm_pre_booking_payment(
             notes=req.notes or "Pre-booking payment confirmed after staff verification"
         )
         db.add(payment)
-        db.flush()
+        await db.flush()
 
         if req.transaction_id:
             db.add(PaymentTransaction(
@@ -505,8 +505,8 @@ def confirm_pre_booking_payment(
             new_value=f"Payment of {paid} BDT confirmed via {req.payment_method}."
         ))
 
-        db.commit()
-        db.refresh(booking)
+        await db.commit()
+        await db.refresh(booking)
 
         # Mark Idempotency as COMPLETED
         if idempotency_key:
@@ -523,13 +523,13 @@ def confirm_pre_booking_payment(
 # =====================================================================
 # 5. CANCELLATION, REJECTION & REFUND SERVICE WORKFLOWS
 # =====================================================================
-def cancel_booking_service(
+async def cancel_booking_service(
     db: Session,
     booking_id: str,
     staff_id: str,
     reason: str = "Customer Request"
 ) -> Booking:
-    booking = db.query(Booking).filter(Booking.id == booking_id).with_for_update(nowait=False).first()
+    booking = await db.query(Booking).filter(Booking.id == booking_id).with_for_update(nowait=False).first()
     if not booking:
         raise ValueError("Booking not found")
     if booking.booking_status == "CANCELLED":
@@ -555,18 +555,18 @@ def cancel_booking_service(
         new_value=f"Booking {booking.booking_number} cancelled. Reason: {reason}"
     ))
 
-    db.commit()
-    db.refresh(booking)
+    await db.commit()
+    await db.refresh(booking)
     return booking
 
 
-def reject_pre_booking_service(
+async def reject_pre_booking_service(
     db: Session,
     booking_id: str,
     staff_id: str,
     reason: str = "Verification Failed"
 ) -> Booking:
-    booking = db.query(Booking).filter(Booking.id == booking_id).with_for_update(nowait=False).first()
+    booking = await db.query(Booking).filter(Booking.id == booking_id).with_for_update(nowait=False).first()
     if not booking:
         raise ValueError("Booking not found")
 
@@ -593,12 +593,12 @@ def reject_pre_booking_service(
         new_value=f"Pre-booking {booking.booking_number} rejected. Reason: {reason}"
     ))
 
-    db.commit()
-    db.refresh(booking)
+    await db.commit()
+    await db.refresh(booking)
     return booking
 
 
-def create_refund_service(
+async def create_refund_service(
     db: Session,
     booking_id: str,
     amount: float,
@@ -610,14 +610,15 @@ def create_refund_service(
     if amount <= 0:
         raise ValueError("Refund amount must be greater than zero")
 
-    booking = db.query(Booking).filter(Booking.id == booking_id).with_for_update(nowait=False).first()
+    booking = await db.query(Booking).filter(Booking.id == booking_id).with_for_update(nowait=False).first()
     if not booking:
         raise ValueError("Booking not found")
 
-    if amount > booking.paid_amount:
-        raise ValueError(f"Refund amount (৳{amount}) cannot exceed total paid amount (৳{booking.paid_amount})")
+    paid_float = float(booking.paid_amount or 0.0)
+    if amount > paid_float:
+        raise ValueError(f"Refund amount (৳{amount}) cannot exceed total paid amount (৳{paid_float})")
 
-    refund_number = generate_unique_refund_number(db)
+    refund_number = await generate_unique_refund_number(db)
     refund = Refund(
         refund_number=refund_number,
         booking_id=booking.id,
@@ -628,10 +629,10 @@ def create_refund_service(
         processed_by_id=staff_id
     )
     db.add(refund)
-    db.flush()
+    await db.flush()
 
-    new_paid = max(0.0, booking.paid_amount - amount)
-    new_due = max(0.0, booking.net_amount - new_paid)
+    new_paid = max(0.0, paid_float - float(amount))
+    new_due = max(0.0, float(booking.net_amount or 0.0) - new_paid)
     booking.paid_amount = new_paid
     booking.due_amount = new_due
     if new_paid == 0:
@@ -640,7 +641,7 @@ def create_refund_service(
         booking.payment_status = "PARTIALLY_PAID"
 
     ledger = FinancialLedger(
-        entry_number=generate_unique_ledger_number(db),
+        entry_number=await generate_unique_ledger_number(db),
         entry_type="REFUND_ISSUED",
         debit=amount,
         credit=0.0,
@@ -661,6 +662,6 @@ def create_refund_service(
         new_value=f"Refund of ৳{amount} issued via {method}. Refund Number: {refund_number}"
     ))
 
-    db.commit()
-    db.refresh(refund)
+    await db.commit()
+    await db.refresh(refund)
     return refund

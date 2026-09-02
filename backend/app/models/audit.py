@@ -19,7 +19,7 @@ class AuditLog(Base):
     new_value = Column(Text, nullable=True)       # JSON string
     ip_address = Column(String, nullable=True)
     user_agent = Column(String, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
 
     # Relationships
     user = relationship("User", back_populates="audit_logs")
@@ -35,7 +35,7 @@ class Notification(Base):
     type = Column(String, default="INFO")  # "INFO", "WARNING", "APPROVAL_REQUEST", "MISMATCH"
     is_read = Column(Boolean, default=False, index=True)
     link_url = Column(String, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     user = relationship("User", back_populates="notifications")
@@ -48,4 +48,4 @@ class SystemSetting(Base):
     key = Column(String, unique=True, index=True, nullable=False)
     value = Column(Text, nullable=False)
     description = Column(String, nullable=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

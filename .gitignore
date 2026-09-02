@@ -62,5 +62,12 @@ backend/.venv/
 backend/__pycache__/
 backend/**/__pycache__/
 
-# local temporary
+# local temporary & runtime storage
 bd_path.txt
+bus_management_backup.sql
+backend/backups/*.enc
+backend/uploads/images/*
+backend/uploads/documents/*
+!backend/uploads/images/.gitkeep
+!backend/uploads/documents/.gitkeep
+!backend/backups/.gitkeep

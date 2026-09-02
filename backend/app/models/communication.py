@@ -19,7 +19,7 @@ class MessageLog(Base):
     sent_by_id = Column(String, ForeignKey("users.id"), nullable=True)
     error_message = Column(Text, nullable=True)
     sent_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     tenant = relationship("Tenant")
     sent_by = relationship("User", foreign_keys=[sent_by_id])

@@ -80,7 +80,7 @@ def calculate_day_closing_summary(db: Session, date_input: datetime) -> Dict[str
     }
 
 
-def submit_day_closing(db: Session, req: SubmitDayClosingRequest, staff_id: str, tenant_id: Optional[str] = None) -> DayClosing:
+async def submit_day_closing(db: Session, req: SubmitDayClosingRequest, staff_id: str, tenant_id: Optional[str] = None) -> DayClosing:
     # Prevent double-closing the same day (closing_date is unique per row).
     start_of_day, _ = _day_bounds(req.closing_date)
     existing = (
@@ -138,6 +138,6 @@ def submit_day_closing(db: Session, req: SubmitDayClosingRequest, staff_id: str,
         summaries=payment_summaries
     )
     db.add(closing)
-    db.commit()
-    db.refresh(closing)
+    await db.commit()
+    await db.refresh(closing)
     return closing

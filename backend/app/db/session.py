@@ -1,7 +1,9 @@
 import logging
-from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.core.config import settings
+from app.db.async_wrapper import WrappedAsyncSession
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -9,34 +11,33 @@ Base = declarative_base()
 
 def create_db_engine():
     db_url = settings.DATABASE_URL
-    connect_args = {}
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
 
+    connect_args = {}
     if db_url.startswith("sqlite"):
         connect_args = {"check_same_thread": False}
-        return create_engine(db_url, connect_args=connect_args)
+        return create_async_engine(db_url, connect_args=connect_args)
 
     try:
-        # Try PostgreSQL connection
-        engine = create_engine(
+        engine = create_async_engine(
             db_url,
             pool_pre_ping=True,
-            connect_args={"connect_timeout": 5}
+            connect_args={"command_timeout": 5}
         )
-        with engine.connect() as conn:
-            pass
         return engine
     except Exception as e:
-        logger.error(f"🚨 CRITICAL ERROR: PostgreSQL on {db_url} is not accessible! ({e}). Please ensure the PostgreSQL server is running and credentials are correct.")
+        logger.error(f"🚨 CRITICAL ERROR: PostgreSQL on {db_url} is not accessible! ({e}).")
         raise e
 
-
 engine = create_db_engine()
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+AsyncSessionLocal = sessionmaker(
+    autocommit=False, 
+    autoflush=False, 
+    bind=engine, 
+    class_=AsyncSession
+)
 
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield WrappedAsyncSession(session)

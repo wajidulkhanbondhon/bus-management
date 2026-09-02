@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from typing import Any, List
 from app.db.session import get_db
 from app.core.deps import get_current_user
@@ -33,8 +34,8 @@ class SecurityEventResponse(BaseModel):
         from_attributes = True
 
 @router.get("/blocked-ips", response_model=List[BlockedIPResponse])
-def get_blocked_ips(
-    db: Session = Depends(get_db),
+async def get_blocked_ips(
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """
@@ -42,12 +43,12 @@ def get_blocked_ips(
     """
     if current_user.role.name not in ["SUPER_ADMIN", "ADMIN"]:
         raise HTTPException(status_code=403, detail="Not authorized")
-    return db.query(BlockedIP).order_by(BlockedIP.created_at.desc()).all()
+    return await db.query(BlockedIP).order_by(BlockedIP.created_at.desc()).all()
 
 @router.post("/unblock/{ip_address}")
-def unblock_ip(
+async def unblock_ip(
     ip_address: str,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """
@@ -56,18 +57,18 @@ def unblock_ip(
     if current_user.role.name not in ["SUPER_ADMIN", "ADMIN"]:
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    blocked = db.query(BlockedIP).filter(BlockedIP.ip_address == ip_address).first()
+    blocked = await db.query(BlockedIP).filter(BlockedIP.ip_address == ip_address).first()
     if not blocked:
         raise HTTPException(status_code=404, detail="IP not found")
     
     blocked.is_blocked = False
     blocked.reason = f"Unblocked by {current_user.email}"
-    db.commit()
+    await db.commit()
     return {"message": "IP unblocked successfully"}
 
 @router.get("/events", response_model=List[SecurityEventResponse])
-def get_security_events(
-    db: Session = Depends(get_db),
+async def get_security_events(
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """
@@ -75,4 +76,4 @@ def get_security_events(
     """
     if current_user.role.name not in ["SUPER_ADMIN", "ADMIN"]:
         raise HTTPException(status_code=403, detail="Not authorized")
-    return db.query(SecurityEvent).order_by(SecurityEvent.created_at.desc()).limit(50).all()
+    return await db.query(SecurityEvent).order_by(SecurityEvent.created_at.desc()).limit(50).all()

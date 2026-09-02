@@ -38,10 +38,10 @@ def rate_limit(requests_per_minute: int, key_prefix: str = "rl"):
             if current_count >= requests_per_minute:
                 retry_after = 60 - (now - window_start)
                 # Log security event
-                from app.db.session import SessionLocal
+                from app.db.session import AsyncSessionLocal
                 from app.models.security import SecurityEvent, BlockedIP
                 try:
-                    db = SessionLocal()
+                    db = AsyncSessionLocal()
                     event = SecurityEvent(event_type="RATE_LIMIT_EXCEEDED", ip_address=client_ip, details=f"Path: {path}")
                     db.add(event)
                     
@@ -79,10 +79,10 @@ def rate_limit(requests_per_minute: int, key_prefix: str = "rl"):
             hits = [h for h in hits if h > window_start]
             if len(hits) >= requests_per_minute:
                 # Basic in-memory brute force simulation (logging only)
-                from app.db.session import SessionLocal
+                from app.db.session import AsyncSessionLocal
                 from app.models.security import SecurityEvent, BlockedIP
                 try:
-                    db = SessionLocal()
+                    db = AsyncSessionLocal()
                     event = SecurityEvent(event_type="RATE_LIMIT_EXCEEDED", ip_address=client_ip, details=f"Path: {path}")
                     db.add(event)
                     

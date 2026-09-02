@@ -5,6 +5,7 @@ from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, s
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from app.db.session import get_db
 from app.core.deps import get_current_user, get_optional_user, get_current_tenant_id
 from app.core.rate_limiter import RateLimiter
@@ -43,9 +44,9 @@ class AIFeedbackRequest(BaseModel):
 
 
 @router.post("/chat", response_model=AIResponsePayload)
-def ai_chat_endpoint(
+async def ai_chat_endpoint(
     req: AIChatRequest,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user),
     tenant_id: Optional[str] = Depends(get_current_tenant_id)
 ):
@@ -76,9 +77,9 @@ def ai_chat_endpoint(
 
 
 @router.post("/chat/stream")
-def ai_chat_stream_endpoint(
+async def ai_chat_stream_endpoint(
     req: AIChatRequest,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user),
     tenant_id: Optional[str] = Depends(get_current_tenant_id)
 ):
@@ -110,9 +111,9 @@ def ai_chat_stream_endpoint(
 
 
 @router.post("/action/confirm")
-def confirm_ai_action(
+async def confirm_ai_action(
     req: AIActionConfirmRequest,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
@@ -135,7 +136,7 @@ def confirm_ai_action(
             new_value=f"Reason: {req.lock_reason}, Trip: {req.trip_id}"
         )
         db.add(audit)
-        db.commit()
+        await db.commit()
 
         return {
             "success": True,
@@ -147,9 +148,9 @@ def confirm_ai_action(
 
 
 @router.post("/feedback")
-def submit_ai_feedback(
+async def submit_ai_feedback(
     req: AIFeedbackRequest,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user)
 ) -> Dict[str, Any]:
     """Collects user satisfaction rating (Thumbs Up / Down) for AI responses."""
@@ -161,17 +162,17 @@ def submit_ai_feedback(
         new_value=f"Helpful: {req.is_helpful}, Comment: {req.comment or 'None'}"
     )
     db.add(audit)
-    db.commit()
+    await db.commit()
     return {"success": True, "message": "Feedback recorded. Thank you!"}
 
 
 @router.get("/usage-stats")
-def get_ai_usage_stats(
-    db: Session = Depends(get_db),
+async def get_ai_usage_stats(
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """Returns AI interaction counts and latency metrics."""
-    total_ai_queries = db.query(AuditLog).filter(AuditLog.action.like("AI_%")).count()
+    total_ai_queries = await db.query(AuditLog).filter(AuditLog.action.like("AI_%")).count()
     return {
         "total_queries": max(total_ai_queries, 42),
         "quota_limit": 10000,
@@ -185,7 +186,7 @@ def get_ai_usage_stats(
 async def scan_student_id_card(
     file: Optional[UploadFile] = File(None),
     sample_type: Optional[str] = Form(None),
-    db: Session = Depends(get_db)
+    db: WrappedAsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     """
     Intelligent Admit Card AI OCR Scanner & Auto-Trip Matcher.
@@ -279,7 +280,7 @@ async def scan_student_id_card(
 
 
 @router.get("/exam-buffer")
-def get_exam_buffer_endpoint(
+async def get_exam_buffer_endpoint(
     campus: str = "DU",
     time_str: str = "10:00 AM"
 ) -> Dict[str, Any]:
@@ -288,21 +289,21 @@ def get_exam_buffer_endpoint(
 
 
 @router.get("/demand-forecast")
-def get_demand_forecast_endpoint(
+async def get_demand_forecast_endpoint(
     university: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: WrappedAsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     """Provides admission bus demand forecast from Rajshahi division for office users."""
     return get_admission_demand_forecast(db=db, university=university)
 
 
 @router.post("/multimodal-chat", response_model=AIResponsePayload)
-def ai_multimodal_chat_endpoint(
+async def ai_multimodal_chat_endpoint(
     prompt: str = Form(...),
     context: AIContext = Form(AIContext.OFFICE_AI),
     role: Optional[str] = Form(None),
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user),
     tenant_id: Optional[str] = Depends(get_current_tenant_id)
 ):

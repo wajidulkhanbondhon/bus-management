@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from app.db.session import get_db
 from app.core.deps import get_optional_user, require_role, get_current_tenant_id
 from app.models.coupon import MarketingCoupon
@@ -63,37 +64,37 @@ DEFAULT_COUPONS = [
 ]
 
 
-def seed_coupons_if_empty(db: Session, tenant_id: Optional[str] = None):
-    count = db.query(MarketingCoupon).count()
+async def seed_coupons_if_empty(db: Session, tenant_id: Optional[str] = None):
+    count = await db.query(MarketingCoupon).count()
     if count == 0:
         for item in DEFAULT_COUPONS:
             c = MarketingCoupon(**item, tenant_id=tenant_id)
             db.add(c)
-        db.commit()
+        await db.commit()
 
 
 @router.get("", response_model=List[CouponOut], include_in_schema=False)
 @router.get("/", response_model=List[CouponOut])
-def list_coupons(
-    db: Session = Depends(get_db),
+async def list_coupons(
+    db: WrappedAsyncSession = Depends(get_db),
     tenant_id: Optional[str] = Depends(get_current_tenant_id)
 ):
     seed_coupons_if_empty(db, tenant_id)
     query = db.query(MarketingCoupon)
     if tenant_id:
         query = query.filter((MarketingCoupon.tenant_id == tenant_id) | (MarketingCoupon.tenant_id == None))
-    return query.order_by(MarketingCoupon.created_at.desc()).all()
+    return await query.order_by(MarketingCoupon.created_at.desc()).all()
 
 
 @router.get("/validate/{code}")
-def validate_coupon(
+async def validate_coupon(
     code: str,
     purchase_amount: Optional[float] = Query(0.0),
     university: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
+    db: WrappedAsyncSession = Depends(get_db)
 ):
     clean_code = code.strip().upper()
-    coupon = db.query(MarketingCoupon).filter(MarketingCoupon.code == clean_code, MarketingCoupon.is_active == True).first()
+    coupon = await db.query(MarketingCoupon).filter(MarketingCoupon.code == clean_code, MarketingCoupon.is_active == True).first()
     if not coupon:
         raise HTTPException(status_code=404, detail="Invalid or expired coupon code")
 
@@ -129,13 +130,13 @@ def validate_coupon(
 
 @router.post("", response_model=CouponOut, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=CouponOut, status_code=status.HTTP_201_CREATED)
-def create_coupon(
+async def create_coupon(
     req: CouponCreate,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
     clean_code = req.code.strip().upper()
-    existing = db.query(MarketingCoupon).filter(MarketingCoupon.code == clean_code).first()
+    existing = await db.query(MarketingCoupon).filter(MarketingCoupon.code == clean_code).first()
     if existing:
         raise HTTPException(status_code=400, detail=f"Coupon code '{clean_code}' already exists")
 
@@ -143,37 +144,37 @@ def create_coupon(
     coupon_data = req.model_dump(exclude={"tenant_id", "code"})
     coupon = MarketingCoupon(code=clean_code, **coupon_data, tenant_id=effective_tenant)
     db.add(coupon)
-    db.commit()
-    db.refresh(coupon)
+    await db.commit()
+    await db.refresh(coupon)
     return coupon
 
 
 @router.post("/{coupon_id}/toggle")
-def toggle_coupon(
+async def toggle_coupon(
     coupon_id: str,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
-    coupon = db.query(MarketingCoupon).filter(MarketingCoupon.id == coupon_id).first()
+    coupon = await db.query(MarketingCoupon).filter(MarketingCoupon.id == coupon_id).first()
     if not coupon:
         raise HTTPException(status_code=404, detail="Coupon not found")
 
     coupon.is_active = not coupon.is_active
-    db.commit()
-    db.refresh(coupon)
+    await db.commit()
+    await db.refresh(coupon)
     return {"success": True, "id": coupon.id, "is_active": coupon.is_active}
 
 
 @router.delete("/{coupon_id}")
-def delete_coupon(
+async def delete_coupon(
     coupon_id: str,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN"]))
 ):
-    coupon = db.query(MarketingCoupon).filter(MarketingCoupon.id == coupon_id).first()
+    coupon = await db.query(MarketingCoupon).filter(MarketingCoupon.id == coupon_id).first()
     if not coupon:
         raise HTTPException(status_code=404, detail="Coupon not found")
 
-    db.delete(coupon)
-    db.commit()
+    await db.delete(coupon)
+    await db.commit()
     return {"success": True, "message": "Coupon deleted"}

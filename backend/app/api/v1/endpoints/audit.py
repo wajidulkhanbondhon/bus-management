@@ -1,6 +1,7 @@
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from app.db.session import get_db
 from app.core.deps import require_role, get_current_tenant_id
 from app.models.audit import AuditLog
@@ -10,11 +11,11 @@ router = APIRouter()
 
 
 @router.get("/", response_model=List[Dict[str, Any]])
-def list_audit_logs(
+async def list_audit_logs(
     action: Optional[str] = None,
     entity: Optional[str] = None,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN"]))
 ):
     query = db.query(AuditLog)
@@ -27,7 +28,7 @@ def list_audit_logs(
         query = query.filter(AuditLog.action == action)
     if entity:
         query = query.filter(AuditLog.entity == entity)
-    logs = query.order_by(AuditLog.created_at.desc()).limit(100).all()
+    logs = await query.order_by(AuditLog.created_at.desc()).limit(100).all()
 
     return [
         {

@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Header, Request
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from app.db.session import get_db
 from app.core.deps import get_current_tenant_id, require_role, apply_tenant_filter, get_optional_user, get_current_user
 from app.core.rate_limiter import rate_limit
@@ -28,12 +29,12 @@ router = APIRouter()
 
 @router.get("", response_model=List[BookingOut], include_in_schema=False)
 @router.get("/", response_model=List[BookingOut])
-def list_bookings(
+async def list_bookings(
     status: Optional[str] = None,
     payment_status: Optional[str] = None,
     has_due: Optional[bool] = None,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF", "ACCOUNTANT", "VIEWER"]))
 ):
     query = db.query(Booking)
@@ -44,16 +45,16 @@ def list_bookings(
         query = query.filter(Booking.payment_status == payment_status)
     if has_due:
         query = query.filter(Booking.due_amount > 0)
-    return query.order_by(Booking.created_at.desc()).limit(100).all()
+    return await query.order_by(Booking.created_at.desc()).limit(100).all()
 
 
 @router.post("", response_model=BookingOut, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=BookingOut, status_code=status.HTTP_201_CREATED)
-def create_booking(
+async def create_booking(
     req: CreateBookingRequest,
     request: Request,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
 ):
     try:
@@ -67,10 +68,10 @@ def create_booking(
 
 
 @router.post("/pre-booking", response_model=BookingOut, status_code=status.HTTP_201_CREATED)
-def pre_book(
+async def pre_book(
     req: CreatePreBookingRequest,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF", "VIEWER"]))
 ):
     try:
@@ -82,13 +83,13 @@ def pre_book(
 
 
 @router.post("/verify-timer", response_model=BookingOut)
-def verify_booking(
+async def verify_booking(
     req: VerifyTimerRequest,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
 ):
     try:
-        booking = db.query(Booking).filter(Booking.id == req.booking_id).first()
+        booking = await db.query(Booking).filter(Booking.id == req.booking_id).first()
         if not booking:
             raise HTTPException(status_code=404, detail="Booking not found")
         if current_user.role and current_user.role.name != "SUPER_ADMIN":
@@ -107,7 +108,7 @@ def verify_booking(
 def confirm_payment(
     req: ConfirmPreBookingPaymentRequest,
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF", "ACCOUNTANT"]))
 ):
     try:
@@ -117,10 +118,10 @@ def confirm_payment(
 
 
 @router.get("/online-requests", response_model=List[BookingOut])
-def list_online_requests(
+async def list_online_requests(
     status_filter: Optional[str] = None,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
 ):
     query = db.query(Booking).filter(
@@ -129,13 +130,13 @@ def list_online_requests(
     query = apply_tenant_filter(query, Booking, current_user, tenant_id)
     if status_filter and status_filter != "ALL":
         query = query.filter(Booking.booking_status == status_filter)
-    return query.order_by(Booking.created_at.desc()).all()
+    return await query.order_by(Booking.created_at.desc()).all()
 
 
 @router.get("/track/{query_str}", response_model=Optional[BookingOut], dependencies=[Depends(rate_limit(requests_per_minute=10, key_prefix="track"))])
-def track_booking(
+async def track_booking(
     query_str: str,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user)
 ):
     booking = db.query(Booking).filter(
@@ -160,12 +161,12 @@ def track_booking(
 
 
 @router.get("/{booking_id}", response_model=BookingOut)
-def get_booking_by_id(
+async def get_booking_by_id(
     booking_id: str,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF", "ACCOUNTANT", "VIEWER"]))
 ):
-    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    booking = await db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
     if current_user.role and current_user.role.name != "SUPER_ADMIN":
@@ -175,13 +176,13 @@ def get_booking_by_id(
 
 
 @router.post("/{booking_id}/cancel", response_model=BookingOut)
-def cancel_booking(
+async def cancel_booking(
     booking_id: str,
     reason: str = "Customer Request",
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
 ):
-    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    booking = await db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
     if current_user.role and current_user.role.name != "SUPER_ADMIN":
@@ -194,13 +195,13 @@ def cancel_booking(
 
 
 @router.post("/{booking_id}/reject", response_model=BookingOut)
-def reject_pre_booking(
+async def reject_pre_booking(
     booking_id: str,
     reason: str = "Verification Failed",
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
 ):
-    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    booking = await db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
     if current_user.role and current_user.role.name != "SUPER_ADMIN":

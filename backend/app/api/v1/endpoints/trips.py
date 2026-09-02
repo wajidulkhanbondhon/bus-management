@@ -2,6 +2,7 @@ from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from app.db.session import get_db
 from app.core.deps import get_current_tenant_id, require_role
 from app.models.trip import Trip, BusRoute, TripStop
@@ -13,13 +14,13 @@ router = APIRouter()
 
 @router.get("", response_model=List[TripOut], include_in_schema=False)
 @router.get("/", response_model=List[TripOut])
-def list_trips(
+async def list_trips(
     origin: Optional[str] = None,
     destination: Optional[str] = None,
     bus_type: Optional[str] = None,
     date: Optional[str] = None,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db)
+    db: WrappedAsyncSession = Depends(get_db)
 ):
     query = db.query(Trip).join(BusRoute).filter(Trip.status.in_(["SCHEDULED", "BOARDING"]))
     if tenant_id:
@@ -38,15 +39,15 @@ def list_trips(
             query = query.filter(Trip.departure_date >= start_d, Trip.departure_date <= end_d)
         except Exception:
             pass
-    return query.order_by(Trip.departure_date.asc(), Trip.departure_time.asc()).all()
+    return await query.order_by(Trip.departure_date.asc(), Trip.departure_time.asc()).all()
 
 
 @router.post("", response_model=TripOut, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=TripOut, status_code=status.HTTP_201_CREATED)
-def schedule_trip(
+async def schedule_trip(
     req: TripCreate,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
     if req.base_price <= 0:
@@ -60,9 +61,9 @@ def schedule_trip(
     if dep_date < yesterday:
         raise HTTPException(status_code=400, detail="Cannot schedule trip in the past")
 
-    route = db.query(BusRoute).filter(BusRoute.id == req.route_id).first()
+    route = await db.query(BusRoute).filter(BusRoute.id == req.route_id).first()
     if not route:
-        route = db.query(BusRoute).first()
+        route = await db.query(BusRoute).first()
         if not route:
             route = BusRoute(
                 route_name="Dhaka to Rajshahi University",
@@ -72,8 +73,8 @@ def schedule_trip(
                 est_duration="5h 30m"
             )
             db.add(route)
-            db.commit()
-            db.refresh(route)
+            await db.commit()
+            await db.refresh(route)
 
     trip_data = req.model_dump()
     trip_data["route_id"] = route.id
@@ -83,27 +84,27 @@ def schedule_trip(
     effective_tenant = current_user.tenant_id if (current_user.role and current_user.role.name != "SUPER_ADMIN") else (tenant_id or current_user.tenant_id)
     trip = Trip(**trip_data, tenant_id=effective_tenant)
     db.add(trip)
-    db.commit()
-    db.refresh(trip)
+    await db.commit()
+    await db.refresh(trip)
     return trip
 
 
 @router.get("/routes", response_model=List[BusRouteOut])
-def list_routes(
+async def list_routes(
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db)
+    db: WrappedAsyncSession = Depends(get_db)
 ):
     query = db.query(BusRoute)
     if tenant_id:
         query = query.filter(BusRoute.tenant_id == tenant_id)
-    return query.all()
+    return await query.all()
 
 
 @router.post("/routes", response_model=BusRouteOut, status_code=status.HTTP_201_CREATED)
-def create_route(
+async def create_route(
     req: BusRouteCreate,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
     effective_tenant = current_user.tenant_id if (current_user.role and current_user.role.name != "SUPER_ADMIN") else (tenant_id or current_user.tenant_id)
@@ -116,7 +117,7 @@ def create_route(
         tenant_id=effective_tenant
     )
     db.add(route)
-    db.flush()
+    await db.flush()
 
     for s in req.stops:
         stop = TripStop(
@@ -127,19 +128,19 @@ def create_route(
         )
         db.add(stop)
 
-    db.commit()
-    db.refresh(route)
+    await db.commit()
+    await db.refresh(route)
     return route
 
 
 @router.put("/routes/{route_id}", response_model=BusRouteOut)
-def update_route(
+async def update_route(
     route_id: str,
     req: BusRouteUpdate,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
-    route = db.query(BusRoute).filter(BusRoute.id == route_id).first()
+    route = await db.query(BusRoute).filter(BusRoute.id == route_id).first()
     if not route:
         raise HTTPException(status_code=404, detail="Bus route not found")
 
@@ -165,25 +166,25 @@ def update_route(
             )
             db.add(stop)
 
-    db.commit()
-    db.refresh(route)
+    await db.commit()
+    await db.refresh(route)
     return route
 
 
 @router.delete("/routes/{route_id}")
-def delete_route(
+async def delete_route(
     route_id: str,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN"]))
 ):
-    route = db.query(BusRoute).filter(BusRoute.id == route_id).first()
+    route = await db.query(BusRoute).filter(BusRoute.id == route_id).first()
     if not route:
         raise HTTPException(status_code=404, detail="Bus route not found")
 
-    trips_count = db.query(Trip).filter(Trip.route_id == route.id).count()
+    trips_count = await db.query(Trip).filter(Trip.route_id == route.id).count()
     if trips_count > 0:
         raise HTTPException(status_code=400, detail=f"Cannot delete route: {trips_count} scheduled trips are using this route")
 
-    db.delete(route)
-    db.commit()
+    await db.delete(route)
+    await db.commit()
     return {"success": True, "message": "Route deleted"}

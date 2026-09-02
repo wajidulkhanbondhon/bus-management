@@ -22,7 +22,7 @@ class Role(Base):
     description = Column(String, nullable=True)
 
     # Relationships
-    permissions = relationship("Permission", secondary=role_permissions, back_populates="roles")
+    permissions = relationship("Permission", secondary=role_permissions, back_populates="roles", lazy="selectin")
     users = relationship("User", back_populates="role")
 
 
@@ -55,12 +55,12 @@ class User(Base):
     current_otp = Column(String, nullable=True)
     otp_expires_at = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users")
-    role = relationship("Role", back_populates="users")
+    role = relationship("Role", back_populates="users", lazy="selectin")
     created_bookings = relationship("Booking", back_populates="created_by", foreign_keys="Booking.created_by_id")
     received_payments = relationship("Payment", back_populates="received_by")
     applied_discounts = relationship("Discount", back_populates="applied_by", foreign_keys="Discount.applied_by_id")
@@ -81,7 +81,7 @@ class DeviceSession(Base):
     ip_address = Column(String, nullable=True)
     location = Column(String, nullable=True)
     is_blocked = Column(Boolean, default=False)
-    last_active_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_active_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     
     user = relationship("User", back_populates="device_sessions")

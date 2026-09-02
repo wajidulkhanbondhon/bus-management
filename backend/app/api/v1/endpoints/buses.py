@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from app.db.session import get_db
 from app.core.deps import get_current_tenant_id, require_role, apply_tenant_filter
 from app.models.bus import Bus, SeatLayout, Seat
@@ -13,26 +14,26 @@ router = APIRouter()
 
 @router.get("", response_model=List[BusOut], include_in_schema=False)
 @router.get("/", response_model=List[BusOut])
-def list_buses(
+async def list_buses(
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF", "ACCOUNTANT", "VIEWER"]))
 ):
     query = db.query(Bus).filter(Bus.status != "DELETED")
     query = apply_tenant_filter(query, Bus, current_user, tenant_id)
-    return query.all()
+    return await query.all()
 
 
 @router.post("", response_model=BusOut, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=BusOut, status_code=status.HTTP_201_CREATED)
-def create_bus(
+async def create_bus(
     req: BusCreate,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
     # Check if a bus with the same bus_number exists
-    existing_bus = db.query(Bus).filter(Bus.bus_number == req.bus_number).first()
+    existing_bus = await db.query(Bus).filter(Bus.bus_number == req.bus_number).first()
     if existing_bus:
         if existing_bus.status != "DELETED":
             raise HTTPException(status_code=400, detail=f"Bus number '{req.bus_number}' already exists")
@@ -47,12 +48,12 @@ def create_bus(
             existing_bus.seat_layout_id = req.seat_layout_id
             if tenant_id:
                 existing_bus.tenant_id = tenant_id
-            db.commit()
-            db.refresh(existing_bus)
+            await db.commit()
+            await db.refresh(existing_bus)
             return existing_bus
 
     # Check reg_number
-    existing_reg = db.query(Bus).filter(Bus.reg_number == req.reg_number).first()
+    existing_reg = await db.query(Bus).filter(Bus.reg_number == req.reg_number).first()
     if existing_reg:
         if existing_reg.status != "DELETED":
             raise HTTPException(status_code=400, detail=f"Registration number '{req.reg_number}' already exists")
@@ -67,8 +68,8 @@ def create_bus(
             existing_reg.seat_layout_id = req.seat_layout_id
             if tenant_id:
                 existing_reg.tenant_id = tenant_id
-            db.commit()
-            db.refresh(existing_reg)
+            await db.commit()
+            await db.refresh(existing_reg)
             return existing_reg
 
     bus_data = req.model_dump()
@@ -76,38 +77,38 @@ def create_bus(
         bus_data["tenant_id"] = tenant_id
     bus = Bus(**bus_data)
     db.add(bus)
-    db.commit()
-    db.refresh(bus)
+    await db.commit()
+    await db.refresh(bus)
     return bus
 
 
 @router.get("/seat-layouts", response_model=List[SeatLayoutOut])
-def list_seat_layouts(
-    db: Session = Depends(get_db)
+async def list_seat_layouts(
+    db: WrappedAsyncSession = Depends(get_db)
 ):
-    return db.query(SeatLayout).order_by(SeatLayout.created_at.desc() if hasattr(SeatLayout, 'created_at') else SeatLayout.id.desc()).all()
+    return await db.query(SeatLayout).order_by(SeatLayout.created_at.desc() if hasattr(SeatLayout, 'created_at') else SeatLayout.id.desc()).all()
 
 
 @router.post("/seat-layouts", response_model=SeatLayoutOut, status_code=status.HTTP_201_CREATED)
-def create_seat_layout(
+async def create_seat_layout(
     req: SeatLayoutCreate,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
     layout = SeatLayout(**req.model_dump())
     db.add(layout)
-    db.commit()
-    db.refresh(layout)
+    await db.commit()
+    await db.refresh(layout)
     return layout
 
 
 @router.delete("/seat-layouts/{layout_id}")
-def delete_seat_layout(
+async def delete_seat_layout(
     layout_id: str,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
-    layout = db.query(SeatLayout).filter(SeatLayout.id == layout_id).first()
+    layout = await db.query(SeatLayout).filter(SeatLayout.id == layout_id).first()
     if not layout:
         raise HTTPException(status_code=404, detail="Seat layout not found")
 
@@ -115,33 +116,33 @@ def delete_seat_layout(
     db.query(Bus).filter(Bus.seat_layout_id == layout_id).update({"seat_layout_id": None})
     # Delete child seats
     db.query(Seat).filter(Seat.seat_layout_id == layout_id).delete()
-    db.delete(layout)
-    db.commit()
+    await db.delete(layout)
+    await db.commit()
     return {"success": True, "message": "Seat layout deleted successfully"}
 
 
 @router.get("/{bus_id}", response_model=BusOut)
-def get_bus(
+async def get_bus(
     bus_id: str,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF", "ACCOUNTANT", "VIEWER"]))
 ):
-    bus = db.query(Bus).filter(Bus.id == bus_id, Bus.status != "DELETED").first()
+    bus = await db.query(Bus).filter(Bus.id == bus_id, Bus.status != "DELETED").first()
     if not bus:
         raise HTTPException(status_code=404, detail="Bus not found")
     return bus
 
 
 @router.put("/{bus_id}", response_model=BusOut)
-def update_bus(
+async def update_bus(
     bus_id: str,
     req: BusUpdate,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
-    bus = db.query(Bus).filter(Bus.id == bus_id, Bus.status != "DELETED").first()
+    bus = await db.query(Bus).filter(Bus.id == bus_id, Bus.status != "DELETED").first()
     if not bus:
         raise HTTPException(status_code=404, detail="Bus not found")
 
@@ -150,24 +151,24 @@ def update_bus(
         if value is not None:
             setattr(bus, field, value)
 
-    db.commit()
-    db.refresh(bus)
+    await db.commit()
+    await db.refresh(bus)
     return bus
 
 
 @router.delete("/{bus_id}")
-def delete_bus(
+async def delete_bus(
     bus_id: str,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
-    bus = db.query(Bus).filter(Bus.id == bus_id).first()
+    bus = await db.query(Bus).filter(Bus.id == bus_id).first()
     if not bus or bus.status == "DELETED":
         raise HTTPException(status_code=404, detail="Bus not found")
 
     bus.status = "DELETED"
-    db.commit()
+    await db.commit()
     return {"success": True, "message": f"Bus {bus.bus_name} ({bus.bus_number}) deleted successfully"}
 
 

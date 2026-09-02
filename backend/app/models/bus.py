@@ -20,8 +20,8 @@ class Bus(Base):
     status = Column(String, default="ACTIVE")    # "ACTIVE", "INACTIVE", "MAINTENANCE"
     notes = Column(Text, nullable=True)
     seat_layout_id = Column(String, ForeignKey("seat_layouts.id"), nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     tenant = relationship("Tenant", back_populates="buses")
@@ -39,8 +39,8 @@ class SeatLayout(Base):
     total_cols = Column(Integer, nullable=False)
     total_seats = Column(Integer, nullable=False)
     layout_json = Column(Text, nullable=False)   # JSON string of layout matrix
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     buses = relationship("Bus", back_populates="seat_layout")
@@ -76,8 +76,8 @@ class FareZone(Base):
     name = Column(String, unique=True, nullable=False)  # "VIP Front", "Standard A-E", "Rear Economy"
     description = Column(String, nullable=True)
     default_fare = Column(Money, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     seats = relationship("Seat", back_populates="fare_zone")

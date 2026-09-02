@@ -42,7 +42,7 @@ class Payment(Base):
     method = Column(String, nullable=False)  # "BKASH", "NAGAD", "ROCKET", "HAND_CASH", "BANK_TRANSFER"
     received_by_id = Column(String, ForeignKey("users.id"), nullable=False)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
 
     # Relationships
     booking = relationship("Booking", back_populates="payments")
@@ -62,7 +62,7 @@ class PaymentTransaction(Base):
     verification_status = Column(String, default="VERIFIED")     # "PENDING", "VERIFIED", "REJECTED"
     verified_at = Column(DateTime, nullable=True)
     raw_details = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     payment = relationship("Payment", back_populates="transactions")
@@ -79,7 +79,7 @@ class Refund(Base):
     method = Column(String, nullable=False)
     reason = Column(Text, nullable=False)
     processed_by_id = Column(String, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     booking = relationship("Booking", back_populates="refunds")

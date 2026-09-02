@@ -275,20 +275,20 @@ export function PublicHeroSearch({
       </section>
 
       {/* ═══════ 2. SEARCH / FILTER BAR ═══════ */}
-      <section className="sticky top-16 z-30 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800/80 py-4 transition-colors duration-200">
+      <section className="sticky top-16 z-30 bg-white/70 dark:bg-slate-950/70 backdrop-blur-2xl border-b border-slate-200/50 dark:border-slate-800/50 py-3 sm:py-5 transition-colors duration-200">
         <div className="w-full px-4 sm:px-6 lg:px-8">
-          <div className="bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800/90 rounded-2xl p-4 shadow-lg dark:shadow-2xl">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200/80 dark:border-slate-700/60 rounded-3xl p-4 sm:p-5 shadow-xl shadow-slate-200/40 dark:shadow-slate-900/40">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {/* Origin */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+              <div className="space-y-1.5 relative group">
+                <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1.5 ml-1">
+                  <MapPin className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                   {t.landingFrom || 'কোথা থেকে'}
                 </label>
                 <select
                   value={selectedOrigin}
                   onChange={(e) => onOriginChange(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-xs"
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl p-3 text-sm font-bold focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm group-hover:border-blue-300 dark:group-hover:border-blue-700 appearance-none cursor-pointer"
                 >
                   <option value="ALL">{t.landingAllOrigins || 'সকল উৎস'}</option>
                   {origins.map((o) => (
@@ -297,18 +297,21 @@ export function PublicHeroSearch({
                     </option>
                   ))}
                 </select>
+                <div className="absolute right-4 bottom-3.5 pointer-events-none">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
               </div>
 
               {/* Destination */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+              <div className="space-y-1.5 relative group">
+                <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1.5 ml-1">
+                  <MapPin className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   {t.landingTo || 'কোথায় যাবে'}
                 </label>
                 <select
                   value={selectedDestination}
                   onChange={(e) => onDestinationChange(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-xs"
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl p-3 text-sm font-bold focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm group-hover:border-emerald-300 dark:group-hover:border-emerald-700 appearance-none cursor-pointer"
                 >
                   <option value="ALL">{t.landingAllDestinations || 'সকল গন্তব্য'}</option>
                   {destinations.map((d) => (
@@ -317,51 +320,57 @@ export function PublicHeroSearch({
                     </option>
                   ))}
                 </select>
+                <div className="absolute right-4 bottom-3.5 pointer-events-none">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
               </div>
 
               {/* Bus Type */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Bus className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+              <div className="space-y-1.5 relative group">
+                <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1.5 ml-1">
+                  <Bus className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                   {t.landingBusType || 'বাসের ধরন'}
                 </label>
                 <select
                   value={selectedGenderType}
                   onChange={(e) => onGenderTypeChange(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-xs"
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl p-3 text-sm font-bold focus:ring-4 focus:ring-amber-500/20 focus:border-amber-500 transition-all shadow-sm group-hover:border-amber-300 dark:group-hover:border-amber-700 appearance-none cursor-pointer"
                 >
                   <option value="ALL">{t.landingAllBusesCategory || 'সকল বাস'}</option>
                   <option value="FEMALE">{t.landingFemaleBusCategory || 'মহিলা বাস'}</option>
                   <option value="MALE">{t.landingMaleBusCategory || 'ছাত্র বাস'}</option>
                   <option value="MIXED">{t.landingMixedBusCategory || 'মিক্সড বাস'}</option>
                 </select>
+                <div className="absolute right-4 bottom-3.5 pointer-events-none">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
               </div>
 
               {/* Date */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Calendar className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+              <div className="space-y-1.5 relative group">
+                <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1.5 ml-1">
+                  <Calendar className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                   {t.landingDate || 'তারিখ'}
                 </label>
                 <input
                   type="date"
                   value={searchDate}
                   onChange={(e) => onDateChange(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-xs"
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl p-3 text-sm font-bold focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 transition-all shadow-sm group-hover:border-purple-300 dark:group-hover:border-purple-700 cursor-pointer"
                 />
               </div>
 
               {/* Results & Reset */}
-              <div className="flex flex-col justify-end gap-1.5">
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
-                  <Filter className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-                  <span className="text-slate-900 dark:text-white font-bold">{filteredCount}</span>{' '}
+              <div className="flex flex-col justify-end gap-2 pb-1">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 font-bold flex items-center gap-1.5 bg-slate-100/50 dark:bg-slate-800/50 px-3 py-1.5 rounded-lg w-fit">
+                  <Filter className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span className="text-slate-900 dark:text-white font-black text-base">{filteredCount}</span>{' '}
                   {t.landingBusesFound || 'টি বাস পাওয়া গেছে'}
                 </div>
                 <button
                   type="button"
                   onClick={onResetFilters}
-                  className="text-blue-600 dark:text-blue-400 hover:underline font-bold text-[11px] text-left cursor-pointer"
+                  className="text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 font-bold text-xs text-left cursor-pointer transition-colors px-1"
                 >
                   {t.landingFilterReset || 'ফিল্টার রিসেট'}
                 </button>

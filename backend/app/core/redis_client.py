@@ -17,11 +17,11 @@ try:
     # Test ping
     redis_client.ping()
     is_redis_available = True
-    logger.info("✅ Connected to Redis successfully.")
+    logger.info("[REDIS] Connected to Redis successfully.")
 except Exception as e:
     redis_client = None
     is_redis_available = False
-    logger.warning(f"⚠️ Redis is not available ({e}). Using in-memory fallback for local dev.")
+    logger.warning(f"[REDIS] Redis is not available ({e}). Using in-memory fallback for local dev.")
 
 # In-memory fallback dictionary for development without Redis
 _memory_cache: Dict[str, Dict[str, Any]] = {}

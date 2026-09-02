@@ -22,7 +22,7 @@ class FinancialLedger(Base):
     refund_id = Column(String, ForeignKey("refunds.id"), nullable=True)
     day_closing_id = Column(String, ForeignKey("day_closings.id"), nullable=True)
     description = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
 
     # Relationships
     booking = relationship("Booking", back_populates="ledger_entries")
@@ -54,8 +54,8 @@ class DayClosing(Base):
     reconcile_status = Column(String, nullable=False)  # "MATCHED", "SHORT", "EXCESS"
 
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     tenant = relationship("Tenant", back_populates="day_closings")
@@ -87,13 +87,13 @@ class BusExpense(Base):
     trip_id = Column(String, ForeignKey("trips.id"), nullable=True, index=True)
     category = Column(String, nullable=False)  # "FUEL", "TOLL", "MAINTENANCE", "STAFF_ALLOWANCE", "OTHER"
     amount = Column(Money, nullable=False)
-    expense_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expense_date = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     description = Column(Text, nullable=True)
     reported_by_id = Column(String, ForeignKey("users.id"), nullable=False)
     status = Column(String, default="PENDING")  # "PENDING", "APPROVED", "REJECTED"
     approved_by_id = Column(String, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     bus = relationship("Bus")
     trip = relationship("Trip")
@@ -107,10 +107,10 @@ class StaffExpense(Base):
     staff_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     category = Column(String, nullable=False)  # "SALARY", "SNACKS", "TRANSPORT", "BONUS", "OTHER"
     amount = Column(Money, nullable=False)
-    expense_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expense_date = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     description = Column(Text, nullable=True)
     status = Column(String, default="PENDING")  # "PENDING", "PAID"
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     staff = relationship("User", foreign_keys=[staff_id])

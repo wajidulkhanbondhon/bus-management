@@ -2,6 +2,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from sqlalchemy import func
 from app.db.session import get_db
 from app.core.deps import get_current_user, require_role, get_current_tenant_id, apply_tenant_filter
@@ -17,9 +18,9 @@ router = APIRouter()
 
 
 @router.get("/dashboard-kpi")
-def get_dashboard_kpi(
+async def get_dashboard_kpi(
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "VIEWER"]))
 ) -> Dict[str, Any]:
     now = datetime.now(timezone.utc)
@@ -81,10 +82,10 @@ def get_dashboard_kpi(
 
 
 @router.get("/financial-ledger")
-def get_financial_ledger(
+async def get_financial_ledger(
     request: Request,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT"]))
 ) -> List[Dict[str, Any]]:
     client_ip = request.client.host if request.client else "127.0.0.1"
@@ -97,7 +98,7 @@ def get_financial_ledger(
         user_agent=request.headers.get("user-agent", "Unknown")
     )
     db.add(audit_entry)
-    db.commit()
+    await db.commit()
     
     query = db.query(FinancialLedger).outerjoin(Booking, FinancialLedger.booking_id == Booking.id)
     if current_user.role and current_user.role.name != "SUPER_ADMIN":
@@ -105,7 +106,7 @@ def get_financial_ledger(
     elif tenant_id:
         query = query.filter(Booking.tenant_id == tenant_id)
 
-    entries = query.order_by(FinancialLedger.created_at.desc()).limit(100).all()
+    entries = await query.order_by(FinancialLedger.created_at.desc()).limit(100).all()
     return [
         {
             "id": e.id,

@@ -1,13 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+import os
+from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from sqlalchemy import inspect
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
 import uuid
 
 from app.db.session import get_db, engine, Base
 from app.core.deps import get_current_user, require_role
+from app.services.backup_service import (
+    create_encrypted_backup_service,
+    restore_encrypted_backup_service,
+    list_encrypted_backups,
+    BACKUPS_DIR
+)
 from app.models.tenant import Tenant
 from app.models.user import User, Role, Permission
 from app.models.bus import Bus, SeatLayout, Seat, FareZone
@@ -63,15 +73,15 @@ def model_to_dict(obj: Any) -> Dict[str, Any]:
     return data
 
 @router.get("/stats")
-def get_database_stats(
-    db: Session = Depends(get_db),
+async def get_database_stats(
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN"]))
 ):
     """Returns total record counts for all core tables (SUPER_ADMIN only)."""
     stats = {}
     for table_name, model in TABLE_MODELS:
         try:
-            stats[table_name] = db.query(model).count()
+            stats[table_name] = await db.query(model).count()
         except Exception:
             stats[table_name] = 0
     return {
@@ -83,8 +93,8 @@ def get_database_stats(
     }
 
 @router.get("/export")
-def export_database_backup(
-    db: Session = Depends(get_db),
+async def export_database_backup(
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN"]))
 ):
     """Exports full database as a structured JSON backup archive (SUPER_ADMIN only)."""
@@ -101,7 +111,7 @@ def export_database_backup(
     total_exported_count = 0
     for table_name, model in TABLE_MODELS:
         try:
-            records = db.query(model).all()
+            records = await db.query(model).all()
             backup_data["data"][table_name] = [model_to_dict(r) for r in records]
             total_exported_count += len(backup_data["data"][table_name])
         except Exception as e:
@@ -113,7 +123,7 @@ def export_database_backup(
 @router.post("/import")
 async def import_database_backup(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN"]))
 ):
     """Imports and restores database from a JSON backup archive (SUPER_ADMIN only)."""
@@ -155,7 +165,7 @@ async def import_database_backup(
                 pk_col = model.__table__.primary_key.columns.keys()[0]
                 pk_val = row_dict.get(pk_col)
 
-                existing = db.query(model).filter(getattr(model, pk_col) == pk_val).first() if pk_val else None
+                existing = await db.query(model).filter(getattr(model, pk_col) == pk_val).first() if pk_val else None
 
                 if existing:
                     # Update fields
@@ -168,7 +178,7 @@ async def import_database_backup(
 
                 restored_count += 1
 
-            db.commit()
+            await db.commit()
             restored_summary[table_name] = restored_count
 
         return {
@@ -182,3 +192,121 @@ async def import_database_backup(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to restore database backup: {str(e)}")
+
+
+class CreateEncryptedBackupRequest(BaseModel):
+    pin: str = Field(..., min_length=4, description="Argon2id Master PIN for backup encryption")
+    notes: Optional[str] = Field(None, description="Optional notes for this backup snapshot")
+
+
+@router.post("/encrypted/create")
+async def create_encrypted_backup(
+    req: CreateEncryptedBackupRequest,
+    request: Request,
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN"]))
+):
+    """Generates an Argon2id KDF + AES-256-GCM encrypted database backup envelope."""
+    client_ip = request.client.host if request.client else "unknown"
+    return await create_encrypted_backup_service(
+        db=db,
+        user=current_user,
+        pin=req.pin,
+        ip_address=client_ip,
+        notes=req.notes
+    )
+
+
+@router.get("/encrypted/list")
+async def list_backups(
+    current_user: User = Depends(require_role(["SUPER_ADMIN"]))
+):
+    """Lists all stored encrypted database backups with metadata and SHA-256 checksums."""
+    return {
+        "success": True,
+        "backups": list_encrypted_backups()
+    }
+
+
+@router.get("/encrypted/download/{filename}")
+async def download_encrypted_backup(
+    filename: str,
+    request: Request,
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN"]))
+):
+    """Downloads an encrypted backup file (.enc) after recording an audit entry."""
+    clean_name = os.path.basename(filename)
+    file_path = os.path.join(BACKUPS_DIR, clean_name)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Backup file not found")
+
+    client_ip = request.client.host if request.client else "unknown"
+    audit_entry = AuditLog(
+        user_id=current_user.id,
+        action="DATABASE_BACKUP_DOWNLOADED",
+        entity="Database",
+        entity_id=clean_name,
+        ip_address=client_ip,
+        new_value=json.dumps({"filename": clean_name})
+    )
+    db.add(audit_entry)
+    await db.commit()
+
+    return FileResponse(
+        path=file_path,
+        media_type="application/octet-stream",
+        filename=clean_name
+    )
+
+
+@router.post("/encrypted/restore")
+async def restore_encrypted_backup(
+    request: Request,
+    pin: str = Form(...),
+    file: UploadFile = File(...),
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN"]))
+):
+    """
+    Uploads and restores an encrypted database backup envelope.
+    Verifies Argon2id PIN and cryptographic integrity before restoring records.
+    """
+    try:
+        encrypted_bytes = await file.read()
+        client_ip = request.client.host if request.client else "unknown"
+        return await restore_encrypted_backup_service(
+            db=db,
+            user=current_user,
+            pin=pin,
+            encrypted_bytes=encrypted_bytes,
+            ip_address=client_ip
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Restoration error: {str(e)}")
+
+
+@router.get("/audit-logs")
+async def get_database_audit_logs(
+    limit: int = 50,
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN"]))
+):
+    """Fetches immutable audit logs of all database backup and restore operations."""
+    logs = await db.query(AuditLog).filter(
+        AuditLog.entity == "Database"
+    ).order_by(AuditLog.created_at.desc()).limit(limit).all()
+
+    return [
+        {
+            "id": log.id,
+            "action": log.action,
+            "user_id": log.user_id,
+            "ip_address": log.ip_address,
+            "details": json.loads(log.new_value) if log.new_value else {},
+            "created_at": log.created_at.isoformat() if log.created_at else None
+        }
+        for log in logs
+    ]

@@ -53,8 +53,8 @@ class Booking(Base):
     passenger_legs_json = Column(Text, nullable=True)  # JSON mapping per-seat leg directions
 
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     tenant = relationship("Tenant", back_populates="bookings")
@@ -113,7 +113,7 @@ class Discount(Base):
     discount_amount = Column(Money, nullable=False)
     reason = Column(String, nullable=False)
     applied_by_id = Column(String, ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     booking = relationship("Booking", back_populates="discounts")
@@ -129,7 +129,7 @@ class DiscountApproval(Base):
     approved_by_id = Column(String, ForeignKey("users.id"), nullable=False)
     status = Column(String, default="APPROVED")  # "APPROVED", "REJECTED", "PENDING"
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     discount = relationship("Discount", back_populates="approvals")

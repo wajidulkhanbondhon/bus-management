@@ -14,7 +14,7 @@ class LandingConfig(Base):
     custom_notice = Column(Text, nullable=True)
     primary_color = Column(String, default="#3b82f6") # Default Tailwind blue-500
     language_default = Column(String, default="bn")
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 class UniversityCircular(Base):
     __tablename__ = "university_circulars"
@@ -27,5 +27,5 @@ class UniversityCircular(Base):
     exam_date = Column(DateTime, nullable=True)
     document_url = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

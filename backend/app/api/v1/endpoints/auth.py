@@ -1,9 +1,22 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
+from datetime import datetime, timedelta, timezone
+import random
+
+from app.db.async_wrapper import WrappedAsyncSession
 from app.db.session import get_db
-from app.core.security import verify_password, create_access_token, hash_passenger_pin, verify_passenger_pin
+from app.core.config import settings
+from app.core.security import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+    create_refresh_token,
+    hash_passenger_pin,
+    verify_passenger_pin,
+)
+from app.core.token_rotation import token_rotator
 from app.core.deps import get_current_user
-from app.core.rate_limiter import rate_limit
+from app.core.limiter import limiter
+from app.core.logger import logger
 from app.models.user import User
 from app.models.passenger_pin import PassengerPin
 from app.models.booking import Booking
@@ -15,125 +28,178 @@ from app.schemas.auth import (
     PassengerVerifyRequest,
     PassengerVerifyResponse,
 )
-import random
-from datetime import datetime, timedelta, timezone
 
 router = APIRouter()
 
+# Helper to attach secure cookie
+def set_auth_cookie(response: Response, token: str, key: str = "access_token", max_age: int = 604800):
+    """Sets a hardened HttpOnly + SameSite cookie for access and refresh tokens."""
+    is_prod = settings.ENVIRONMENT.lower() == "production"
+    response.set_cookie(
+        key=key,
+        value=token,
+        max_age=max_age,
+        expires=max_age,
+        path="/",
+        httponly=True,
+        secure=is_prod,
+        samesite="lax",
+    )
 
-@router.post("/login", dependencies=[Depends(rate_limit(requests_per_minute=5, key_prefix="login"))])
-def login(req: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == req.email.lower().strip(), User.is_active == True).first()
+
+@router.post("/login")
+@limiter.limit("5/minute")
+async def login(
+    request: Request,
+    req: LoginRequest,
+    response: Response,
+    db: WrappedAsyncSession = Depends(get_db)
+):
+    clean_email = req.email.lower().strip()
+    user = await db.query(User).filter(User.email == clean_email, User.is_active == True).first()
+    
     if not user or not verify_password(req.password, user.password_hash):
+        logger.warning("login_failed", email=clean_email, client_ip=request.client.host if request.client else "unknown")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
         )
         
-    # TODO: Re-enable OTP implementation later
-    # if user.role.name in ["SUPER_ADMIN", "ADMIN", "MANAGER"]:
-    #     otp = str(random.randint(100000, 999999))
-    #     user.current_otp = otp
-    #     user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-    #     db.commit()
-    #     print(f"\n==================================================")
-    #     print(f"*** SECURITY OTP for {user.email}: {otp} ***")
-    #     print(f"==================================================\n")
-    #     return {"requires_otp": True, "user_id": user.id, "email": user.email}
-
+    user_role = user.role.name if user.role else "STAFF"
     access_token = create_access_token(
         subject=user.id,
-        role=user.role.name,
+        role=user_role,
         tenant_id=user.tenant_id
     )
+    refresh_token, jti = create_refresh_token(
+        subject=user.id,
+        role=user_role,
+        tenant_id=user.tenant_id
+    )
+    token_rotator.register_refresh_token(user.id, jti)
+
+    # Set hardened HttpOnly cookies for both access and refresh tokens
+    set_auth_cookie(response, access_token, key="access_token", max_age=86400)
+    set_auth_cookie(response, refresh_token, key="refresh_token", max_age=7 * 86400)
+
+    logger.info("login_success", user_id=user.id, role=user_role)
 
     return {
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "id": user.id,
-        "role": user.role.name,
+        "role": user_role,
         "tenant_id": user.tenant_id,
         "full_name": user.full_name,
         "email": user.email
     }
 
 
-@router.post("/login/verify-otp", response_model=Token, dependencies=[Depends(rate_limit(requests_per_minute=5, key_prefix="verify_otp"))])
-def verify_otp(req: VerifyOTPRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == req.user_id, User.is_active == True).first()
+@router.post("/refresh")
+@limiter.limit("10/minute")
+async def refresh_tokens(request: Request, response: Response):
+    """
+    Single-Use Refresh Token Rotation (RTR) Endpoint:
+    - Rotates refresh token and invalidates consumed token.
+    - Automatic Family Revocation if token theft/reuse is detected.
+    """
+    # Check explicit Authorization header first, fallback to HttpOnly cookie
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        refresh_token = auth_header.split(" ")[1]
+    else:
+        refresh_token = request.cookies.get("refresh_token")
+
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token required")
+
+    new_access_token, new_refresh_token = token_rotator.rotate_token(refresh_token)
+
+    set_auth_cookie(response, new_access_token, key="access_token", max_age=86400)
+    set_auth_cookie(response, new_refresh_token, key="refresh_token", max_age=7 * 86400)
+
+    return {
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer"
+    }
+
+
+@router.post("/logout")
+async def logout(response: Response):
+    """Clears both access and refresh authentication cookies."""
+    response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key="refresh_token", path="/")
+    return {"status": "success", "message": "Successfully logged out"}
+
+
+@router.post("/login/verify-otp", response_model=Token)
+@limiter.limit("5/minute")
+async def verify_otp(
+    request: Request,
+    req: VerifyOTPRequest,
+    response: Response,
+    db: WrappedAsyncSession = Depends(get_db)
+):
+    user = await db.query(User).filter(User.id == req.user_id, User.is_active == True).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         
     if not user.current_otp or user.current_otp != req.otp:
+        logger.warning("otp_verification_failed", user_id=req.user_id)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid OTP")
         
     if not user.otp_expires_at or user.otp_expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="OTP expired")
         
-    # Clear OTP
     user.current_otp = None
     user.otp_expires_at = None
-    db.commit()
+    await db.commit()
     
     access_token = create_access_token(
         subject=user.id,
-        role=user.role.name,
+        role=user.role.name if user.role else "STAFF",
         tenant_id=user.tenant_id
     )
-
+    
+    set_auth_cookie(response, access_token)
     return {
         "access_token": access_token,
-        "token_type": "bearer",
-        "id": user.id,
-        "role": user.role.name,
-        "tenant_id": user.tenant_id,
-        "full_name": user.full_name,
-        "email": user.email
+        "token_type": "bearer"
     }
-
 
 
 @router.get("/me", response_model=UserOut)
-def read_current_user(current_user: User = Depends(get_current_user)):
-    permissions = [p.code for p in current_user.role.permissions] if current_user.role else []
-    return {
-        "id": current_user.id,
-        "email": current_user.email,
-        "full_name": current_user.full_name,
-        "phone": current_user.phone,
-        "role": current_user.role.name,
-        "tenant_id": current_user.tenant_id,
-        "discount_limit": current_user.discount_limit,
-        "is_active": current_user.is_active,
-        "permissions": permissions
-    }
+async def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
 
 
-@router.post(
-    "/passenger-verify",
-    response_model=PassengerVerifyResponse,
-    dependencies=[Depends(rate_limit(requests_per_minute=10, key_prefix="passenger_verify"))]
-)
-def passenger_verify(req: PassengerVerifyRequest, db: Session = Depends(get_db)):
-    """Verifies a passenger phone + PIN against the server-side store.
-
-    Replaces the old client-side localStorage PIN flow: the PIN itself is never
-    persisted on the device; only a short-lived signed token is returned.
-    """
+@router.post("/passenger-verify", response_model=PassengerVerifyResponse)
+@limiter.limit("10/minute")
+async def passenger_verify(
+    request: Request,
+    req: PassengerVerifyRequest,
+    response: Response,
+    db: WrappedAsyncSession = Depends(get_db)
+):
     clean_phone = req.phone.strip()
-    record = db.query(PassengerPin).filter(PassengerPin.phone == clean_phone).first()
+    record = await db.query(PassengerPin).filter(PassengerPin.phone == clean_phone).first()
     if not record:
         raise HTTPException(status_code=404, detail="No PIN registered for this phone number")
 
     if not verify_passenger_pin(clean_phone, req.pin, record.pin_hash):
+        logger.warning("passenger_pin_failed", phone=clean_phone)
         raise HTTPException(status_code=401, detail="Invalid PIN")
 
-    # Issue a short-lived passenger token scoped to the phone number.
     access_token = create_access_token(
         subject=f"passenger:{clean_phone}",
         role="PASSENGER",
         expires_delta=timedelta(hours=12)
     )
+    
+    set_auth_cookie(response, access_token, max_age=43200)
+
     return {
         "access_token": access_token,
         "token_type": "bearer",
@@ -143,23 +209,20 @@ def passenger_verify(req: PassengerVerifyRequest, db: Session = Depends(get_db))
     }
 
 
-@router.post(
-    "/passenger-register",
-    response_model=PassengerVerifyResponse,
-    dependencies=[Depends(rate_limit(requests_per_minute=5, key_prefix="passenger_register"))]
-)
-def passenger_register(req: PassengerVerifyRequest, db: Session = Depends(get_db)):
-    """Registers (or resets) a passenger PIN on the server.
-
-    Also verifies the phone belongs to a real booking so the portal can't be
-    used to squat arbitrary phone numbers.
-    """
+@router.post("/passenger-register", response_model=PassengerVerifyResponse)
+@limiter.limit("5/minute")
+async def passenger_register(
+    request: Request,
+    req: PassengerVerifyRequest,
+    response: Response,
+    db: WrappedAsyncSession = Depends(get_db)
+):
     clean_phone = req.phone.strip()
-    existing_booking = db.query(Booking).filter(Booking.contact_phone == clean_phone).first()
+    existing_booking = await db.query(Booking).filter(Booking.contact_phone == clean_phone).first()
     if not existing_booking:
         raise HTTPException(status_code=404, detail="No booking found for this phone number")
 
-    record = db.query(PassengerPin).filter(PassengerPin.phone == clean_phone).first()
+    record = await db.query(PassengerPin).filter(PassengerPin.phone == clean_phone).first()
     if record:
         record.pin_hash = hash_passenger_pin(clean_phone, req.pin)
         if req.name:
@@ -171,13 +234,16 @@ def passenger_register(req: PassengerVerifyRequest, db: Session = Depends(get_db
             full_name=req.name.strip() if req.name else existing_booking.contact_name,
         )
         db.add(record)
-    db.commit()
+    await db.commit()
 
     access_token = create_access_token(
         subject=f"passenger:{clean_phone}",
         role="PASSENGER",
         expires_delta=timedelta(hours=12)
     )
+    
+    set_auth_cookie(response, access_token, max_age=43200)
+
     return {
         "access_token": access_token,
         "token_type": "bearer",

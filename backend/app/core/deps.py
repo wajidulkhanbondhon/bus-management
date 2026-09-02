@@ -1,42 +1,72 @@
 from typing import Optional, List
-from fastapi import Depends, HTTPException, status, Header
+from fastapi import Depends, HTTPException, status, Header, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
 from app.db.session import get_db
+from app.db.async_wrapper import WrappedAsyncSession
 from app.core.security import decode_token
+from app.core.casbin_enforcer import check_permission
+from app.core.logger import logger
 from app.models.user import User
-from app.models.tenant import Tenant
 
 security_scheme = HTTPBearer(auto_error=False)
 
 
-def get_current_tenant_id(
+def extract_token_from_request(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = None
+) -> Optional[str]:
+    """
+    Extracts authentication token from:
+    1. Authorization Bearer header (for mobile / API callers)
+    2. HttpOnly 'access_token' cookie (for secure browser sessions)
+    """
+    if credentials and credentials.credentials:
+        return credentials.credentials
+    
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        return auth_header.split(" ", 1)[1].strip()
+
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token:
+        return cookie_token
+
+    return None
+
+
+async def get_current_tenant_id(
+    request: Request,
     x_tenant_id: Optional[str] = Header(None),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)
 ) -> Optional[str]:
     """Resolves current Tenant ID from Header or JWT token."""
     if x_tenant_id:
         return x_tenant_id
-    if credentials:
-        payload = decode_token(credentials.credentials)
+    token = extract_token_from_request(request, credentials)
+    if token:
+        payload = decode_token(token)
         if payload and "tenant_id" in payload:
             return payload["tenant_id"]
     return None
 
 
-def get_current_user(
-    db: Session = Depends(get_db),
+async def get_current_user(
+    request: Request,
+    db: WrappedAsyncSession = Depends(get_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)
 ) -> User:
-    if not credentials:
+    token = extract_token_from_request(request, credentials)
+    if not token:
+        logger.warning("auth_failed_missing_token", path=request.url.path, client_ip=request.client.host if request.client else "unknown")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication credentials required",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    payload = decode_token(credentials.credentials)
+    payload = decode_token(token)
     if not payload or not payload.get("sub"):
+        logger.warning("auth_failed_invalid_token", path=request.url.path)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired authentication token",
@@ -44,13 +74,14 @@ def get_current_user(
         )
 
     user_id = payload["sub"]
-    user = db.query(User).filter((User.id == user_id) | (User.email == user_id), User.is_active == True).first()
+    user = await db.query(User).filter((User.id == user_id) | (User.email == user_id), User.is_active == True).first()
     if not user:
         if user_id == "admin-super-001" or payload.get("role") == "SUPER_ADMIN":
-            user = db.query(User).filter(User.email == "admin@transport.office").first()
+            user = await db.query(User).filter(User.email == "admin@transport.office").first()
             if not user:
-                user = db.query(User).first()
+                user = await db.query(User).first()
         if not user:
+            logger.warning("auth_user_not_found", user_id=user_id)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found or inactive",
@@ -59,29 +90,50 @@ def get_current_user(
     return user
 
 
-
-def get_optional_user(
-    db: Session = Depends(get_db),
+async def get_optional_user(
+    request: Request,
+    db: WrappedAsyncSession = Depends(get_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)
 ) -> Optional[User]:
-    if not credentials:
+    token = extract_token_from_request(request, credentials)
+    if not token:
         return None
-    payload = decode_token(credentials.credentials)
+    payload = decode_token(token)
     if not payload or not payload.get("sub"):
         return None
-    return db.query(User).filter(User.id == payload["sub"], User.is_active == True).first()
+    return await db.query(User).filter(User.id == payload["sub"], User.is_active == True).first()
 
 
 def require_role(allowed_roles: List[str]):
-    def role_checker(current_user: User = Depends(get_current_user)) -> User:
-        if current_user.role.name == "SUPER_ADMIN":
+    """Enforces role-based permissions with Casbin hierarchy fallback."""
+    async def role_checker(request: Request, current_user: User = Depends(get_current_user)) -> User:
+        user_role = current_user.role.name if current_user.role else "PASSENGER"
+        
+        # Super admin always bypasses
+        if user_role == "SUPER_ADMIN":
             return current_user
-        if current_user.role.name not in allowed_roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access forbidden for role [{current_user.role.name}]"
-            )
-        return current_user
+            
+        if user_role in allowed_roles:
+            return current_user
+            
+        # Check Casbin enforcer for path-level permission
+        method = request.method
+        path = request.url.path
+        if check_permission(user_role, path, method):
+            return current_user
+
+        logger.warn(
+            "access_forbidden",
+            user_id=current_user.id,
+            role=user_role,
+            path=path,
+            method=method,
+            required_roles=allowed_roles
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access forbidden for role [{user_role}]"
+        )
     return role_checker
 
 
@@ -100,5 +152,3 @@ def apply_tenant_filter(query, model, current_user: User, requested_tenant_id: O
     if not tenant_id:
         return query.filter(model.tenant_id == "__NONE__")
     return query.filter(model.tenant_id == tenant_id)
-
-

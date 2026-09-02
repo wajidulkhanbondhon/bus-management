@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from app.db.session import get_db
 from app.core.config import settings
 from app.core.deps import get_optional_user, get_current_user, require_role
@@ -31,9 +32,9 @@ class LockSeatRequest(BaseModel):
 
 
 @router.get("/{trip_id}/seat-map")
-def get_seat_map(
+async def get_seat_map(
     trip_id: str,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user)
 ) -> Dict[str, Any]:
     try:
@@ -44,11 +45,11 @@ def get_seat_map(
 
 
 @router.post("/{trip_id}/hold-seat", dependencies=[Depends(rate_limit(requests_per_minute=20, key_prefix="hold"))])
-def hold_single_seat(
+async def hold_single_seat(
     trip_id: str,
     seat_id: str,
     duration_minutes: int = 10,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     try:
@@ -58,10 +59,10 @@ def hold_single_seat(
 
 
 @router.post("/{trip_id}/lock-seat")
-def lock_single_seat(
+async def lock_single_seat(
     trip_id: str,
     req: LockSeatRequest,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
 ):
     target_seat_id = req.seat_id or req.seatId
@@ -95,10 +96,10 @@ def lock_single_seat(
 
 
 @router.post("/{trip_id}/unlock-seat")
-def unlock_single_seat(
+async def unlock_single_seat(
     trip_id: str,
     seat_id: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
 ):
     if not seat_id:
@@ -111,10 +112,10 @@ def unlock_single_seat(
 
 
 @router.post("/cleanup-expired")
-def cleanup_expired(
+async def cleanup_expired(
     token: Optional[str] = Query(None),
     x_cron_secret: Optional[str] = Header(None, alias="X-Cron-Secret"),
-    db: Session = Depends(get_db)
+    db: WrappedAsyncSession = Depends(get_db)
 ):
     provided_token = token or x_cron_secret
     if provided_token != settings.CRON_SECRET:

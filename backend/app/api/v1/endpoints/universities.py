@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from app.db.async_wrapper import WrappedAsyncSession
 from app.db.session import get_db
 from app.core.deps import get_optional_user, require_role, apply_tenant_filter, get_current_tenant_id
 from app.models.university import University
@@ -81,19 +82,19 @@ SAMPLE_UNIVERSITIES = [
 ]
 
 
-def seed_universities_if_empty(db: Session, tenant_id: Optional[str] = None):
-    count = db.query(University).count()
+async def seed_universities_if_empty(db: Session, tenant_id: Optional[str] = None):
+    count = await db.query(University).count()
     if count == 0:
         for item in SAMPLE_UNIVERSITIES:
             uni = University(**item, tenant_id=tenant_id)
             db.add(uni)
-        db.commit()
+        await db.commit()
 
 
 @router.get("", response_model=List[UniversityOut], include_in_schema=False)
 @router.get("/", response_model=List[UniversityOut])
-def list_universities(
-    db: Session = Depends(get_db),
+async def list_universities(
+    db: WrappedAsyncSession = Depends(get_db),
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
     current_user: Optional[User] = Depends(get_optional_user)
 ):
@@ -108,16 +109,16 @@ def list_universities(
         )
     elif tenant_id:
         query = query.filter((University.tenant_id == tenant_id) | (University.tenant_id == None))
-    return query.order_by(University.created_at.asc()).all()
+    return await query.order_by(University.created_at.asc()).all()
 
 
 @router.get("/{university_id}", response_model=UniversityOut)
-def get_university(
+async def get_university(
     university_id: str,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user)
 ):
-    uni = db.query(University).filter(University.id == university_id).first()
+    uni = await db.query(University).filter(University.id == university_id).first()
     if not uni:
         raise HTTPException(status_code=404, detail="University circular not found")
     if current_user and current_user.role and current_user.role.name != "SUPER_ADMIN":
@@ -128,9 +129,9 @@ def get_university(
 
 @router.post("", response_model=UniversityOut, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=UniversityOut, status_code=status.HTTP_201_CREATED)
-def create_university(
+async def create_university(
     req: UniversityCreate,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
     # Only SUPER_ADMIN may assign a different tenant; everyone else is scoped to their own.
@@ -140,19 +141,19 @@ def create_university(
     effective_tenant = req.tenant_id or current_user.tenant_id
     uni = University(**req.model_dump(exclude={"tenant_id"}), tenant_id=effective_tenant)
     db.add(uni)
-    db.commit()
-    db.refresh(uni)
+    await db.commit()
+    await db.refresh(uni)
     return uni
 
 
 @router.put("/{university_id}", response_model=UniversityOut)
-def update_university(
+async def update_university(
     university_id: str,
     req: UniversityUpdate,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
-    uni = db.query(University).filter(University.id == university_id).first()
+    uni = await db.query(University).filter(University.id == university_id).first()
     if not uni:
         raise HTTPException(status_code=404, detail="University circular not found")
 
@@ -164,18 +165,18 @@ def update_university(
     for field, value in update_data.items():
         setattr(uni, field, value)
 
-    db.commit()
-    db.refresh(uni)
+    await db.commit()
+    await db.refresh(uni)
     return uni
 
 
 @router.delete("/{university_id}")
-def delete_university(
+async def delete_university(
     university_id: str,
-    db: Session = Depends(get_db),
+    db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN"]))
 ):
-    uni = db.query(University).filter(University.id == university_id).first()
+    uni = await db.query(University).filter(University.id == university_id).first()
     if not uni:
         raise HTTPException(status_code=404, detail="University circular not found")
 
@@ -183,6 +184,6 @@ def delete_university(
         if uni.tenant_id != current_user.tenant_id:
             raise HTTPException(status_code=403, detail="Access denied for this tenant's university circular")
 
-    db.delete(uni)
-    db.commit()
+    await db.delete(uni)
+    await db.commit()
     return {"success": True, "message": "University circular deleted"}

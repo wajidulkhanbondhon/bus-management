@@ -18,8 +18,8 @@ class Tenant(Base):
     is_active = Column(Boolean, default=True)
     plan_tier = Column(String, default="PRO")                     # "BASIC", "PRO", "ENTERPRISE"
     commission_rate = Column(Float, default=0.0)                  # Platform SaaS fee %
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     users = relationship("User", back_populates="tenant", cascade="all, delete-orphan")

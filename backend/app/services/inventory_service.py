@@ -8,7 +8,7 @@ from app.models.bus import Bus, SeatLayout, Seat
 from app.models.booking import Booking, BookingSeat
 
 
-def clean_expired_inventory(db: Session, trip_id: str):
+async def clean_expired_inventory(db: Session, trip_id: str):
     now = datetime.now(timezone.utc)
     # 1. Clean expired holds
     db.query(SeatHold).filter(SeatHold.trip_id == trip_id, SeatHold.expires_at <= now).delete()
@@ -20,23 +20,23 @@ def clean_expired_inventory(db: Session, trip_id: str):
         Booking.payment_expires_at <= now
     ).update({"booking_status": "EXPIRED"})
 
-    db.commit()
+    await db.commit()
 
 
-def get_trip_seat_inventory(db: Session, trip_id: str, staff_id: Optional[str] = None) -> Dict[str, Any]:
+async def get_trip_seat_inventory(db: Session, trip_id: str, staff_id: Optional[str] = None) -> Dict[str, Any]:
     clean_expired_inventory(db, trip_id)
     now = datetime.now(timezone.utc)
 
-    trip = db.query(Trip).filter(Trip.id == trip_id).first()
+    trip = await db.query(Trip).filter(Trip.id == trip_id).first()
     if not trip:
         raise ValueError("Trip not found")
 
-    bus = db.query(Bus).filter(Bus.id == trip.bus_id).first()
+    bus = await db.query(Bus).filter(Bus.id == trip.bus_id).first()
     if not bus:
         raise ValueError("Bus not found")
 
     if bus.seat_layout_id:
-        seats = db.query(Seat).filter(Seat.seat_layout_id == bus.seat_layout_id).order_by(Seat.row_index, Seat.col_index).all()
+        seats = await db.query(Seat).filter(Seat.seat_layout_id == bus.seat_layout_id).order_by(Seat.row_index, Seat.col_index).all()
     else:
         seats = []
 
@@ -88,7 +88,7 @@ def get_trip_seat_inventory(db: Session, trip_id: str, staff_id: Optional[str] =
     lock_map = {l.seat_id: l for l in active_locks}
 
     # Active Holds
-    active_holds = db.query(SeatHold).filter(SeatHold.trip_id == trip_id, SeatHold.expires_at > now).all()
+    active_holds = await db.query(SeatHold).filter(SeatHold.trip_id == trip_id, SeatHold.expires_at > now).all()
     hold_map = {h.seat_id: h for h in active_holds}
 
     available_count = 0
@@ -155,7 +155,7 @@ def get_trip_seat_inventory(db: Session, trip_id: str, staff_id: Optional[str] =
     }
 
 
-def hold_seat(db: Session, trip_id: str, seat_id: str, staff_id: str, duration_minutes: int = 10) -> SeatHold:
+async def hold_seat(db: Session, trip_id: str, seat_id: str, staff_id: str, duration_minutes: int = 10) -> SeatHold:
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(minutes=duration_minutes)
     hold_token = f"HOLD-{int(now.timestamp())}-{uuid.uuid4().hex[:6].upper()}"
@@ -163,7 +163,7 @@ def hold_seat(db: Session, trip_id: str, seat_id: str, staff_id: str, duration_m
     clean_expired_inventory(db, trip_id)
 
     # Lock the seat row itself to serialize concurrent hold/booking attempts.
-    seat = db.query(Seat).filter(Seat.id == seat_id).with_for_update().first()
+    seat = await db.query(Seat).filter(Seat.id == seat_id).with_for_update().first()
     if not seat:
         raise ValueError("Seat not found")
 
@@ -194,12 +194,12 @@ def hold_seat(db: Session, trip_id: str, seat_id: str, staff_id: str, duration_m
         expires_at=expires_at
     )
     db.add(hold)
-    db.commit()
-    db.refresh(hold)
+    await db.commit()
+    await db.refresh(hold)
     return hold
 
 
-def lock_seat(
+async def lock_seat(
     db: Session,
     trip_id: str,
     seat_id: str,
@@ -213,7 +213,7 @@ def lock_seat(
     now = datetime.now(timezone.utc)
 
     # Lock the seat row to serialize concurrent lock/booking attempts.
-    seat = db.query(Seat).filter(Seat.id == seat_id).with_for_update().first()
+    seat = await db.query(Seat).filter(Seat.id == seat_id).with_for_update().first()
     if not seat:
         raise ValueError("Seat not found")
 
@@ -261,12 +261,12 @@ def lock_seat(
         new_value=f"Seat locked for trip {trip_id}. Reason: {reason} ({lock_type})"
     ))
 
-    db.commit()
-    db.refresh(lock)
+    await db.commit()
+    await db.refresh(lock)
     return lock
 
 
-def unlock_seat(db: Session, trip_id: str, seat_id: str, staff_id: str) -> bool:
+async def unlock_seat(db: Session, trip_id: str, seat_id: str, staff_id: str) -> bool:
     locks = db.query(SeatLock).filter(
         SeatLock.trip_id == trip_id,
         SeatLock.seat_id == seat_id,
@@ -288,11 +288,11 @@ def unlock_seat(db: Session, trip_id: str, seat_id: str, staff_id: str) -> bool:
         new_value=f"Seat unlocked for trip {trip_id} by staff {staff_id}"
     ))
 
-    db.commit()
+    await db.commit()
     return True
 
 
-def clean_all_expired(db: Session) -> Dict[str, int]:
+async def clean_all_expired(db: Session) -> Dict[str, int]:
     now = datetime.now(timezone.utc)
     deleted_holds = db.query(SeatHold).filter(SeatHold.expires_at <= now).delete()
 
@@ -301,7 +301,7 @@ def clean_all_expired(db: Session) -> Dict[str, int]:
         Booking.payment_expires_at <= now
     ).update({"booking_status": "EXPIRED"})
 
-    db.commit()
+    await db.commit()
     return {
         "expired_holds": deleted_holds,
         "expired_bookings": expired_bookings

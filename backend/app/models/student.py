@@ -17,8 +17,8 @@ class Student(Base):
     group_category = Column(String, nullable=True)
     address = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     guardians = orm_relationship("Guardian", back_populates="student", cascade="all, delete-orphan")
@@ -35,8 +35,8 @@ class Guardian(Base):
     relation_type = Column("relationship", String, nullable=False)  # "FATHER", "MOTHER", "BROTHER", "SISTER", "UNCLE", "OTHER"
     gender = Column(String, nullable=False)                         # "MALE", "FEMALE"
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     student = orm_relationship("Student", back_populates="guardians")
