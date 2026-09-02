@@ -28,7 +28,7 @@ redis>=5.0.8
 
 # Structured Logging & Observability (Structlog + Sentry)
 structlog>=24.4.0
-sentry-sdk[fastapi]>=2.13.0
+sentry-sdk[fastapi]>=2.68.1
 
 # Utility & Date Handling
 python-dotenv>=1.0.1
