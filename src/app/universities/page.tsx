@@ -169,7 +169,7 @@ export default function UniversitiesPage() {
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Header */}
       <div className="bg-gradient-to-b from-amber-950/40 via-slate-900 to-slate-950 border-b border-amber-900/30">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-4">
           <Link
             href="/"
             className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-blue-400 transition-colors font-semibold"
@@ -224,7 +224,7 @@ export default function UniversitiesPage() {
       </div>
 
       {/* University Cards */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-4">
         {filtered.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3">
             <GraduationCap className="w-12 h-12 text-slate-700 mx-auto" />

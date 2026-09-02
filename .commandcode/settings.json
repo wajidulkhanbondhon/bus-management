@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(git:*)",
+      "Shell(Select-String:*)",
+      "Shell(Select-Object:*)",
+      "powershell",
+      "Shell(python -c  import re, pathlib for p in ['app/models/finance.py','app/models/payment.py','app/models/booking.py','app/models/coupon.py','app/models/trip.py','app/models/bus.py','app/models/user.py']: f = pathlib.Path(p) t = f.read_text() t = t.replace('from app.db.base import Money', 'from app.db.types import Money') f.write_text(t) print('updated', p) )",
+      "Shell(python -c import ast, pathlib; files = [p for p in pathlib.Path('app').rglob('*.py')]; [ast.parse(p.read_text(encoding='utf-8')) for p in files]; print(f'OK: parsed {len(files)} files'))",
+      "Shell(.venvScriptspython.exe:*)",
+      "Shell(node .\\node_modules\\eslint\\bin\\eslint.js src --max-warnings=200 2 >& 1)",
+      "Shell(more:*)"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}

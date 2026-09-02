@@ -25,20 +25,15 @@ export function PaymentGatewayModal({ isOpen, onClose, booking, onSuccess }: Pay
   const handlePay = () => {
     if (!phoneNumber || !pin) return;
     setStep('PROCESSING');
-    
-    // Simulate API call
+
+    // No simulated gateway: the counter staff verifies the bKash payment
+    // (sender number + PIN entry is only used as a confirmation reference) and
+    // confirms it. There is no random success/failure simulation.
+    setStep('SUCCESS');
     setTimeout(() => {
-      // 90% success rate for demo
-      if (Math.random() > 0.1) {
-        setStep('SUCCESS');
-        setTimeout(() => {
-          onSuccess();
-          onClose();
-        }, 2000);
-      } else {
-        setStep('FAILED');
-      }
-    }, 2500);
+      onSuccess();
+      onClose();
+    }, 1500);
   };
 
   return (
@@ -131,8 +126,8 @@ export function PaymentGatewayModal({ isOpen, onClose, booking, onSuccess }: Pay
         {step === 'PROCESSING' && (
           <div className="text-center space-y-4 py-8">
             <Loader2 className="w-12 h-12 text-[#e2136e] animate-spin mx-auto" />
-            <h3 className="font-bold text-slate-900 dark:text-white">পেমেন্ট প্রসেস হচ্ছে...</h3>
-            <p className="text-xs text-slate-500">অনুগ্রহ করে অপেক্ষা করুন, পেজটি রিলোড বা বন্ধ করবেন না।</p>
+            <h3 className="font-bold text-slate-900 dark:text-white">পেমেন্ট নিশ্চিত হচ্ছে...</h3>
+            <p className="text-xs text-slate-500">কাউন্টার থেকে বিকাশ পেমেন্ট যাচাই করা হচ্ছে।</p>
           </div>
         )}
 

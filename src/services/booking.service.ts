@@ -1,4 +1,5 @@
 import { fastApiClient } from '@/lib/api-client';
+import { proxyUrl } from '@/lib/config';
 
 export interface PassengerInput {
   passengerName: string;
@@ -75,7 +76,7 @@ export interface ConfirmPreBookingPaymentInput {
 }
 
 export async function getAllBookings(filters?: any) {
-  const res = await fetch('http://localhost:8000/api/v1/bookings/').catch(() => null);
+  const res = await fetch(proxyUrl('/bookings/'), { cache: 'no-store' }).catch(() => null);
   if (res && res.ok) {
     return res.json();
   }

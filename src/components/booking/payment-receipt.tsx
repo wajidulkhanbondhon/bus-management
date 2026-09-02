@@ -109,7 +109,7 @@ export function PaymentReceiptCard({ booking }: { booking: any }) {
             </div>
             <div className="text-[11px] text-slate-300 mt-1 flex items-center sm:justify-end gap-1">
               <Clock className="w-3 h-3 text-blue-400" />
-              <span>{formatDateTime(booking.createdAt || new Date())}</span>
+              <span suppressHydrationWarning>{formatDateTime(booking.createdAt || new Date())}</span>
             </div>
           </div>
         </div>

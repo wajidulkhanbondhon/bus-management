@@ -437,7 +437,7 @@ export function DashboardView({ data, currentUser }: Props) {
                       <td className="px-4 py-3 text-right font-mono font-bold text-emerald-600 text-sm">
                         {formatCurrency(tx.amount)}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-slate-400">
+                      <td suppressHydrationWarning className="px-4 py-3 text-right font-mono text-slate-400">
                         {formatTime(tx.createdAt)}
                       </td>
                     </tr>
@@ -501,7 +501,7 @@ export function DashboardView({ data, currentUser }: Props) {
                       <div className="flex items-center gap-2 text-xs text-slate-400 font-mono mt-0.5">
                         <span className="font-bold text-slate-600 dark:text-slate-300">{act.user?.fullName || 'System Staff'}</span>
                         <span>•</span>
-                        <span>{formatTime(act.createdAt || act.timestamp || new Date())}</span>
+                        <span suppressHydrationWarning>{formatTime(act.createdAt || act.timestamp || new Date())}</span>
                       </div>
                     </div>
                   </div>

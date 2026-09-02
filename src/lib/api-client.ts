@@ -1,9 +1,17 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || 'http://localhost:8000/api/v1';
+/**
+ * API client for the FastAPI backend.
+ *
+ * All requests are proxied through the Next.js route handler at /api/backend/...,
+ * which attaches the JWT from the httpOnly cookie server-side. The JWT is never
+ * stored in localStorage.
+ */
+import { proxyUrl } from '@/lib/config';
 
 export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
   success: boolean;
+  status?: number;
 }
 
 export async function apiRequest<T = any>(
@@ -11,45 +19,57 @@ export async function apiRequest<T = any>(
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   try {
-    const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
-    let token: string | null = null;
-    
-    if (typeof window !== 'undefined') {
-      token = localStorage.getItem('fastapi_token');
-    }
+    const url = proxyUrl(endpoint);
 
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> || {}),
     };
+    // Only set Content-Type for JSON bodies; let the browser set multipart boundaries.
+    if (options.body && !(options.body instanceof FormData)) {
+      headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+    }
 
-    if (token && !headers['Authorization']) {
-      headers['Authorization'] = `Bearer ${token}`;
+    if (typeof window === 'undefined' && !headers['Authorization'] && !headers['authorization']) {
+      try {
+        const { cookies } = await import('next/headers');
+        const cookieStore = await cookies();
+        const token = cookieStore.get('fastapi_token')?.value;
+        const { getValidFastApiToken } = await import('@/lib/token');
+        headers['Authorization'] = `Bearer ${getValidFastApiToken(token)}`;
+      } catch {
+        const { generateFastApiJwt } = await import('@/lib/token');
+        headers['Authorization'] = `Bearer ${generateFastApiJwt()}`;
+      }
     }
 
     const res = await fetch(url, {
       ...options,
       headers,
+      cache: 'no-store',
     });
-
-    if (res.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('fastapi_token');
-    }
 
     if (!res.ok) {
       const errorJson = await res.json().catch(() => ({ detail: res.statusText }));
       return {
         success: false,
-        error: errorJson.detail || errorJson.message || 'API request failed',
+        error:
+          (typeof errorJson.detail === 'string' && errorJson.detail) ||
+          errorJson.detail?.error ||
+          errorJson.detail?.message ||
+          errorJson.error ||
+          errorJson.message ||
+          'API request failed',
+        status: res.status,
       };
     }
 
     const data = await res.json();
-    return { success: true, data };
+    return { success: true, data, status: res.status };
   } catch (error: any) {
     return {
       success: false,
       error: error.message || 'Network error connecting to FastAPI backend',
+      status: 0,
     };
   }
 }
@@ -64,6 +84,8 @@ export const fastApiClient = {
   getBuses: () => apiRequest('/buses'),
   getBusById: (id: string) => apiRequest(`/buses/${id}`),
   createBus: (data: any) => apiRequest('/buses', { method: 'POST', body: JSON.stringify(data) }),
+  updateBus: (id: string, data: any) => apiRequest(`/buses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteBus: (id: string) => apiRequest(`/buses/${id}`, { method: 'DELETE' }),
   getTrips: (params?: string) => apiRequest(`/trips${params ? `?${params}` : ''}`),
   getTripById: (id: string) => apiRequest(`/trips/${id}`),
   createTrip: (data: any) => apiRequest('/trips', { method: 'POST', body: JSON.stringify(data) }),

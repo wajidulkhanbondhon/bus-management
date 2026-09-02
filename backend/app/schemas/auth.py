@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class Token(BaseModel):
@@ -24,6 +24,21 @@ class LoginRequest(BaseModel):
 class VerifyOTPRequest(BaseModel):
     user_id: str
     otp: str
+
+
+class PassengerVerifyRequest(BaseModel):
+    phone: str = Field(..., min_length=10, max_length=15)
+    pin: str = Field(..., min_length=4, max_length=4)
+    name: Optional[str] = Field(None, max_length=100)
+
+
+class PassengerVerifyResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    role: str = "PASSENGER"
+    phone: str
+    full_name: str
+    requires_pin_setup: bool = False
 
 
 class UserBase(BaseModel):

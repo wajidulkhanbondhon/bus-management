@@ -90,32 +90,53 @@ def seed_universities_if_empty(db: Session, tenant_id: Optional[str] = None):
         db.commit()
 
 
+@router.get("", response_model=List[UniversityOut], include_in_schema=False)
 @router.get("/", response_model=List[UniversityOut])
 def list_universities(
     db: Session = Depends(get_db),
-    tenant_id: Optional[str] = Depends(get_current_tenant_id)
+    tenant_id: Optional[str] = Depends(get_current_tenant_id),
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     seed_universities_if_empty(db, tenant_id)
     query = db.query(University)
-    if tenant_id:
+
+    # Authenticated non-super-admin users are always scoped to their own tenant;
+    # anonymous callers (public admission info) are scoped to the header tenant.
+    if current_user and current_user.role and current_user.role.name != "SUPER_ADMIN":
+        query = query.filter(
+            (University.tenant_id == current_user.tenant_id) | (University.tenant_id == None)
+        )
+    elif tenant_id:
         query = query.filter((University.tenant_id == tenant_id) | (University.tenant_id == None))
     return query.order_by(University.created_at.asc()).all()
 
 
 @router.get("/{university_id}", response_model=UniversityOut)
-def get_university(university_id: str, db: Session = Depends(get_db)):
+def get_university(
+    university_id: str,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
     uni = db.query(University).filter(University.id == university_id).first()
     if not uni:
         raise HTTPException(status_code=404, detail="University circular not found")
+    if current_user and current_user.role and current_user.role.name != "SUPER_ADMIN":
+        if uni.tenant_id != current_user.tenant_id and uni.tenant_id is not None:
+            raise HTTPException(status_code=403, detail="Access denied for this tenant's university circular")
     return uni
 
 
+@router.post("", response_model=UniversityOut, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=UniversityOut, status_code=status.HTTP_201_CREATED)
 def create_university(
     req: UniversityCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
+    # Only SUPER_ADMIN may assign a different tenant; everyone else is scoped to their own.
+    if current_user.role and current_user.role.name != "SUPER_ADMIN":
+        if req.tenant_id and req.tenant_id != current_user.tenant_id:
+            raise HTTPException(status_code=403, detail="Access denied: cannot create circular for another tenant")
     effective_tenant = req.tenant_id or current_user.tenant_id
     uni = University(**req.model_dump(exclude={"tenant_id"}), tenant_id=effective_tenant)
     db.add(uni)
@@ -135,7 +156,11 @@ def update_university(
     if not uni:
         raise HTTPException(status_code=404, detail="University circular not found")
 
-    update_data = req.model_dump(exclude_unset=True)
+    if current_user.role and current_user.role.name != "SUPER_ADMIN":
+        if uni.tenant_id != current_user.tenant_id:
+            raise HTTPException(status_code=403, detail="Access denied for this tenant's university circular")
+
+    update_data = req.model_dump(exclude_unset=True, exclude={"tenant_id"})
     for field, value in update_data.items():
         setattr(uni, field, value)
 
@@ -153,6 +178,10 @@ def delete_university(
     uni = db.query(University).filter(University.id == university_id).first()
     if not uni:
         raise HTTPException(status_code=404, detail="University circular not found")
+
+    if current_user.role and current_user.role.name != "SUPER_ADMIN":
+        if uni.tenant_id != current_user.tenant_id:
+            raise HTTPException(status_code=403, detail="Access denied for this tenant's university circular")
 
     db.delete(uni)
     db.commit()

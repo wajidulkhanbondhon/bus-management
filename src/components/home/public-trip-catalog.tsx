@@ -86,7 +86,7 @@ export function PublicTripCatalog({ trips }: PublicTripCatalogProps) {
 
   return (
     <section id="trips" className="py-12 bg-slate-100/60 dark:bg-slate-900/30 transition-colors duration-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+      <div className="w-full px-4 sm:px-6 lg:px-8 space-y-6">
         {/* Section Header */}
         <div className="flex items-center justify-between">
           <div>

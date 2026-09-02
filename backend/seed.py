@@ -130,42 +130,7 @@ def seed_database():
         db.add_all([vip_zone, std_zone, rear_zone])
         db.flush()
 
-        # 5. SEAT LAYOUT & SEATS (40 seats)
-        layout_matrix = {
-            "driver": {"row": 0, "col": 4, "label": "Driver"},
-            "door": {"row": 0, "col": 0, "label": "Door"}
-        }
-        layout = SeatLayout(
-            name="Standard 40-Seat Hino 1J",
-            total_rows=11,
-            total_cols=5,
-            total_seats=40,
-            layout_json=json.dumps(layout_matrix)
-        )
-        db.add(layout)
-        db.flush()
-
-        rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
-        seat_objects = {}
-        for r_idx, r_char in enumerate(rows):
-            zone = vip_zone if r_idx < 2 else (std_zone if r_idx < 7 else rear_zone)
-            for c in range(1, 5):
-                seat_num = f"{r_char}{c}"
-                s = Seat(
-                    seat_layout_id=layout.id,
-                    seat_number=seat_num,
-                    row_index=r_idx + 1,
-                    col_index=c - 1 if c <= 2 else c,
-                    seat_type="VIP" if r_idx < 2 else "STANDARD",
-                    gender_allowed="FEMALE_ONLY" if r_idx < 2 and c <= 2 else "ANY",
-                    fare_zone_id=zone.id,
-                    base_fare=zone.default_fare
-                )
-                db.add(s)
-                seat_objects[seat_num] = s
-        db.flush()
-
-        # 6. BUSES (Rajshahi Fleet)
+        # 5. BUSES (Rajshahi Fleet)
         bus1 = Bus(
             tenant_id=tenant.id,
             bus_name="Padma Admission Express 01 (Female Special)",
@@ -173,7 +138,7 @@ def seed_database():
             reg_number="REG-2026-90126",
             capacity=40,
             bus_type="FEMALE",
-            seat_layout_id=layout.id
+            seat_layout_id=None
         )
         bus2 = Bus(
             tenant_id=tenant.id,
@@ -182,7 +147,7 @@ def seed_database():
             reg_number="REG-2026-90127",
             capacity=40,
             bus_type="MIXED",
-            seat_layout_id=layout.id
+            seat_layout_id=None
         )
         bus3 = Bus(
             tenant_id=tenant.id,
@@ -191,7 +156,7 @@ def seed_database():
             reg_number="REG-2026-90128",
             capacity=40,
             bus_type="MIXED",
-            seat_layout_id=layout.id
+            seat_layout_id=None
         )
         db.add_all([bus1, bus2, bus3])
         db.flush()

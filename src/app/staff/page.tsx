@@ -69,7 +69,7 @@ const FALLBACK_STAFF: StaffUser[] = [
     phone: '01711000001',
     isActive: true,
     discountLimit: 99999,
-    createdAt: new Date(),
+    createdAt: '2026-03-01T08:00:00.000Z',
     role: { name: 'SUPER_ADMIN', description: 'Full System Control' },
     _count: { createdBookings: 12, receivedPayments: 10 }
   },
@@ -80,7 +80,7 @@ const FALLBACK_STAFF: StaffUser[] = [
     phone: '01811000002',
     isActive: true,
     discountLimit: 200,
-    createdAt: new Date(),
+    createdAt: '2026-03-01T08:00:00.000Z',
     role: { name: 'MANAGER', description: 'Duty Manager' },
     _count: { createdBookings: 4, receivedPayments: 4 }
   },
@@ -91,7 +91,7 @@ const FALLBACK_STAFF: StaffUser[] = [
     phone: '01911000003',
     isActive: true,
     discountLimit: 50,
-    createdAt: new Date(),
+    createdAt: '2026-03-01T08:00:00.000Z',
     role: { name: 'BOOKING_STAFF', description: 'Counter Desk Staff' },
     _count: { createdBookings: 24, receivedPayments: 24 }
   },
@@ -102,7 +102,7 @@ const FALLBACK_STAFF: StaffUser[] = [
     phone: '01611000004',
     isActive: true,
     discountLimit: 0,
-    createdAt: new Date(),
+    createdAt: '2026-03-01T08:00:00.000Z',
     role: { name: 'ACCOUNTANT', description: 'Chief Cashier' },
     _count: { createdBookings: 0, receivedPayments: 38 }
   }
@@ -297,7 +297,7 @@ export default function StaffPage() {
   });
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 w-full pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

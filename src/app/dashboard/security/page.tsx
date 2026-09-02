@@ -33,10 +33,8 @@ export default function SecurityDashboardPage() {
     setLoading(true);
     setError('');
     try {
-      const token = localStorage.getItem('token');
-      
-      const ipsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/security/blocked-ips`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const ipsRes = await fetch('/api/backend/ai-dashboard/blocked-ips', {
+        headers: { 'Content-Type': 'application/json' }
       });
       if (ipsRes.ok) {
         setBlockedIPs(await ipsRes.json());
@@ -44,8 +42,8 @@ export default function SecurityDashboardPage() {
         setError('Failed to fetch IPs');
       }
 
-      const eventsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/security/events`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const eventsRes = await fetch('/api/backend/ai-dashboard/security-events', {
+        headers: { 'Content-Type': 'application/json' }
       });
       if (eventsRes.ok) {
         setEvents(await eventsRes.json());
@@ -64,10 +62,9 @@ export default function SecurityDashboardPage() {
 
   const handleUnblock = async (ip: string) => {
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/security/unblock/${ip}`, {
+      const res = await fetch(`/api/backend/ai-dashboard/blocked-ips/${ip}/unblock`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Content-Type': 'application/json' }
       });
       if (res.ok) {
         fetchSecurityData();
@@ -80,7 +77,7 @@ export default function SecurityDashboardPage() {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 w-full space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">

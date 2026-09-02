@@ -62,6 +62,7 @@ import {
   hasRegisteredPin,
   getStoredPin,
   savePassengerPin,
+  verifyPassengerPin,
   generateWhatsAppPinUrl,
   lookupPassengerByPhone,
   checkHasExistingBookings
@@ -305,15 +306,15 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
     }
   }, [lockoutSeconds]);
 
-  // Check saved session on mount
+  // Restore the remembered phone number for convenience (PIN is never persisted).
   useEffect(() => {
     const savedPhone = localStorage.getItem('atoms_passenger_phone');
-    const savedPin = localStorage.getItem('atoms_passenger_pin');
-    if (savedPhone && savedPin && !isAuthenticated) {
+    if (savedPhone && !isAuthenticated) {
       setPhoneInput(savedPhone);
-      setLoginPinDigits(savedPin.split('').slice(0, 4));
-      handleAuthenticate(savedPhone, savedPin, true);
     }
+    // Clean up any legacy PIN artifacts from the old localStorage-based auth.
+    localStorage.removeItem('atoms_passenger_pin');
+    localStorage.removeItem('atoms_passenger_pins');
   }, [isAuthenticated]);
 
   // Handle Login PIN Input Digits
@@ -373,8 +374,15 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
     setLoading(true);
 
     try {
-      // 1. Save PIN and profile
-      savePassengerPin(phoneInput, createdPinStr, passengerNameInput.trim());
+      // 1. Register PIN server-side (only an HMAC hash is stored remotely)
+      const token = await savePassengerPin(phoneInput, createdPinStr, passengerNameInput.trim());
+      if (!token) {
+        error(
+          language === 'bn' ? 'পিন সেট ব্যর্থ' : 'Failed to set PIN',
+          language === 'bn' ? 'এই নম্বরে কোনো বুকিং পাওয়া যায়নি অথবা সার্ভার ত্রুটি হয়েছে।' : 'No booking found for this number, or a server error occurred.'
+        );
+        return;
+      }
       setIsPinRegisteredForPhone(true);
 
       // 2. Generate WhatsApp backup link
@@ -388,24 +396,28 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
       setWhatsappBackupModalOpen(true);
 
       success(
-        language === 'bn' ? 'পিন সফলভাবে সেট হয়েছে!' : 'PIN Created Successfully!',
-        language === 'bn' ? 'আপনার WhatsApp-এ পিন ব্যাকআপ পাঠানো হয়েছে।' : 'WhatsApp PIN backup has been prepared.'
+        language === 'bn' ? 'পিন সফলভাবে সেট হয়েছে!' : 'PIN Created Successfully!',
+        language === 'bn' ? 'আপনার WhatsApp-এ পিন ব্যাকআপ পাঠানো হয়েছে।' : 'WhatsApp PIN backup has been prepared.'
       );
 
       // 3. Authenticate and load dashboard
-      await handleAuthenticate(phoneInput, createdPinStr);
+      const data = await getBookingByTrackingNumber(phoneInput);
+      setBookingData(data || null);
+      setIsAuthenticated(true);
+      localStorage.setItem('atoms_passenger_phone', phoneInput.replace(/[\s\-\+]/g, ''));
+      localStorage.removeItem('atoms_passenger_pin');
     } catch {
-      error(language === 'bn' ? 'পিন সেট ব্যর্থ' : 'Failed to set PIN', language === 'bn' ? 'পুনরায় চেষ্টা করুন।' : 'Please try again.');
+      error(language === 'bn' ? 'পিন সেট ব্যর্থ' : 'Failed to set PIN', language === 'bn' ? 'পুনরায় চেষ্টা করুন।' : 'Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle PIN Authentication (Full Dashboard Access)
+  // Handle PIN Authentication (Full Dashboard Access) — server-verified.
   const handleAuthenticate = async (phone: string, pin: string, isAuto: boolean = false) => {
     if (lockoutSeconds > 0) {
       error(
-        language === 'bn' ? 'অ্যাকাউন্ট সাময়িক লক' : 'Account Temporarily Locked',
+        language === 'bn' ? 'অ্যাকাউন্ট সাময়িক লক' : 'Account Temporarily Locked',
         language === 'bn' ? `অনুগ্রহ করে ${lockoutSeconds} সেকেন্ড অপেক্ষা করুন।` : `Please wait ${lockoutSeconds} seconds.`
       );
       return;
@@ -422,42 +434,42 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
       return;
     }
 
-    // Verify stored PIN if registered
-    const storedPin = getStoredPin(phone);
-    if (storedPin && storedPin !== pin && !isAuto) {
-      const newAttempts = failedAttempts + 1;
-      setFailedAttempts(newAttempts);
-      if (newAttempts >= 5) {
-        setLockoutSeconds(60);
-        error(
-          language === 'bn' ? 'নিরাপত্তা লক সক্রিয়' : 'Security Lockout Activated',
-          language === 'bn' ? '৫ বার ভুল পিন দেওয়ায় ৬০ সেকেন্ডের জন্য লক করা হয়েছে।' : '5 failed attempts. Locked for 60 seconds.'
-        );
-      } else {
-        error(
-          language === 'bn' ? 'ভুল পিন দিয়েছেন' : 'Incorrect PIN',
-          language === 'bn' ? `সঠিক ৪-সংখ্যার পিন লিখুন। (বাকি সুযোগ: ${5 - newAttempts} বার)` : `Please check PIN. (${5 - newAttempts} attempts left)`
-        );
-      }
-      return;
-    }
-
     setLoading(true);
 
     try {
-      const data = await getBookingByTrackingNumber(phone);
-      const formattedData = data || getMockPassengerData(phone, passengerNameInput);
+      // Verify against the backend — the PIN never touches localStorage.
+      const token = await verifyPassengerPin(phone, pin);
+      if (!token) {
+        const newAttempts = failedAttempts + 1;
+        setFailedAttempts(newAttempts);
+        if (newAttempts >= 5) {
+          setLockoutSeconds(60);
+          error(
+            language === 'bn' ? 'নিরাপত্তা লক সক্রিয়' : 'Security Lockout Activated',
+            language === 'bn' ? '৫ বার ভুল পিন দেওয়ায় ৬০ সেকেন্ডের জন্য লক করা হয়েছে।' : '5 failed attempts. Locked for 60 seconds.'
+          );
+        } else {
+          error(
+            language === 'bn' ? 'ভুল পিন দিয়েছেন' : 'Incorrect PIN',
+            language === 'bn' ? `সঠিক ৪-সংখ্যার পিন লিখুন। (বাকি সুযোগ: ${5 - newAttempts} বার)` : `Please check PIN. (${5 - newAttempts} attempts left)`
+          );
+        }
+        return;
+      }
 
-      setBookingData(formattedData);
+      const data = await getBookingByTrackingNumber(phone);
+
+      setBookingData(data || null);
       setIsAuthenticated(true);
       setFailedAttempts(0);
-      localStorage.setItem('atoms_passenger_phone', phone);
-      localStorage.setItem('atoms_passenger_pin', pin);
+      // Only the phone is remembered locally; the PIN stays server-side.
+      localStorage.setItem('atoms_passenger_phone', phone.replace(/[\s\-\+]/g, ''));
+      localStorage.removeItem('atoms_passenger_pin');
 
       if (!isAuto) {
         success(
           language === 'bn' ? 'লগইন সফল' : 'Login Successful',
-          language === 'bn' ? `স্বাগতম, ${formattedData.contact_name}!` : `Welcome, ${formattedData.contact_name}!`
+          language === 'bn' ? `স্বাগতম, ${data?.contact_name || 'যাত্রী'}!` : `Welcome, ${data?.contact_name || 'Passenger'}!`
         );
       }
     } catch {
@@ -466,8 +478,8 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
       if (newAttempts >= 5) {
         setLockoutSeconds(60);
         error(
-          language === 'bn' ? 'নিরাপত্তা লক সক্রিয়' : 'Security Lockout Activated',
-          language === 'bn' ? '৫ বার ভুল পিন দেওয়ায় ৬০ সেকেন্ডের জন্য লক করা হয়েছে।' : '5 failed attempts. Locked for 60 seconds.'
+          language === 'bn' ? 'নিরাপত্তা লক সক্রিয়' : 'Security Lockout Activated',
+          language === 'bn' ? '৫ বার ভুল পিন দেওয়ায় ৬০ সেকেন্ডের জন্য লক করা হয়েছে।' : '5 failed attempts. Locked for 60 seconds.'
         );
       } else {
         error(
@@ -532,7 +544,7 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
   };
 
   // Handle Verify OTP & Reset PIN
-  const handleVerifyOtpAndResetPin = (e: React.FormEvent) => {
+  const handleVerifyOtpAndResetPin = async (e: React.FormEvent) => {
     e.preventDefault();
     const enteredOtp = otpDigits.join('');
     const newPinStr = newResetPinDigits.join('');
@@ -547,8 +559,12 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
       return;
     }
 
-    // Save newly reset PIN
-    savePassengerPin(phoneInput, newPinStr, passengerNameInput || 'শিক্ষার্থী');
+    // Save newly reset PIN to the backend
+    const token = await savePassengerPin(phoneInput, newPinStr, passengerNameInput || 'শিক্ষার্থী');
+    if (!token) {
+      error(language === 'bn' ? 'পিন রিসেট ব্যর্থ' : 'PIN Reset Failed', language === 'bn' ? 'এই নম্বরে কোনো বুকিং পাওয়া যায়নি অথবা সার্ভার ত্রুটি হয়েছে।' : 'No booking found for this number, or a server error occurred.');
+      return;
+    }
     setIsPinRegisteredForPhone(true);
     setForgotPinModalOpen(false);
     setOtpSent(false);
@@ -654,7 +670,7 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
   const hasAccommodation = Boolean(bookingData?.has_accommodation || bookingData?.accommodation);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
       {/* ═══════ 1. PORTAL HEADER ═══════ */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">

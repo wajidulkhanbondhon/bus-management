@@ -45,7 +45,7 @@ export function DatabaseBackupClient() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const res = await fastApiClient.get<DbStats>('/api/v1/backup/stats');
+      const res = await fastApiClient.get<DbStats>('/backup/stats');
       if (res.success && res.data) {
         setStats(res.data);
       }
@@ -65,7 +65,7 @@ export function DatabaseBackupClient() {
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      const res = await fastApiClient.get<any>('/api/v1/backup/export');
+      const res = await fastApiClient.get<any>('/backup/export');
       if (res.success && res.data) {
         const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
           JSON.stringify(res.data, null, 2)
@@ -115,12 +115,8 @@ export function DatabaseBackupClient() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const API_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || 'http://127.0.0.1:8000';
-      const token = typeof window !== 'undefined' ? localStorage.getItem('atoms_access_token') : null;
-
-      const response = await fetch(`${API_URL}/api/v1/backup/import`, {
+      const response = await fetch('/api/backend/backup/import', {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData
       });
 

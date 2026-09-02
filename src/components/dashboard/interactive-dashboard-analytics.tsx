@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AreaChart,
   Area,
@@ -51,8 +51,13 @@ export function InteractiveDashboardAnalytics({
 }: InteractiveDashboardAnalyticsProps) {
 
   const { t, language } = useApp();
+  const [mounted, setMounted] = useState(false);
   const [chartType, setChartType] = useState<ChartType>('area');
   const [selectedMetric, setSelectedMetric] = useState<MetricType>('sales');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const metricOptions: { id: MetricType; labelBn: string; labelEn: string; defaultChart: ChartType }[] = [
     {
@@ -229,9 +234,15 @@ export function InteractiveDashboardAnalytics({
 
       <CardContent className="p-6">
         <div className="h-80 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            {renderChartContent()}
-          </ResponsiveContainer>
+          {mounted ? (
+            <ResponsiveContainer width="100%" height="100%">
+              {renderChartContent()}
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full w-full bg-slate-50 dark:bg-slate-800/40 rounded-xl animate-pulse flex items-center justify-center text-xs text-slate-400 font-mono">
+              Loading Chart...
+            </div>
+          )}
         </div>
 
         {/* Dynamic Metric Explanation Badge below the chart */}

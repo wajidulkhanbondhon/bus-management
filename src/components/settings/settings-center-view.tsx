@@ -52,6 +52,7 @@ import {
   DollarSign,
   ToggleLeft,
   ToggleRight,
+  Monitor,
   X
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -68,6 +69,7 @@ import {
 import { DatabaseBackupClient } from './database-backup-client';
 import { AppearanceSettingsClient } from './appearance-settings-client';
 import { PaymentLogosSettingsClient } from './payment-logos-settings-client';
+import { LandingControlClient } from './landing-control-client';
 import { useApp } from '@/lib/context';
 
 interface Props {
@@ -613,7 +615,8 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
     { id: 'security', nameBn: '১৮. নিরাপত্তা, পাসওয়ার্ড ও সেশন (Minutes)', nameEn: '18. Security & Session', icon: ShieldCheck },
     { id: 'appearance', nameBn: '১৯. থিম ও কালার কাস্টমাইজেশন', nameEn: '19. Appearance & Themes', icon: Sparkles },
     { id: 'payment_logos', nameBn: '২০. পেমেন্ট ব্র্যান্ড লোগো সেটিংস', nameEn: '20. Payment Brand Logos', icon: CreditCard },
-    { id: 'database_backup', nameBn: '২১. ডাটাবেজ ব্যাকআপ ও মাইগ্রেশন', nameEn: '21. Database Backup & Restore', icon: Database }
+    { id: 'database_backup', nameBn: '২১. ডাটাবেজ ব্যাকআপ ও মাইগ্রেশন', nameEn: '21. Database Backup & Restore', icon: Database },
+    { id: 'landing_control', nameBn: '২২. ল্যান্ডিং পেজ ও পাবলিক পোর্টাল কন্ট্রোল', nameEn: '22. Landing Page & Public Portal Control', icon: Monitor }
   ];
 
   // Filter Categories by Search Query
@@ -624,7 +627,7 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
   }, [searchQuery, categories]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+    <div className="space-y-6 w-full pb-16">
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div>
@@ -1674,6 +1677,13 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
           {activeSection === 'database_backup' && (
             <div className="space-y-6">
               <DatabaseBackupClient />
+            </div>
+          )}
+
+          {/* SECTION 22: Landing Page & Public Portal Control */}
+          {activeSection === 'landing_control' && (
+            <div className="space-y-6">
+              <LandingControlClient />
             </div>
           )}
         </div>

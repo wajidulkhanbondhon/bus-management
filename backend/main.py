@@ -7,7 +7,6 @@ import os
 
 from app.core.config import settings
 from app.api.v1.api import api_router
-from app.db.session import engine, Base
 import app.models  # Ensure all models are registered with Base metadata
 
 import asyncio
@@ -29,9 +28,11 @@ async def security_monitoring_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Auto-create all tables on startup if not already created
-    Base.metadata.create_all(bind=engine)
-    
+    # Schema is managed by Alembic migrations (backend/alembic). Run:
+    #   alembic upgrade head
+    # before starting the service in production. In dev, the SQLite fallback
+    # DB is created by the migration too.
+
     # Start the autonomous learning loop
     task_learning = asyncio.create_task(autonomous_learning_loop())
     task_security = asyncio.create_task(security_monitoring_loop())
@@ -69,11 +70,6 @@ app.add_middleware(FirewallMiddleware)
 
 
 from app.services.booking_service import SeatAlreadyBookedException
-
-
-@app.exception_handler(ValueError)
-async def value_error_handler(request: Request, exc: ValueError):
-    return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
 @app.exception_handler(SeatAlreadyBookedException)

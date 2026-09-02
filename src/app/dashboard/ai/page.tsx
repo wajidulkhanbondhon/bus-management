@@ -46,7 +46,7 @@ export default function AiDashboardPage() {
   if (loading) return <div className="p-8 text-center animate-pulse">Loading AI Data...</div>;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8">
+    <div className="p-6 w-full space-y-8">
       <div className="flex items-center gap-3 border-b pb-4">
         <div className="p-3 bg-indigo-100 text-indigo-600 rounded-xl">
           <Bot className="w-8 h-8" />

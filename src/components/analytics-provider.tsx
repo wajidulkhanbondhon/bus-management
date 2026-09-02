@@ -1,14 +1,16 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Script from 'next/script';
 import { useApp } from '@/lib/context';
 
 export function AnalyticsProvider() {
+  const [mounted, setMounted] = useState(false);
   const { marketingIntegrations } = useApp();
   const { gaId, pixelId, gtmId, customGaHtml, customPixelHtml, customGtmHtml } = marketingIntegrations;
 
   useEffect(() => {
+    setMounted(true);
     // Inject Custom GA HTML Script
     if (customGaHtml) {
       try {
@@ -42,6 +44,8 @@ export function AnalyticsProvider() {
       }
     }
   }, [customGaHtml, customPixelHtml, customGtmHtml]);
+
+  if (!mounted) return null;
 
   return (
     <>

@@ -44,6 +44,7 @@ import {
   deleteSeatLayoutAction
 } from '@/actions/bus.actions';
 import { useApp } from '@/lib/context';
+import { useToast } from '@/components/ui/toast';
 
 interface SeatCell {
   id?: string;
@@ -76,6 +77,51 @@ const COLOR_OPTIONS: { id: FareRangeSegment['color']; label: string; bgClass: st
   { id: 'cyan', label: 'Ocean Cyan', bgClass: 'from-cyan-50 to-cyan-100 dark:from-cyan-950/70 dark:to-cyan-900/70', borderClass: 'border-cyan-500 dark:border-cyan-400', textClass: 'text-cyan-950 dark:text-cyan-100', dotClass: 'bg-cyan-500' }
 ];
 
+const ROW_LETTERS = 'ABCDEFGHIJKLMN';
+
+function buildInitial45Seats(): SeatCell[] {
+  const rows = 11;
+  const cols = 5;
+  const newCells: SeatCell[] = [];
+  for (let r = 0; r < rows; r++) {
+    const rowChar = ROW_LETTERS[r] || `R${r + 1}`;
+    const isLastRow = r === rows - 1;
+    const defaultSegFare = r < 5 ? 650 : r < 8 ? 550 : r < 10 ? 500 : 450;
+
+    for (let c = 0; c < cols; c++) {
+      if (isLastRow) {
+        newCells.push({
+          rowIndex: r,
+          colIndex: c,
+          seatNumber: `${rowChar}${c + 1}`,
+          type: 'SEAT',
+          genderRule: 'ANY',
+          baseFare: 450
+        });
+      } else if (c === 2) {
+        newCells.push({
+          rowIndex: r,
+          colIndex: c,
+          seatNumber: '',
+          type: 'AISLE',
+          genderRule: 'ANY'
+        });
+      } else {
+        const seatLetter = c === 0 ? '1' : c === 1 ? '2' : c === 3 ? '3' : '4';
+        newCells.push({
+          rowIndex: r,
+          colIndex: c,
+          seatNumber: `${rowChar}${seatLetter}`,
+          type: 'SEAT',
+          genderRule: 'ANY',
+          baseFare: defaultSegFare
+        });
+      }
+    }
+  }
+  return newCells;
+}
+
 export function SeatBuilderCanvas({
   fareZones: initialFareZones,
   savedLayouts: initialSavedLayouts = []
@@ -85,6 +131,7 @@ export function SeatBuilderCanvas({
 }) {
   const router = useRouter();
   const { t, language } = useApp();
+  const { success: toastSuccess, error: toastError } = useToast();
 
   // Active View Tab: 'builder' | 'gallery'
   const [activeTab, setActiveTab] = useState<'builder' | 'gallery'>('builder');
@@ -93,14 +140,17 @@ export function SeatBuilderCanvas({
   const [editingExistingLayoutId, setEditingExistingLayoutId] = useState<string | null>(null);
 
   const [targetUniversity, setTargetUniversity] = useState('রাজশাহী বিশ্ববিদ্যালয় (RU)');
-  const [layoutName, setLayoutName] = useState('রাজশাহী বিশ্ববিদ্যালয় (RU) স্পেশাল - ৪৫ সিট (৳৬৫০/৳৫৫০)');
+  const [admissionUnit, setAdmissionUnit] = useState('Unit C');
+  const [unitDiscipline, setUnitDiscipline] = useState('বিজ্ঞান (Science)');
+  const [layoutName, setLayoutName] = useState('[RU] [Unit C - বিজ্ঞান] রাজশাহী বিশ্ববিদ্যালয় (RU) স্পেশাল - ৪৫ সিট (৳৬৫০/৳৫৫০)');
   const [layoutDescription, setLayoutDescription] = useState('রাজশাহী বিশ্ববিদ্যালয় ভর্তি পরীক্ষা স্পেশাল ৪৫ সিট কোচ লেআউট');
+  const [examName, setExamName] = useState('ভর্তি পরীক্ষা ২০২৫-২৬');
   
   // Capacity: 40, 45, etc.
   const [capacityInput, setCapacityInput] = useState<number>(45);
   const [totalRows, setTotalRows] = useState(11);
   const [totalCols, setTotalCols] = useState(5);
-  const [cells, setCells] = useState<SeatCell[]>([]);
+  const [cells, setCells] = useState<SeatCell[]>(buildInitial45Seats);
   const [extraSeats, setExtraSeats] = useState<SeatCell[]>([]);
   const [selectedCell, setSelectedCell] = useState<SeatCell | null>(null);
   const [cellFormApplied, setCellFormApplied] = useState(false);
@@ -109,6 +159,35 @@ export function SeatBuilderCanvas({
   const [savedLayouts, setSavedLayouts] = useState<any[]>(initialSavedLayouts);
   const [gallerySearch, setGallerySearch] = useState('');
   const [galleryUniFilter, setGalleryUniFilter] = useState('ALL');
+  const [galleryUnitFilter, setGalleryUnitFilter] = useState('ALL');
+
+  const autoFormatLayoutName = (
+    uni = targetUniversity,
+    unit = admissionUnit,
+    disc = unitDiscipline,
+    cap = capacityInput
+  ) => {
+    // Extract short code from parentheses (e.g. (RU) -> RU) or take first 1-2 words
+    const match = uni.match(/\(([^)]+)\)/);
+    const shortCode = match ? match[1] : (uni.trim().split(' ')[0] || 'UNI');
+    
+    let unitTag = '';
+    const cleanUnit = (unit || '').trim();
+    const cleanDisc = (disc || '').trim();
+
+    if (cleanUnit && cleanUnit !== 'None' && cleanUnit !== 'সাধারণ') {
+      if (cleanDisc && cleanDisc !== 'None' && !cleanUnit.toLowerCase().includes(cleanDisc.toLowerCase().split(' ')[0])) {
+        unitTag = ` [${cleanUnit} - ${cleanDisc.split(' ')[0]}]`;
+      } else {
+        unitTag = ` [${cleanUnit}]`;
+      }
+    } else if (cleanDisc && cleanDisc !== 'None') {
+      unitTag = ` [${cleanDisc.split(' ')[0]}]`;
+    }
+
+    const formatted = `[${shortCode}]${unitTag} ${uni} - ${cap} সিট`;
+    setLayoutName(formatted);
+  };
 
   // Custom Editable Fare Segments
   const [segments, setSegments] = useState<FareRangeSegment[]>([
@@ -136,6 +215,7 @@ export function SeatBuilderCanvas({
   });
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [toastNotification, setToastNotification] = useState<{
     show: boolean;
@@ -200,9 +280,20 @@ export function SeatBuilderCanvas({
   // Dynamic University Presets (Editable, Creatable, Deletable)
   const [universityPresets, setUniversityPresets] = useState<any[]>([
     {
+      id: 'GST',
+      name: 'জিএসটি গুচ্ছ (GST Cluster - ২৪ বিশ্ববিদ্যালয়)',
+      defaultLayoutName: '[GST] জিএসটি গুচ্ছ স্পেশাল - ৪৫ সিট (৳৬৫০/৳৫৫০)',
+      capacity: 45,
+      segments: [
+        { id: 'seg-1', name: 'Front VIP (A–E)', startRow: 'A', endRow: 'E', fare: 650, color: 'emerald' as const },
+        { id: 'seg-2', name: 'Standard Middle (F–H)', startRow: 'F', endRow: 'H', fare: 550, color: 'blue' as const },
+        { id: 'seg-3', name: 'Rear Economy (I–K)', startRow: 'I', endRow: 'K', fare: 500, color: 'purple' as const }
+      ]
+    },
+    {
       id: 'RU',
       name: 'রাজশাহী বিশ্ববিদ্যালয় (RU)',
-      defaultLayoutName: 'রাজশাহী বিশ্ববিদ্যালয় (RU) স্পেশাল - ৪৫ সিট (৳৬৫০/৳৫৫০)',
+      defaultLayoutName: '[RU] [Unit C - বিজ্ঞান] রাজশাহী বিশ্ববিদ্যালয় স্পেশাল - ৪৫ সিট',
       capacity: 45,
       segments: [
         { id: 'seg-1', name: 'Front VIP (A–E)', startRow: 'A', endRow: 'E', fare: 650, color: 'emerald' as const },
@@ -212,9 +303,19 @@ export function SeatBuilderCanvas({
       ]
     },
     {
+      id: 'DU',
+      name: 'ঢাকা বিশ্ববিদ্যালয় (DU)',
+      defaultLayoutName: '[DU] ঢাকা বিশ্ববিদ্যালয় ডে এক্সপ্রেস - ৪০ সিট (৳৫০০)',
+      capacity: 40,
+      segments: [
+        { id: 'seg-1', name: 'Front Seats (A–D)', startRow: 'A', endRow: 'D', fare: 500, color: 'emerald' as const },
+        { id: 'seg-2', name: 'Standard Seats (E–J)', startRow: 'E', endRow: 'J', fare: 450, color: 'blue' as const }
+      ]
+    },
+    {
       id: 'CU',
       name: 'চট্টগ্রাম বিশ্ববিদ্যালয় (CU)',
-      defaultLayoutName: 'চট্টগ্রাম বিশ্ববিদ্যালয় (CU) নাইট কোচ - ৪৫ সিট (৳৭০০/৳৬০০)',
+      defaultLayoutName: '[CU] চট্টগ্রাম বিশ্ববিদ্যালয় নাইট কোচ - ৪৫ সিট (৳৭০০/৳৬০০)',
       capacity: 45,
       segments: [
         { id: 'seg-1', name: 'Front VIP (A–E)', startRow: 'A', endRow: 'E', fare: 700, color: 'emerald' as const },
@@ -223,38 +324,48 @@ export function SeatBuilderCanvas({
       ]
     },
     {
-      id: 'DU',
-      name: 'ঢাকা বিশ্ববিদ্যালয় (DU)',
-      defaultLayoutName: 'ঢাকা বিশ্ববিদ্যালয় (DU) ডে এক্সপ্রেস - ৪০ সিট (৳৫০০)',
-      capacity: 40,
-      segments: [
-        { id: 'seg-1', name: 'Front Seats (A–D)', startRow: 'A', endRow: 'D', fare: 500, color: 'emerald' as const },
-        { id: 'seg-2', name: 'Standard Seats (E–J)', startRow: 'E', endRow: 'J', fare: 450, color: 'blue' as const }
-      ]
-    },
-    {
-      id: 'GST',
-      name: 'জিএসটি গুচ্ছ (GST Cluster)',
-      defaultLayoutName: 'জিএসটি গুচ্ছ (GST) স্পেশাল - ৪৫ সিট (৳৬০০/৳৫০০)',
-      capacity: 45,
-      segments: [
-        { id: 'seg-1', name: 'Front VIP (A–E)', startRow: 'A', endRow: 'E', fare: 600, color: 'emerald' as const },
-        { id: 'seg-2', name: 'Standard Seats (F–K)', startRow: 'F', endRow: 'K', fare: 500, color: 'blue' as const }
-      ]
-    },
-    {
       id: 'JU',
-      name: 'জাহাঙ্গীরনগর (JU)',
-      defaultLayoutName: 'জাহাঙ্গীরনগর (JU) শাটল বাস - ৩৬ সিট (৳৩৫০)',
+      name: 'জাহাঙ্গীরনগর বিশ্ববিদ্যালয় (JU)',
+      defaultLayoutName: '[JU] জাহাঙ্গীরনগর বিশ্ববিদ্যালয় শাটল - ৩৬ সিট (৳৪০০)',
       capacity: 36,
       segments: [
-        { id: 'seg-1', name: 'All Seats (A–I)', startRow: 'A', endRow: 'I', fare: 350, color: 'blue' as const }
+        { id: 'seg-1', name: 'All Seats (A–I)', startRow: 'A', endRow: 'I', fare: 400, color: 'blue' as const }
       ]
     },
     {
-      id: 'KUET',
-      name: 'কুয়েট খুলনা (KUET)',
-      defaultLayoutName: 'কুয়েট এক্সপ্রেস (KUET) - ৪৫ সিট (৳৬৫০/৳৫৫০)',
+      id: 'Agri',
+      name: 'কৃষি গুচ্ছ (Agri Cluster - ৯ বিশ্ববিদ্যালয়)',
+      defaultLayoutName: '[Agri] কৃষি গুচ্ছ ভর্তি পরীক্ষা স্পেশাল - ৪৫ সিট',
+      capacity: 45,
+      segments: [
+        { id: 'seg-1', name: 'Front VIP (A–E)', startRow: 'A', endRow: 'E', fare: 650, color: 'emerald' as const },
+        { id: 'seg-2', name: 'Standard Seats (F–K)', startRow: 'F', endRow: 'K', fare: 550, color: 'blue' as const }
+      ]
+    },
+    {
+      id: 'BUET',
+      name: 'বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয় (BUET)',
+      defaultLayoutName: '[BUET] বুয়েট ভর্তি পরীক্ষা এক্সপ্রেস - ৪০ সিট',
+      capacity: 40,
+      segments: [
+        { id: 'seg-1', name: 'Front Seats (A–D)', startRow: 'A', endRow: 'D', fare: 550, color: 'emerald' as const },
+        { id: 'seg-2', name: 'Standard Seats (E–J)', startRow: 'E', endRow: 'J', fare: 500, color: 'blue' as const }
+      ]
+    },
+    {
+      id: 'Eng-Cluster',
+      name: 'প্রকৌশল গুচ্ছ (RUET, CUET, KUET)',
+      defaultLayoutName: '[Eng-Cluster] প্রকৌশল গুচ্ছ স্পেশাল - ৪৫ সিট',
+      capacity: 45,
+      segments: [
+        { id: 'seg-1', name: 'Front VIP (A–E)', startRow: 'A', endRow: 'E', fare: 700, color: 'emerald' as const },
+        { id: 'seg-2', name: 'Standard Seats (F–K)', startRow: 'F', endRow: 'K', fare: 600, color: 'blue' as const }
+      ]
+    },
+    {
+      id: 'MBBS',
+      name: 'মেডিকেল ভর্তি পরীক্ষা (MBBS & BDS)',
+      defaultLayoutName: '[MBBS] মেডিকেল ভর্তি পরীক্ষা এক্সপ্রেস - ৪৫ সিট',
       capacity: 45,
       segments: [
         { id: 'seg-1', name: 'Front VIP (A–E)', startRow: 'A', endRow: 'E', fare: 650, color: 'emerald' as const },
@@ -263,12 +374,22 @@ export function SeatBuilderCanvas({
     },
     {
       id: 'SUST',
-      name: 'সাস্ট সিলেট (SUST)',
-      defaultLayoutName: 'সাস্ট সিলেট (SUST) এক্সপ্রেস - ৪৫ সিট (৳৭০০/৳৬০০)',
+      name: 'শাহজালাল বিজ্ঞান ও প্রযুক্তি (SUST)',
+      defaultLayoutName: '[SUST] সাস্ট সিলেট এক্সপ্রেস - ৪৫ সিট (৳৭০০/৳৬০০)',
       capacity: 45,
       segments: [
         { id: 'seg-1', name: 'Front VIP (A–E)', startRow: 'A', endRow: 'E', fare: 700, color: 'emerald' as const },
         { id: 'seg-2', name: 'Standard (F–K)', startRow: 'F', endRow: 'K', fare: 600, color: 'blue' as const }
+      ]
+    },
+    {
+      id: 'KU',
+      name: 'খুলনা বিশ্ববিদ্যালয় (KU)',
+      defaultLayoutName: '[KU] খুলনা বিশ্ববিদ্যালয় স্পেশাল - ৪৫ সিট',
+      capacity: 45,
+      segments: [
+        { id: 'seg-1', name: 'Front VIP (A–E)', startRow: 'A', endRow: 'E', fare: 650, color: 'emerald' as const },
+        { id: 'seg-2', name: 'Standard (F–K)', startRow: 'F', endRow: 'K', fare: 550, color: 'blue' as const }
       ]
     }
   ]);
@@ -489,7 +610,7 @@ export function SeatBuilderCanvas({
               colIndex: c,
               seatNumber: `${rowChar}${seatLetter}`,
               type: 'SEAT',
-              genderRule: (r < 3 && (c === 0 || c === 1)) ? 'FEMALE_ONLY' : 'ANY',
+              genderRule: 'ANY',
               baseFare: matchingSeg?.fare || 550
             });
           }
@@ -522,7 +643,7 @@ export function SeatBuilderCanvas({
               colIndex: c,
               seatNumber: `${rowChar}${seatLetter}`,
               type: 'SEAT',
-              genderRule: (r < 3 && (c === 0 || c === 1)) ? 'FEMALE_ONLY' : 'ANY',
+              genderRule: 'ANY',
               baseFare: matchingSeg?.fare || 500
             });
           }
@@ -558,7 +679,7 @@ export function SeatBuilderCanvas({
                 colIndex: c,
                 seatNumber: `${rowChar}${seatLetter}`,
                 type: 'SEAT',
-                genderRule: (r < 3 && (c === 0 || c === 1)) ? 'FEMALE_ONLY' : 'ANY',
+                genderRule: 'ANY',
                 baseFare: matchingSeg?.fare || 500
               });
             } else {
@@ -663,7 +784,9 @@ export function SeatBuilderCanvas({
   // Extra Seats
   const handleAddExtraSeat = () => {
     const nextIdx = extraSeats.length + 1;
+    const newId = `extra-${Date.now()}-${nextIdx}`;
     const newExtra: SeatCell = {
+      id: newId,
       rowIndex: 999,
       colIndex: nextIdx,
       seatNumber: `EX-${nextIdx}`,
@@ -672,14 +795,16 @@ export function SeatBuilderCanvas({
       baseFare: 450,
       isExtra: true
     };
-    setExtraSeats([...extraSeats, newExtra]);
+    setExtraSeats(prev => [...prev, newExtra]);
     setSelectedCell(newExtra);
     setCellFormApplied(false);
   };
 
-  const handleRemoveSingleExtraSeat = (seatNum: string) => {
-    setExtraSeats(prev => prev.filter(s => s.seatNumber !== seatNum));
-    if (selectedCell?.seatNumber === seatNum) {
+  const handleRemoveSingleExtraSeat = (targetSeat: SeatCell | string) => {
+    const seatNum = typeof targetSeat === 'string' ? targetSeat : targetSeat.seatNumber;
+    const seatId = typeof targetSeat === 'object' ? targetSeat.id : undefined;
+    setExtraSeats(prev => prev.filter(s => (seatId && s.id ? s.id !== seatId : s.seatNumber !== seatNum)));
+    if (selectedCell?.seatNumber === seatNum || (seatId && selectedCell?.id === seatId)) {
       setSelectedCell(null);
     }
   };
@@ -689,7 +814,7 @@ export function SeatBuilderCanvas({
     const updated = [...extraSeats];
     const removed = updated.pop();
     setExtraSeats(updated);
-    if (selectedCell?.seatNumber === removed?.seatNumber) {
+    if (selectedCell?.seatNumber === removed?.seatNumber || (removed?.id && selectedCell?.id === removed.id)) {
       setSelectedCell(null);
     }
   };
@@ -705,9 +830,13 @@ export function SeatBuilderCanvas({
     setSelectedCell(updated);
 
     if (selectedCell.isExtra) {
-      setExtraSeats(extraSeats.map(s => s.seatNumber === selectedCell.seatNumber ? updated : s));
+      setExtraSeats(prev => prev.map(s => 
+        (selectedCell.id && s.id ? s.id === selectedCell.id : s.seatNumber === selectedCell.seatNumber) 
+          ? updated 
+          : s
+      ));
     } else {
-      setCells(cells.map(c => (c.rowIndex === updated.rowIndex && c.colIndex === updated.colIndex ? updated : c)));
+      setCells(prev => prev.map(c => (c.rowIndex === updated.rowIndex && c.colIndex === updated.colIndex ? updated : c)));
     }
   };
 
@@ -717,29 +846,79 @@ export function SeatBuilderCanvas({
     setTimeout(() => setCellFormApplied(false), 2500);
   };
 
+  // Helper: Extract or identify Unit badge for any layout
+  const getLayoutUnitBadge = (layout: any) => {
+    if (layout?.unit) return layout.unit;
+    const jsonRaw = layout?.layoutJson || layout?.layout_json;
+    if (jsonRaw) {
+      try {
+        const p = typeof jsonRaw === 'string' ? JSON.parse(jsonRaw) : jsonRaw;
+        if (p?.unit) return p.unit;
+      } catch {}
+    }
+    const text = `${layout?.name || ''} ${layout?.description || ''}`.toLowerCase();
+    if (text.includes('unit a') || text.includes('a unit') || text.includes('ইউনিট a') || text.includes('ইউনিট এ') || text.includes('[unit a]')) return 'Unit A';
+    if (text.includes('unit b') || text.includes('b unit') || text.includes('ইউনিট b') || text.includes('ইউনিট বি') || text.includes('[unit b]')) return 'Unit B';
+    if (text.includes('unit c') || text.includes('c unit') || text.includes('ইউনিট c') || text.includes('ইউনিট সি') || text.includes('[unit c]')) return 'Unit C';
+    if (text.includes('unit d') || text.includes('d unit') || text.includes('ইউনিট d') || text.includes('ইউনিট ডি') || text.includes('[unit d]')) return 'Unit D';
+    if (text.includes('unit e') || text.includes('e unit')) return 'Unit E';
+    if (text.includes('general') || text.includes('সাধারণ')) return 'General';
+    return null;
+  };
+
+  const getUnitBadgeStyle = (unit: string | null | undefined) => {
+    if (!unit) return 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700';
+    if (unit.includes('A')) return 'bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700';
+    if (unit.includes('B')) return 'bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700';
+    if (unit.includes('C')) return 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700';
+    if (unit.includes('D')) return 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700';
+    if (unit.includes('E')) return 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700';
+    return 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700';
+  };
+
+  // Check for duplicate layout names (excluding current editing layout)
+  const trimmedCurrentName = layoutName.trim().toLowerCase();
+  const duplicateExistingLayout = (savedLayouts || []).find(
+    l => l?.name?.trim().toLowerCase() === trimmedCurrentName && l.id !== editingExistingLayoutId
+  );
+
   // Load and Edit Saved Layout
   const handleLoadAndEditLayout = (layout: any) => {
     setEditingExistingLayoutId(layout.id);
     setLayoutName(layout.name);
     setLayoutDescription(layout.description || '');
-    setTotalRows(layout.totalRows);
-    setTotalCols(layout.totalCols);
+    if (layout.university) setTargetUniversity(layout.university);
+    if (layout.unit) setAdmissionUnit(layout.unit);
+    else {
+      const detected = getLayoutUnitBadge(layout);
+      if (detected) setAdmissionUnit(detected);
+    }
+    if (layout.examName) setExamName(layout.examName);
 
-    if (layout.layoutJson) {
+    setTotalRows(layout.totalRows || layout.total_rows || 11);
+    setTotalCols(layout.totalCols || layout.total_cols || 5);
+
+    const jsonRaw = layout.layoutJson || layout.layout_json;
+    if (jsonRaw) {
       try {
-        const parsed = JSON.parse(layout.layoutJson);
-        if (parsed.grid) {
+        const parsed = typeof jsonRaw === 'string' ? JSON.parse(jsonRaw) : jsonRaw;
+        if (parsed.university) setTargetUniversity(parsed.university);
+        if (parsed.unit) setAdmissionUnit(parsed.unit);
+        if (parsed.examName) setExamName(parsed.examName);
+
+        const grid = parsed.layoutGrid || parsed.grid;
+        if (grid && Array.isArray(grid)) {
           const loadedCells: SeatCell[] = [];
-          for (let r = 0; r < parsed.grid.length; r++) {
-            for (let c = 0; c < parsed.grid[r].length; c++) {
-              const item = parsed.grid[r][c];
+          for (let r = 0; r < grid.length; r++) {
+            for (let c = 0; c < grid[r].length; c++) {
+              const item = grid[r][c];
               if (item) {
                 loadedCells.push({
                   rowIndex: r,
                   colIndex: c,
-                  seatNumber: item.label || '',
+                  seatNumber: item.label || item.seatNumber || '',
                   type: item.type,
-                  genderRule: item.genderAllowed || 'ANY',
+                  genderRule: item.genderAllowed || item.genderRule || 'ANY',
                   baseFare: item.baseFare || 500,
                   fareZoneId: item.fareZoneId
                 });
@@ -750,10 +929,10 @@ export function SeatBuilderCanvas({
 
           if (parsed.extraSeats && Array.isArray(parsed.extraSeats) && parsed.extraSeats.length > 0) {
             setExtraSeats(parsed.extraSeats);
-            setCapacityInput(layout.totalSeats - parsed.extraSeats.length);
+            setCapacityInput((layout.totalSeats || layout.total_seats || 45) - parsed.extraSeats.length);
           } else {
             setExtraSeats([]);
-            setCapacityInput(layout.totalSeats);
+            setCapacityInput(layout.totalSeats || layout.total_seats || 45);
           }
 
           setSelectedCell(null);
@@ -766,7 +945,7 @@ export function SeatBuilderCanvas({
       }
     }
 
-    generateDynamicLayout(layout.totalSeats, layout.name);
+    generateDynamicLayout(layout.totalSeats || layout.total_seats || 45, layout.name);
     setActiveTab('builder');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -791,7 +970,7 @@ export function SeatBuilderCanvas({
   };
 
   // Save layout to DB
-  const handleSaveLayout = async () => {
+  const confirmSaveLayout = async () => {
     if (!layoutName.trim()) {
       setToastNotification({
         show: true,
@@ -801,6 +980,17 @@ export function SeatBuilderCanvas({
       });
       setTimeout(() => setToastNotification(prev => ({ ...prev, show: false })), 4500);
       return;
+    }
+
+    // Duplicate name warning prompt if creating fresh
+    if (duplicateExistingLayout && !editingExistingLayoutId) {
+      const wantOverwrite = confirm(language === 'bn'
+        ? `⚠️ "${layoutName}" নামে ইতিমধ্যে একটি লেআউট ডাটাবেজে সংরক্ষিত আছে!\n\nআপনি কি আগের লেআউটটি প্রতিস্থাপন (Overwrite / Update) করতে চান?`
+        : `A layout named "${layoutName}" already exists.\n\nDo you want to overwrite it?`);
+      if (!wantOverwrite) {
+        setIsSaveModalOpen(true);
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -825,12 +1015,16 @@ export function SeatBuilderCanvas({
         }
       }
 
-      const isUpdate = !!editingExistingLayoutId;
+      const isUpdate = !!editingExistingLayoutId || (duplicateExistingLayout && !editingExistingLayoutId);
+      const targetId = editingExistingLayoutId || (duplicateExistingLayout ? duplicateExistingLayout.id : undefined);
 
       const res = await createCustomLayoutAction({
-        id: editingExistingLayoutId || undefined,
+        id: targetId,
         name: layoutName.trim(),
         description: layoutDescription.trim(),
+        university: targetUniversity.trim(),
+        unit: admissionUnit.trim(),
+        examName: examName.trim(),
         totalRows: totalRows,
         totalCols: totalCols,
         layoutGrid,
@@ -843,35 +1037,18 @@ export function SeatBuilderCanvas({
           setSavedLayouts(prev => [savedItem, ...prev.filter(l => l.id !== savedItem.id)]);
         }
         setEditingExistingLayoutId(null);
-        setToastNotification({
-          show: true,
-          title: language === 'bn' ? '🎉 সফল হয়েছে!' : '🎉 Success!',
-          message: isUpdate
-            ? (language === 'bn' ? `"${layoutName}" লেআউটটি সফলভাবে আপডেট হয়েছে!` : `Layout "${layoutName}" successfully updated!`)
-            : (language === 'bn' ? `"${layoutName}" লেআউটটি সফলভাবে ডাটাবেজে সংরক্ষিত হয়েছে!` : `Layout "${layoutName}" successfully saved!`),
-          type: 'success'
-        });
-        setTimeout(() => setToastNotification(prev => ({ ...prev, show: false })), 6000);
+        const successMessage = isUpdate
+          ? (language === 'bn' ? `"${layoutName}" লেআউটটি সফলভাবে আপডেট হয়েছে!` : `Layout "${layoutName}" successfully updated!`)
+          : (language === 'bn' ? `"${layoutName}" লেআউটটি সফলভাবে ডাটাবেজে সংরক্ষিত হয়েছে!` : `Layout "${layoutName}" successfully saved!`);
+        toastSuccess(successMessage);
         router.refresh();
       } else {
         setErrorMsg(res.error || 'Failed to save seat layout');
-        setToastNotification({
-          show: true,
-          title: language === 'bn' ? 'সেভ ব্যর্থ হয়েছে' : 'Save Failed',
-          message: res.error || 'Failed to save seat layout',
-          type: 'error'
-        });
-        setTimeout(() => setToastNotification(prev => ({ ...prev, show: false })), 5000);
+        toastError(res.error || 'Failed to save seat layout');
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'An error occurred while saving layout');
-      setToastNotification({
-        show: true,
-        title: language === 'bn' ? 'এরর' : 'Error',
-        message: err.message || 'An error occurred while saving layout',
-        type: 'error'
-      });
-      setTimeout(() => setToastNotification(prev => ({ ...prev, show: false })), 5000);
+      toastError(err.message || 'An error occurred while saving layout');
     } finally {
       setIsSaving(false);
     }
@@ -883,14 +1060,30 @@ export function SeatBuilderCanvas({
   const filteredSavedLayouts = (savedLayouts || []).filter(l => {
     const name = l?.name || '';
     const desc = l?.description || '';
+    const uni = l?.university || '';
+    const unit = l?.unit || getLayoutUnitBadge(l) || '';
+    const exam = l?.examName || '';
     const q = (gallerySearch || '').toLowerCase();
-    const matchesSearch = name.toLowerCase().includes(q) || desc.toLowerCase().includes(q);
+    const matchesSearch = 
+      name.toLowerCase().includes(q) || 
+      desc.toLowerCase().includes(q) || 
+      uni.toLowerCase().includes(q) || 
+      unit.toLowerCase().includes(q) || 
+      exam.toLowerCase().includes(q);
+
     let matchesUni = true;
     if (galleryUniFilter && galleryUniFilter !== 'ALL') {
-      const text = `${name} ${desc}`.toLowerCase();
+      const text = `${name} ${desc} ${uni}`.toLowerCase();
       matchesUni = text.includes(galleryUniFilter.toLowerCase());
     }
-    return matchesSearch && matchesUni;
+
+    let matchesUnit = true;
+    if (galleryUnitFilter && galleryUnitFilter !== 'ALL') {
+      const unitKey = unit.toLowerCase();
+      matchesUnit = unitKey.includes(galleryUnitFilter.toLowerCase());
+    }
+
+    return matchesSearch && matchesUni && matchesUnit;
   });
 
 
@@ -955,7 +1148,7 @@ export function SeatBuilderCanvas({
   }
 
   return (
-    <div className="max-w-7xl mx-auto pb-16">
+    <div className="w-full pb-16" suppressHydrationWarning>
       {/* ========================================================================= */}
       {/* FULL-PAGE LUXURY 100% SINGLE-PAGE A4 PRINT MANIFEST (EXPANDED & DISTINCT GAPS) */}
       {/* ========================================================================= */}
@@ -980,14 +1173,14 @@ export function SeatBuilderCanvas({
             <div className="h-4.5 bg-gradient-to-r from-sky-950 via-blue-900 to-sky-950 text-sky-100 rounded-t-xl text-center text-xs font-mono font-black tracking-widest flex items-center justify-center mb-1.5 shadow-inner">
               FRONT PANORAMIC WINDSHIELD GLASS
             </div>
-            <div className="bg-slate-900 text-white rounded-2xl p-2.5 flex items-center justify-between text-xs sm:text-sm font-black shadow-md">
-              <span className="bg-emerald-800 border-2 border-emerald-500 px-5 py-1.5 rounded-xl text-emerald-100 flex items-center gap-1.5">
+            <div className="bg-slate-900 text-white rounded-2xl p-2 flex items-center justify-between text-xs font-bold shadow-sm">
+              <span className="bg-emerald-900/90 border border-emerald-500 px-3 py-1 rounded-lg text-emerald-200 flex items-center gap-1">
                 🚪 বাসের গেট (ENTRY)
               </span>
-              <span className="bg-slate-800 border-2 border-slate-600 px-6 py-1.5 rounded-xl font-mono text-amber-300">
+              <span className="bg-slate-800 border border-slate-600 px-3 py-1 rounded-lg font-mono text-amber-300">
                 🚌 ইঞ্জিন বনেট
               </span>
-              <span className="bg-blue-800 border-2 border-blue-500 px-5 py-1.5 rounded-xl text-blue-100 flex items-center gap-1.5">
+              <span className="bg-blue-900/90 border border-blue-500 px-3 py-1 rounded-lg text-blue-200 flex items-center gap-1">
                 ✇ ড্রাইভার কেবিন (DRIVER)
               </span>
             </div>
@@ -1059,19 +1252,27 @@ export function SeatBuilderCanvas({
       {/* ========================================================================= */}
       <div className="screen-only space-y-6">
         {/* Top Header with Create New Layout, Print, Tab Switcher & Save Button */}
-        <div className="no-print flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+        <div className="no-print flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-950/50 px-2.5 py-0.5 rounded-full border border-blue-200 dark:border-blue-800">
                 {language === 'bn' ? 'কাস্টম সিট বিল্ডার ও গ্যালারি' : 'Custom Seat Builder & Gallery'}
               </span>
               <Badge variant="primary" className="text-xs px-3 py-1 font-bold">
                 {totalAllSeats} {t.seatsTotal} ({totalMainSeats} Main + {extraSeats.length} Extra)
               </Badge>
+              <span className={`text-xs px-2.5 py-0.5 rounded-full font-black border ${getUnitBadgeStyle(admissionUnit)}`}>
+                🎓 {admissionUnit || 'Unit C'}{unitDiscipline && unitDiscipline !== 'None' && !admissionUnit?.toLowerCase().includes(unitDiscipline.toLowerCase().split(' ')[0]) ? ` (${unitDiscipline.split(' ')[0]})` : ''}
+              </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight mt-1">
-              {language === 'bn' ? 'বিশ্ববিদ্যালয় সিট লেআউট ও ভাড়া বিল্ডার' : 'University Seat Layout & Fare Builder'}
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight mt-1">
+              {layoutName}
             </h1>
+            <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-bold text-slate-700 dark:text-slate-300">🏛️ {targetUniversity}</span>
+              <span>•</span>
+              <span className="font-bold text-purple-600 dark:text-purple-400">📝 {examName || 'ভর্তি পরীক্ষা'}</span>
+            </div>
           </div>
 
         {/* Floating Toast Notification */}
@@ -1133,7 +1334,7 @@ export function SeatBuilderCanvas({
           <Button
             variant="primary"
             size="md"
-            onClick={handleSaveLayout}
+            onClick={() => setIsSaveModalOpen(true)}
             isLoading={isSaving}
             className="font-bold shadow-lg shadow-blue-500/25 px-6 rounded-2xl text-sm py-2"
           >
@@ -1145,7 +1346,7 @@ export function SeatBuilderCanvas({
 
       {/* Mode Status Banner if editing an existing layout */}
       {editingExistingLayoutId && (
-        <div className="no-print flex items-center justify-between p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200">
+        <div className="hidden no-print bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Edit2 className="w-4 h-4 text-amber-600 shrink-0" />
             <span className="text-xs sm:text-sm font-bold">
@@ -1169,17 +1370,17 @@ export function SeatBuilderCanvas({
       )}
 
       {/* Main Tab Switcher: Builder vs Full-Width Gallery */}
-      <div className="no-print flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+      <div className="no-print flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
         <button
           onClick={() => setActiveTab('builder')}
           className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 ${
             activeTab === 'builder'
               ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
-              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:white'
           }`}
         >
           <LayoutGrid className="w-4 h-4" />
-          <span>{language === 'bn' ? '🛠 লেআউট বিল্ডার ও ভিজ্যুয়াল ক্যানভাস' : 'Seat Layout Builder'}</span>
+          <span>{language === 'bn' ? '🛠 লেআউট বিল্ডার ও ক্যানভাস' : 'Seat Layout Builder'}</span>
         </button>
 
         <button
@@ -1187,12 +1388,12 @@ export function SeatBuilderCanvas({
           className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 ${
             activeTab === 'gallery'
               ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
-              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:white'
           }`}
         >
           <FolderOpen className="w-4 h-4" />
-          <span>{language === 'bn' ? '📁 সংরক্ষিত বিশ্ববিদ্যালয় লেআউট গ্যালারি' : 'Saved University Layouts Gallery'}</span>
-          <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-black/20 text-white">
+          <span>{language === 'bn' ? '📁 সংরক্ষিত লেআউট গ্যালারি' : 'Saved Layouts Gallery'}</span>
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-blue-700/80 text-white font-bold">
             {savedLayouts.length}
           </span>
         </button>
@@ -1255,8 +1456,8 @@ export function SeatBuilderCanvas({
             </CardContent>
           </Card>
 
-          {/* 2. UNIVERSITY PRESET PICKER CARD WITH EDIT & ADD BUTTONS */}
-          <Card className="no-print shadow-2xs border-blue-200 dark:border-blue-900 bg-gradient-to-r from-blue-50/50 via-white to-indigo-50/50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
+          {/* 2. UNIVERSITY PRESET PICKER CARD WITH EDIT & ADD BUTTONS - Hiding based on user instruction */}
+          <Card className="hidden no-print shadow-2xs border-blue-200 dark:border-blue-900 bg-gradient-to-r from-blue-50/50 via-white to-indigo-50/50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
             <CardContent className="p-4 sm:p-5 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <span className="text-xs font-black text-blue-900 dark:text-blue-200 flex items-center gap-2">
@@ -1323,8 +1524,8 @@ export function SeatBuilderCanvas({
             </CardContent>
           </Card>
 
-          {/* 3. Custom Layout Name & Description Input Card */}
-          <Card className="no-print shadow-2xs border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+          {/* 3. Custom Layout Name & Description Input Card - Hiding based on user instruction */}
+          <Card className="hidden no-print shadow-2xs border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
             <CardContent className="p-4 sm:p-5 space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-2">
@@ -1482,7 +1683,7 @@ export function SeatBuilderCanvas({
                     variant="outline"
                     size="sm"
                     onClick={handleAddExtraSeat}
-                    className="text-xs font-bold border-indigo-200 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 rounded-xl"
+                    className="text-xs font-bold border-indigo-200 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-xl"
                   >
                     <PlusCircle className="w-3.5 h-3.5 mr-1" />
                     {language === 'bn' ? '+ অতিরিক্ত সিট' : '+ Extra Seat'}
@@ -1492,7 +1693,7 @@ export function SeatBuilderCanvas({
                   <Button
                     variant="primary"
                     size="sm"
-                    onClick={handleSaveLayout}
+                    onClick={() => setIsSaveModalOpen(true)}
                     isLoading={isSaving}
                     className="font-black text-xs sm:text-sm bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-md shadow-blue-500/20 rounded-xl px-4 py-2"
                   >
@@ -1513,49 +1714,49 @@ export function SeatBuilderCanvas({
                   <div className="no-print absolute -left-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-l-md shadow-xs" title="Left Rearview Mirror" />
                   <div className="no-print absolute -right-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-r-md shadow-xs" title="Right Rearview Mirror" />
 
-                  {/* COCKPIT SECTION: Bonnet Engine Grill + Front Windshield + Driver Cabin + Door Steps (ENLARGED TYPOGRAPHY) */}
-                  <div className="mb-6 pb-4 border-b-2 border-dashed border-slate-200 dark:border-slate-800 print:mb-2 print:pb-2">
+                  {/* COCKPIT SECTION: Bonnet Engine Grill + Front Windshield + Driver Cabin + Door Steps */}
+                  <div className="mb-5 pb-3.5 border-b-2 border-dashed border-slate-200 dark:border-slate-800 print:mb-2 print:pb-2">
                     {/* Windshield Glass */}
-                    <div className="h-6 bg-blue-100/80 dark:bg-blue-950/60 rounded-t-2xl border-t-2 border-blue-300 dark:border-blue-800 mb-2.5 flex items-center justify-center print:h-4 print:mb-1.5">
+                    <div className="h-6 sm:h-7 bg-blue-100/80 dark:bg-blue-950/60 rounded-t-2xl border-t-2 border-blue-300 dark:border-blue-800 mb-2.5 flex items-center justify-center print:h-4 print:mb-1.5">
                       <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-blue-700 dark:text-blue-300 font-mono print:text-[10px]">
                         {language === 'bn' ? 'সামনের উইন্ডশিল্ড গ্লাস' : 'FRONT WINDSHIELD GLASS'}
                       </span>
                     </div>
 
-                    {/* Dashboard & Cockpit: Larger Door, Bonnet, and Driver Cabins */}
-                    <div className="h-22 bg-slate-900 dark:bg-slate-950 rounded-2xl p-3 sm:p-4 flex items-center justify-between text-white shadow-inner relative overflow-hidden print:h-auto print:p-2 print:rounded-xl print:bg-slate-900">
+                    {/* Dashboard & Cockpit: Medium-large, comfortable, legible Door, Bonnet, and Driver Cabins */}
+                    <div className="bg-slate-900 dark:bg-slate-950 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between text-white shadow-inner relative overflow-hidden print:p-2 print:rounded-xl">
                       {/* Left: Passenger Entry Door / Gate */}
-                      <div className="flex items-center gap-2.5 bg-emerald-950 border-2 border-emerald-500 px-4 py-2.5 rounded-2xl shadow-md print:px-2 print:py-1 print:rounded-lg">
-                        <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping shrink-0 print:hidden" />
+                      <div className="flex items-center gap-2.5 bg-emerald-950 border-2 border-emerald-500/80 px-3.5 py-2 rounded-xl shadow-md print:px-2 print:py-1">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0 print:hidden" />
                         <div>
-                          <div className="text-sm sm:text-base font-black text-emerald-400 leading-tight print:text-xs">
+                          <div className="text-xs sm:text-sm font-black text-emerald-400 leading-tight print:text-xs">
                             {language === 'bn' ? 'বাসের গেট' : 'ENTRY DOOR'}
                           </div>
-                          <div className="text-[10px] sm:text-xs text-emerald-200 font-bold leading-none mt-0.5 print:text-[9px]">
-                            {language === 'bn' ? 'প্রবেশদ্বার' : 'Entry'}
+                          <div className="text-[10px] sm:text-[11px] text-emerald-300 font-bold leading-none mt-0.5">
+                            {language === 'bn' ? 'প্রবেশদ্বার (Entry)' : 'Entry Gate'}
                           </div>
                         </div>
                       </div>
 
                       {/* Center: Bonnet / Engine Hood */}
-                      <div className="text-center px-4 py-2 bg-slate-800 rounded-2xl border-2 border-slate-600 shadow-md print:px-2 print:py-1 print:rounded-lg">
-                        <div className="text-xs sm:text-sm font-black text-amber-400 font-mono tracking-wider print:text-xs">
+                      <div className="text-center px-3.5 py-1.5 bg-slate-800 rounded-xl border-2 border-slate-600 shadow-md print:px-2 print:py-0.5">
+                        <div className="text-xs sm:text-sm font-black text-amber-400 font-mono tracking-wide print:text-[10px]">
                           {language === 'bn' ? 'বনেট / ইঞ্জিন' : 'ENGINE BONNET'}
                         </div>
-                        <div className="text-[10px] text-slate-300 font-bold mt-0.5 print:hidden">Front Chassis</div>
+                        <div className="text-[9px] text-slate-300 font-bold mt-0.5 print:hidden">Front Chassis</div>
                       </div>
 
                       {/* Right: Driver Cabin & Steering Wheel */}
-                      <div className="flex items-center gap-2.5 bg-blue-950 border-2 border-blue-500 px-4 py-2.5 rounded-2xl text-right shadow-md print:px-2 print:py-1 print:rounded-lg">
+                      <div className="flex items-center gap-2.5 bg-blue-950 border-2 border-blue-500/80 px-3.5 py-2 rounded-xl text-right shadow-md print:px-2 print:py-1">
                         <div>
-                          <div className="text-sm sm:text-base font-black text-blue-400 leading-tight print:text-xs">
+                          <div className="text-xs sm:text-sm font-black text-blue-400 leading-tight print:text-xs">
                             {language === 'bn' ? 'ড্রাইভার কেবিন' : 'DRIVER CABIN'}
                           </div>
-                          <div className="text-[10px] sm:text-xs text-blue-200 font-bold leading-none mt-0.5 print:text-[9px]">
-                            {language === 'bn' ? 'কন্ট্রোল' : 'Cockpit'}
+                          <div className="text-[10px] sm:text-[11px] text-blue-300 font-bold leading-none mt-0.5">
+                            {language === 'bn' ? 'কন্ট্রোল (Cockpit)' : 'Cockpit'}
                           </div>
                         </div>
-                        <div className="w-8 h-8 rounded-full bg-blue-600/50 border-2 border-blue-300 flex items-center justify-center text-sm font-black text-blue-100 print:w-5 print:h-5 print:text-xs">
+                        <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600/50 border-2 border-blue-300 flex items-center justify-center text-xs font-black text-blue-100 print:w-4 print:h-4 print:text-[9px]">
                           ✇
                         </div>
                       </div>
@@ -1632,7 +1833,7 @@ export function SeatBuilderCanvas({
                             variant="primary"
                             size="sm"
                             type="button"
-                            onClick={handleSaveLayout}
+                            onClick={() => setIsSaveModalOpen(true)}
                             isLoading={isSaving}
                             className="text-xs font-black bg-blue-600 hover:bg-blue-700 rounded-xl py-1 px-3 shadow-xs"
                           >
@@ -1644,15 +1845,15 @@ export function SeatBuilderCanvas({
 
                       <div className="flex flex-wrap items-center justify-center gap-3">
                         {extraSeats.map((extra) => (
-                          <div key={extra.seatNumber} className="relative group">
+                          <div key={extra.id || extra.seatNumber} className="relative group">
                             {renderRealisticSeat(extra)}
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleRemoveSingleExtraSeat(extra.seatNumber);
+                                handleRemoveSingleExtraSeat(extra);
                               }}
-                              className="no-print absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-rose-600 text-white flex items-center justify-center text-xs font-black shadow-md hover:bg-rose-700 transition-all z-20"
+                              className="no-print absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-rose-600 text-white flex items-center justify-center text-xs font-black shadow-md hover:bg-rose-700 transition-all z-20 cursor-pointer"
                               title={language === 'bn' ? 'এই এক্সট্রা সিটটি মুছুন' : 'Remove this extra seat'}
                             >
                               ✕
@@ -1673,7 +1874,7 @@ export function SeatBuilderCanvas({
             </Card>
 
             {/* 6. Selected Cell Inspector with Explicit SUBMIT / APPLY BUTTON */}
-            <div className="no-print space-y-6">
+            <div className="no-print space-y-6 lg:col-span-1">
               <Card className="shadow-xs border-slate-200 dark:border-slate-800">
                 <CardHeader className="border-b border-slate-100 dark:border-slate-800 pb-3">
                   <div className="flex items-center justify-between">
@@ -1785,19 +1986,58 @@ export function SeatBuilderCanvas({
         /* FULL-WIDTH DEDICATED SAVED UNIVERSITY LAYOUTS GALLERY */
         <div className="space-y-6">
           {/* Gallery Filter & Search Header */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-            <div className="flex items-center gap-3 w-full sm:w-80">
-              <Search className="w-4 h-4 text-slate-400 shrink-0" />
-              <input
-                type="text"
-                value={gallerySearch}
-                onChange={(e) => setGallerySearch(e.target.value)}
-                placeholder={language === 'bn' ? 'সংরক্ষিত লেআউটের নাম খুঁজুন...' : 'Search saved layouts...'}
-                className="w-full text-xs sm:text-sm px-3.5 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3.5 bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1">
+              <div className="flex items-center gap-2.5 px-3.5 py-2 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex-1">
+                <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                <input
+                  type="text"
+                  value={gallerySearch}
+                  onChange={(e) => setGallerySearch(e.target.value)}
+                  placeholder={language === 'bn' ? 'লেআউটের নাম, ভার্সিটি, ইউনিট বা পরীক্ষা খুঁজুন...' : 'Search by name, university, unit, or exam...'}
+                  className="w-full text-xs sm:text-sm bg-transparent border-none font-medium focus:outline-none text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {/* University Filter */}
+              <select
+                value={galleryUniFilter}
+                onChange={(e) => setGalleryUniFilter(e.target.value)}
+                className="text-xs font-bold px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 cursor-pointer"
+              >
+                <option value="ALL">🏛️ {language === 'bn' ? 'সকল বিশ্ববিদ্যালয় / গুচ্ছ' : 'All Universities & Clusters'}</option>
+                <option value="GST">জিএসটি গুচ্ছ (GST Cluster)</option>
+                <option value="RU">রাজশাহী বিশ্ববিদ্যালয় (RU)</option>
+                <option value="DU">ঢাকা বিশ্ববিদ্যালয় (DU)</option>
+                <option value="CU">চট্টগ্রাম বিশ্ববিদ্যালয় (CU)</option>
+                <option value="JU">জাহাঙ্গীরনগর বিশ্ববিদ্যালয় (JU)</option>
+                <option value="Agri">কৃষি গুচ্ছ (Agri Cluster)</option>
+                <option value="BUET">বুয়েট ও ইঞ্জিনিয়ারিং (BUET/Eng)</option>
+                <option value="MBBS">মেডিকেল ও ডেন্টাল (MBBS/BDS)</option>
+                <option value="SUST">সাস্ট সিলেট (SUST)</option>
+                <option value="KU">খুলনা বিশ্ববিদ্যালয় (KU)</option>
+                <option value="BU">বরিশাল বিশ্ববিদ্যালয় (BU)</option>
+                <option value="CoU">কুমিল্লা বিশ্ববিদ্যালয় (CoU)</option>
+                <option value="IU">ইসলামী বিশ্ববিদ্যালয় (IU)</option>
+              </select>
+
+              {/* Unit Filter */}
+              <select
+                value={galleryUnitFilter}
+                onChange={(e) => setGalleryUnitFilter(e.target.value)}
+                className="text-xs font-bold px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 cursor-pointer"
+              >
+                <option value="ALL">🎓 {language === 'bn' ? 'সকল ইউনিট (All Units)' : 'All Units'}</option>
+                <option value="Unit A">Unit A (বিজ্ঞান / Science)</option>
+                <option value="Unit B">Unit B (মানবিক / Arts)</option>
+                <option value="Unit C">Unit C (ব্যবসায় / Commerce)</option>
+                <option value="Unit D">Unit D (বিভাগ পরিবর্তন / IBA)</option>
+                <option value="Unit E">Unit E (চারুকলা / অন্যান্য)</option>
+                <option value="General">সাধারণ (General)</option>
+              </select>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 variant="primary"
                 size="md"
@@ -1818,69 +2058,96 @@ export function SeatBuilderCanvas({
                 {language === 'bn' ? 'কোন সংরক্ষিত বিশ্ববিদ্যালয় লেআউট পাওয়া যায়নি' : 'No saved layouts found'}
               </h3>
               <p className="text-xs text-slate-400 mt-1">
-                {language === 'bn' ? 'উপরে "+ নতুন লেআউট তৈরি করুন" এ ক্লিক করে নতুন লেআউট সংরক্ষণ করুন।' : 'Create a new layout and save it to your roster.'}
+                {language === 'bn' ? 'উপরে ফিল্টার পরিবর্তন করুন অথবা "+ নতুন লেআউট তৈরি করুন" এ ক্লিক করে সংরক্ষণ করুন।' : 'Change filters or create a new layout to save.'}
               </p>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredSavedLayouts.map((layout) => (
-                <Card
-                  key={layout.id}
-                  className="shadow-sm border-slate-200 dark:border-slate-800 hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between"
-                >
-                  <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <Badge variant="primary" className="text-[10px] font-bold mb-1">
-                          {layout.totalSeats} {language === 'bn' ? 'সিটের কোচ' : 'Seats Coach'}
+              {filteredSavedLayouts.map((layout) => {
+                const cardUnit = layout.unit || getLayoutUnitBadge(layout);
+                const extraCount = Array.isArray(layout.extraSeats) ? layout.extraSeats.length : 0;
+
+                return (
+                  <Card
+                    key={layout.id}
+                    className="shadow-sm border-slate-200 dark:border-slate-800 hover:shadow-md hover:border-blue-400 transition-all flex flex-col justify-between rounded-3xl overflow-hidden"
+                  >
+                    <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 space-y-2.5">
+                      {/* Visual Category & Unit Badges */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {cardUnit && (
+                          <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full border shadow-2xs ${getUnitBadgeStyle(cardUnit)}`}>
+                            🎓 {cardUnit}
+                          </span>
+                        )}
+                        <Badge variant="primary" className="text-[10px] font-bold">
+                          {layout.totalSeats || layout.total_seats} {language === 'bn' ? 'সিটের কোচ' : 'Seats Coach'}
                         </Badge>
+                        {extraCount > 0 && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 rounded-full border border-purple-300 dark:border-purple-800">
+                            +{extraCount} Extra
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
                         <CardTitle className="text-base font-black text-slate-900 dark:text-white leading-tight">
                           {layout.name}
                         </CardTitle>
+                        {layout.description && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                            {layout.description}
+                          </p>
+                        )}
                       </div>
-                      <span className="font-mono text-xs text-slate-400 font-bold shrink-0">
-                        {layout.totalRows}×{layout.totalCols}
-                      </span>
-                    </div>
-                    {layout.description && (
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
-                        {layout.description}
-                      </p>
-                    )}
-                  </CardHeader>
 
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-center justify-between text-xs font-mono text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800/80 pt-2">
-                      <span>{language === 'bn' ? 'সারি ও গ্রিড:' : 'Grid Specs:'}</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">
-                        {layout.totalRows} Rows ({layout.totalSeats} Seats)
-                      </span>
-                    </div>
+                      <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-slate-500 font-medium">
+                        {layout.university && (
+                          <span className="font-bold text-slate-700 dark:text-slate-300">
+                            🏛️ {layout.university}
+                          </span>
+                        )}
+                        {layout.examName && (
+                          <span className="font-bold text-purple-600 dark:text-purple-400">
+                            📝 {layout.examName}
+                          </span>
+                        )}
+                      </div>
+                    </CardHeader>
 
-                    <div className="pt-2 flex items-center gap-2">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => handleLoadAndEditLayout(layout)}
-                        className="flex-1 font-bold text-xs rounded-xl shadow-xs"
-                      >
-                        <Edit2 className="w-3.5 h-3.5 mr-1.5" />
-                        {language === 'bn' ? 'লোড ও এডিট করুন' : 'Load & Edit'}
-                      </Button>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center justify-between text-xs font-mono text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800/80 pt-2">
+                        <span>{language === 'bn' ? 'সারি ও গ্রিড স্পেক্স:' : 'Grid Specs:'}</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                          {layout.totalRows || layout.total_rows} Rows × {layout.totalCols || layout.total_cols} Cols
+                        </span>
+                      </div>
 
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleDeleteSavedLayout(layout.id, layout.name)}
-                        className="font-bold text-xs rounded-xl px-3"
-                        title="Delete Layout"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      <div className="pt-2 flex items-center gap-2">
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleLoadAndEditLayout(layout)}
+                          className="flex-1 font-bold text-xs rounded-xl shadow-xs"
+                        >
+                          <Edit2 className="w-3.5 h-3.5 mr-1.5" />
+                          {language === 'bn' ? 'লোড ও এডিট করুন' : 'Load & Edit'}
+                        </Button>
+
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDeleteSavedLayout(layout.id, layout.name)}
+                          className="font-bold text-xs rounded-xl px-3"
+                          title="Delete Layout"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
@@ -2044,6 +2311,296 @@ export function SeatBuilderCanvas({
             <Button variant="primary" size="sm" onClick={handleSaveUniPreset} className="font-bold">
               <Check className="w-4 h-4 mr-1.5" />
               {language === 'bn' ? 'প্রিসেট সংরক্ষণ করুন' : 'Save University Preset'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      
+      {/* Save Layout Modal */}
+      <Modal
+        isOpen={isSaveModalOpen}
+        onClose={() => setIsSaveModalOpen(false)}
+        title={language === 'bn' ? '💾 লেআউট সংরক্ষণ ও কনফিগারেশন' : 'Save Seat Layout'}
+        size="lg"
+      >
+        <div className="space-y-4 p-1">
+          {/* Live Warning for Duplicate Name */}
+          {duplicateExistingLayout && (
+            <div className="p-3.5 bg-amber-50 dark:bg-amber-950/70 border-2 border-amber-500 rounded-2xl text-amber-950 dark:text-amber-200 text-xs space-y-2.5 animate-in fade-in shadow-sm">
+              <div className="flex items-center gap-2 font-black text-amber-800 dark:text-amber-300 text-sm">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 animate-bounce" />
+                <span>⚠️ সতর্কতা: এই নামে ইতিমধ্যে একটি লেআউট সংরক্ষিত আছে!</span>
+              </div>
+              <p className="leading-relaxed">
+                <strong>"{duplicateExistingLayout.name}"</strong> ({duplicateExistingLayout.totalSeats || duplicateExistingLayout.total_seats} সিট) নামে একটি লেআউট তালিকায় রয়েছে। একই নামে সেভ করলে এটি আগের লেআউটটিকে প্রতিস্থাপন (Overwrite / Update) করবে।
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-200 dark:border-amber-900">
+                <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300">নাম আলাদা করতে ক্লিক করুন:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tag = admissionUnit ? ` (${admissionUnit})` : ' (নতুন)';
+                    setLayoutName(prev => `${prev.replace(/\s*\([^)]*\)\s*$/, '')}${tag}`);
+                  }}
+                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[11px] font-bold transition-colors shadow-2xs cursor-pointer"
+                >
+                  + {admissionUnit || 'Unit A'} যোগ করুন
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLayoutName(prev => `${prev} - নতুন সংস্করণ`);
+                  }}
+                  className="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-[11px] font-bold transition-colors shadow-2xs cursor-pointer"
+                >
+                  + নতুন সংস্করণ
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 1. Target University */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                {language === 'bn' ? 'বিশ্ববিদ্যালয় / পরীক্ষা কেন্দ্রের নাম (Target University)' : 'Target University / Exam Center'}
+              </label>
+              <span className="text-[10px] text-slate-400 font-medium">যেকোনো নাম লিখুন বা নিচে ক্লিক করুন</span>
+            </div>
+            <input
+              type="text"
+              value={targetUniversity}
+              onChange={(e) => {
+                setTargetUniversity(e.target.value);
+                autoFormatLayoutName(e.target.value, admissionUnit, unitDiscipline, capacityInput);
+              }}
+              placeholder="e.g. রাজশাহী বিশ্ববিদ্যালয় (RU), খুলনা বিশ্ববিদ্যালয় (KU), ইত্যাদি"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {/* Categorized Quick University Chips */}
+            <div className="mt-2 space-y-1.5">
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { name: 'জিএসটি গুচ্ছ (GST Cluster - ২৪ বিশ্ববিদ্যালয়)', short: '★ জিএসটি গুচ্ছ (GST)', highlight: true },
+                  { name: 'রাজশাহী বিশ্ববিদ্যালয় (RU)', short: 'রাজশাহী (RU)' },
+                  { name: 'ঢাকা বিশ্ববিদ্যালয় (DU)', short: 'ঢাকা (DU)' },
+                  { name: 'চট্টগ্রাম বিশ্ববিদ্যালয় (CU)', short: 'চট্টগ্রাম (CU)' },
+                  { name: 'জাহাঙ্গীরনগর বিশ্ববিদ্যালয় (JU)', short: 'জাহাঙ্গীরনগর (JU)' },
+                  { name: 'কৃষি গুচ্ছ (Agri Cluster - ৯ বিশ্ববিদ্যালয়)', short: 'কৃষি গুচ্ছ (Agri)' },
+                  { name: 'বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয় (BUET)', short: 'বুয়েট (BUET)' },
+                  { name: 'প্রকৌশল গুচ্ছ (RUET, CUET, KUET)', short: 'প্রকৌশল গুচ্ছ (Eng)' },
+                  { name: 'মেডিকেল ভর্তি পরীক্ষা (MBBS & BDS)', short: 'মেডিকেল (MBBS)' },
+                  { name: 'শাহজালাল বিজ্ঞান ও প্রযুক্তি (SUST)', short: 'সাস্ট (SUST)' },
+                  { name: 'খুলনা বিশ্ববিদ্যালয় (KU)', short: 'খুলনা (KU)' },
+                  { name: 'বরিশাল বিশ্ববিদ্যালয় (BU)', short: 'বরিশাল (BU)' },
+                  { name: 'কুমিল্লা বিশ্ববিদ্যালয় (CoU)', short: 'কুমিল্লা (CoU)' },
+                  { name: 'ইসলামী বিশ্ববিদ্যালয় (IU - কুষ্টিয়া)', short: 'ইবি (IU)' },
+                  { name: 'জাতীয় কবি কাজী নজরুল ইসলাম বিশ্ববিদ্যালয় (JKKNIU)', short: 'নজরুল (JKKNIU)' },
+                  { name: 'বেগম রোকেয়া বিশ্ববিদ্যালয় (BRUR)', short: 'বেরোবি (BRUR)' },
+                  { name: 'যশোর বিজ্ঞান ও প্রযুক্তি (JUST)', short: 'যবিপ্রবি (JUST)' },
+                  { name: 'পাবনা বিজ্ঞান ও প্রযুক্তি (PUST)', short: 'পাবিপ্রবি (PUST)' },
+                  { name: 'নোয়াখালী বিজ্ঞান ও প্রযুক্তি (NSTU)', short: 'নোবিপ্রবি (NSTU)' },
+                  { name: 'মাওলানা ভাসানী বিজ্ঞান ও প্রযুক্তি (MBSTU)', short: 'মাভাবিপ্রবি (MBSTU)' },
+                  { name: 'পটুয়াখালী বিজ্ঞান ও প্রযুক্তি (PSTU)', short: 'পবিপ্রবি (PSTU)' },
+                  { name: 'হাজী দানেশ বিজ্ঞান ও প্রযুক্তি (HSTU)', short: 'হাবিপ্রবি (HSTU)' },
+                  { name: 'ঢাবি অধিভুক্ত ৭ কলেজ (7 College)', short: '৭ কলেজ (7 College)' },
+                  { name: 'বাংলাদেশ ইউনিভার্সিটি অব প্রফেশনালস (BUP)', short: 'বিইউপি (BUP)' }
+                ].map(u => (
+                  <button
+                    key={u.name}
+                    type="button"
+                    onClick={() => {
+                      setTargetUniversity(u.name);
+                      autoFormatLayoutName(u.name, admissionUnit, unitDiscipline, capacityInput);
+                    }}
+                    className={`text-[10px] px-2.5 py-1 rounded-lg border font-bold transition-all cursor-pointer ${
+                      targetUniversity === u.name
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                        : u.highlight
+                        ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700 hover:bg-amber-100'
+                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {u.short}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Admission Unit (Customizable & Flexible) + Discipline/Group */}
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <span>🎓 ভর্তি ইউনিট ও বিভাগের ধরন (Admission Unit & Stream)</span>
+              </label>
+              <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">
+                যেকোনো ইউনিট ও বিভাগ নির্বাচন বা টাইপ করুন
+              </span>
+            </div>
+
+            {/* Freeform Unit Input + Quick Chips */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                ইউনিট কোড / নাম (যেমন: Unit C, Unit A, বিজ্ঞান অনুষদ):
+              </label>
+              <input
+                type="text"
+                value={admissionUnit}
+                onChange={(e) => {
+                  setAdmissionUnit(e.target.value);
+                  autoFormatLayoutName(targetUniversity, e.target.value, unitDiscipline, capacityInput);
+                }}
+                placeholder="e.g. Unit C, Unit A, বিজ্ঞান ইউনিট, D1 উপ-ইউনিট"
+                className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+
+              {/* Quick Unit Code Chips */}
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {['Unit A', 'Unit B', 'Unit C', 'Unit D', 'Unit E', 'বিজ্ঞান ইউনিট', 'মানবিক ইউনিট', 'ব্যবসায় ইউনিট', 'ক ইউনিট', 'খ ইউনিট', 'গ ইউনিট', 'ঘ ইউনিট', 'সাধারণ (General)'].map(item => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => {
+                      setAdmissionUnit(item);
+                      autoFormatLayoutName(targetUniversity, item, unitDiscipline, capacityInput);
+                    }}
+                    className={`text-[10px] px-2 py-0.5 rounded-md border font-bold transition-all cursor-pointer ${
+                      admissionUnit === item
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Discipline / Stream / Faculty Selector */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1.5">
+                বিভাগ / অনুষদের ধরন (Discipline / Stream - ঐচ্ছিক):
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {[
+                  { id: 'বিজ্ঞান (Science)', label: '🔬 বিজ্ঞান (Science)' },
+                  { id: 'মানবিক (Humanities)', label: '📚 মানবিক (Arts)' },
+                  { id: 'ব্যবসায় শিক্ষা (Business)', label: '💼 ব্যবসায় শিক্ষা' },
+                  { id: 'বিভাগ পরিবর্তন / IBA', label: '🔄 বিভাগ পরিবর্তন' },
+                  { id: 'চারুকলা (Fine Arts)', label: '🎨 চারুকলা' },
+                  { id: 'মেডিকেল ও বায়োলজিক্যাল', label: '🩺 মেডিকেল / বায়ো' },
+                  { id: 'ইঞ্জিনিয়ারিং ও টেকনোলজি', label: '⚙️ ইঞ্জিনিয়ারিং' },
+                  { id: 'None', label: '❌ কোনোটিই নয়' }
+                ].map(disc => (
+                  <button
+                    key={disc.id}
+                    type="button"
+                    onClick={() => {
+                      setUnitDiscipline(disc.id);
+                      autoFormatLayoutName(targetUniversity, admissionUnit, disc.id, capacityInput);
+                    }}
+                    className={`p-1.5 rounded-xl text-[11px] font-bold border transition-all text-left truncate cursor-pointer ${
+                      unitDiscipline === disc.id
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    {disc.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1.5 italic">
+                💡 যেমন: RU-তে Unit C = বিজ্ঞান ও Unit A = মানবিক; আবার DU/CU-তে Unit A = বিজ্ঞান। আপনি যেকোনো নাম ও বিভাগ নিজের মতো করে সাজাতে পারবেন।
+              </p>
+            </div>
+          </div>
+
+          {/* 3. Exam & Session Name */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                {language === 'bn' ? 'পরীক্ষা বা সেশনের নাম (Exam / Session)' : 'Exam / Session Name'}
+              </label>
+              <input
+                type="text"
+                value={examName}
+                onChange={(e) => setExamName(e.target.value)}
+                placeholder="e.g. ভর্তি পরীক্ষা ২০২৫-২৬"
+                className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                {language === 'bn' ? 'সিট ধারণক্ষমতা (Capacity)' : 'Seat Capacity'}
+              </label>
+              <div className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono font-bold">
+                {totalAllSeats} সিট ({totalMainSeats} Main {extraSeats.length > 0 ? `+ ${extraSeats.length} Extra` : ''})
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Full Layout Name */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                {language === 'bn' ? 'লেআউটের পূর্ণাঙ্গ নাম (Layout Title)' : 'Full Layout Title'}
+              </label>
+              <button
+                type="button"
+                onClick={() => autoFormatLayoutName(targetUniversity, admissionUnit, unitDiscipline, capacityInput)}
+                className="text-[11px] font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 flex items-center gap-1 cursor-pointer"
+              >
+                <Sparkles className="w-3 h-3" />
+                {language === 'bn' ? '✨ অটো-ফরম্যাট নাম জেনারেট' : 'Auto Format'}
+              </button>
+            </div>
+            <input
+              type="text"
+              value={layoutName}
+              onChange={(e) => setLayoutName(e.target.value)}
+              placeholder="e.g. [RU] [Unit A] রাজশাহী বিশ্ববিদ্যালয় স্পেশাল - ৪৫ সিট"
+              className={`w-full px-4 py-2.5 rounded-xl border-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-bold text-sm focus:outline-none ${
+                duplicateExistingLayout
+                  ? 'border-amber-500 ring-2 ring-amber-300 dark:ring-amber-800'
+                  : 'border-slate-300 dark:border-slate-700 focus:border-blue-500'
+              }`}
+            />
+          </div>
+
+          {/* 5. Description */}
+          <div>
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              {language === 'bn' ? 'বিবরণ / নোট (Description / Notes)' : 'Description / Notes'}
+            </label>
+            <input
+              type="text"
+              value={layoutDescription}
+              onChange={(e) => setLayoutDescription(e.target.value)}
+              placeholder="e.g. VIP front seats and rear economy"
+              className="w-full px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="outline" onClick={() => setIsSaveModalOpen(false)}>
+              {language === 'bn' ? 'বাতিল' : 'Cancel'}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                setIsSaveModalOpen(false);
+                confirmSaveLayout();
+              }}
+              isLoading={isSaving}
+              className="bg-blue-600 hover:bg-blue-700 font-bold px-5"
+            >
+              <Save className="w-4 h-4 mr-1.5" />
+              {editingExistingLayoutId 
+                ? (language === 'bn' ? 'আপডেট করুন (Update)' : 'Update')
+                : (language === 'bn' ? 'সেভ করুন (Save)' : 'Save')}
             </Button>
           </div>
         </div>

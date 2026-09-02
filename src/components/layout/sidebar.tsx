@@ -113,8 +113,7 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       colorClass: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/20',
       items: [
         { href: '/dashboard', label: language === 'bn' ? 'ড্যাশবোর্ড ওভারভিউ' : 'Dashboard Overview', icon: LayoutGrid },
-        { href: '/admin/dashboard', label: language === 'bn' ? 'রিয়েল-টাইম ড্যাশবোর্ড' : 'Real-time Dashboard', icon: Activity, badge: 'Live', highlight: true },
-        { href: '/dashboard/landing-control', label: language === 'bn' ? 'ল্যান্ডিং পেজ কন্ট্রোল' : 'Landing Control', icon: Monitor }
+        { href: '/admin/dashboard', label: language === 'bn' ? 'রিয়েল-টাইম ড্যাশবোর্ড' : 'Real-time Dashboard', icon: Activity, badge: 'Live', highlight: true }
       ]
     },
     {
@@ -147,7 +146,7 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       icon: BusFront,
       colorClass: 'text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20',
       items: [
-        { href: '/buses/seat-builder', label: language === 'bn' ? 'কাস্টম সিট বিল্ডার' : 'Custom Seat Builder', icon: Armchair, highlight: true },
+        { href: '/buses/seat-builder', label: language === 'bn' ? 'সিট লেআউট ও ভাড়া' : 'Seat Layouts & Fares', icon: Armchair, highlight: true },
         { href: '/buses', label: t.allBuses, icon: BusFront },
         { href: '/buses/create', label: t.createBus, icon: PlusCircle },
         { href: '/supervisor', label: language === 'bn' ? 'সুপারভাইজার পোর্টাল' : 'Supervisor Portal', icon: UserCheck },
@@ -244,6 +243,7 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       icon: Settings,
       colorClass: 'text-slate-600 dark:text-slate-400 bg-slate-500/10 border-slate-500/20',
       items: [
+        { href: '/settings/landing-control', label: language === 'bn' ? 'ল্যান্ডিং পেজ কন্ট্রোল' : 'Landing Control', icon: Monitor, highlight: true },
         { href: '/settings/notifications', label: language === 'bn' ? 'SMS নোটিফিকেশন' : 'SMS Notifications', icon: Bell, badge: 'New' },
         { href: '/settings', label: t.settings, icon: SlidersHorizontal }
       ]

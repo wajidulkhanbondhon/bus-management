@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -55,10 +55,24 @@ class TripCreate(TripBase):
     pass
 
 
+class TripBusOut(BaseModel):
+    id: str
+    bus_name: str
+    bus_number: str
+    capacity: int
+    bus_type: str
+    notes: Optional[str] = None
+    seat_layout_id: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class TripOut(TripBase):
     id: str
     tenant_id: Optional[str] = None
     route: Optional[BusRouteOut] = None
+    bus: Optional[TripBusOut] = None
 
     class Config:
         from_attributes = True

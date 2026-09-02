@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+from app.db.types import Money
 
 
 class BusRoute(Base):
@@ -50,7 +51,7 @@ class Trip(Base):
     arrival_est = Column(DateTime, nullable=True)
     trip_bus_type = Column(String, nullable=True)  # "MALE", "FEMALE", "MIXED"
     status = Column(String, default="SCHEDULED", index=True)  # "SCHEDULED", "BOARDING", "ON_ROUTE", "COMPLETED", "CANCELLED"
-    base_price = Column(Float, nullable=False)
+    base_price = Column(Money, nullable=False)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -71,7 +72,7 @@ class FareRule(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     trip_id = Column(String, ForeignKey("trips.id", ondelete="CASCADE"), nullable=False)
     fare_zone_id = Column(String, ForeignKey("fare_zones.id"), nullable=False)
-    custom_price = Column(Float, nullable=False)
+    custom_price = Column(Money, nullable=False)
 
     __table_args__ = (UniqueConstraint("trip_id", "fare_zone_id", name="uq_trip_fare_zone"),)
 

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, String, Boolean, DateTime, Float, ForeignKey, Table
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+from app.db.types import Money
 
 role_permissions = Table(
     "role_permissions",
@@ -47,7 +48,7 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     role_id = Column(String, ForeignKey("roles.id"), nullable=False)
     is_active = Column(Boolean, default=True)
-    discount_limit = Column(Float, default=0.0)
+    discount_limit = Column(Money, default=0.0)
     
     # 2FA / OTP Fields
     otp_secret = Column(String, nullable=True)

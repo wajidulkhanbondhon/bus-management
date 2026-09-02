@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+from app.db.types import Money
 
 
 class MarketingCoupon(Base):
@@ -14,9 +15,9 @@ class MarketingCoupon(Base):
     title = Column(String, nullable=False)
     campaign_channel = Column(String, default="FACEBOOK")  # "FACEBOOK", "CAMPUS_BOOTH", "LEAFLET", "STUDENT_REFERRAL", "SMS_CAMPAIGN", "SPECIAL_EVENT"
     discount_type = Column(String, default="FIXED")  # "FIXED", "PERCENTAGE"
-    discount_value = Column(Float, nullable=False)
-    min_purchase_amount = Column(Float, nullable=True)
-    max_discount_limit = Column(Float, nullable=True)
+    discount_value = Column(Money, nullable=False)
+    min_purchase_amount = Column(Money, nullable=True)
+    max_discount_limit = Column(Money, nullable=True)
     target_university = Column(String, default="ALL")
     expiry_date = Column(String, nullable=True)
     max_usage_limit = Column(Integer, default=500)

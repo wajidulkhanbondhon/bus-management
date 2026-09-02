@@ -57,7 +57,7 @@ export function TripsRosterClient({ initialTrips }: Props) {
   }, [initialTrips, searchQuery, statusFilter]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 w-full pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div>
@@ -86,34 +86,48 @@ export function TripsRosterClient({ initialTrips }: Props) {
         </div>
       </div>
 
-      {/* Filters Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Premium Filter & Search Section */}
+      <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl p-4 rounded-3xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm flex flex-col md:flex-row gap-4 items-center relative overflow-hidden">
+        {/* Decorative background element */}
+        <div className="absolute -top-10 -right-10 w-40 h-40 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
+
         {/* Search */}
-        <div className="relative sm:col-span-2">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        <div className="relative w-full md:flex-1 z-10">
+          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+            <Search className="h-4.5 w-4.5 text-blue-600 dark:text-blue-400" />
+          </div>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={language === 'bn' ? 'ট্রিপ কোড, রুট, বাস বা গন্তব্য খুঁজুন...' : 'Search trip code, route, bus...'}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all shadow-2xs"
+            className="block w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-2xl text-sm font-semibold placeholder-slate-400 dark:placeholder-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all shadow-inner"
           />
         </div>
 
-        {/* Status Filter */}
-        <div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            aria-label={language === 'bn' ? 'ট্রিপ স্ট্যাটাস ফিল্টার' : 'Trip Status Filter'}
-            className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all shadow-2xs"
-          >
-            <option value="ALL">{language === 'bn' ? 'সব ট্রিপ অবস্থা (All Trips)' : 'All Trips'}</option>
-            <option value="SCHEDULED">{language === 'bn' ? 'নির্ধারিত (Scheduled)' : 'Scheduled'}</option>
-            <option value="BOARDING">{language === 'bn' ? 'বোর্ডিং চলছে (Boarding)' : 'Boarding'}</option>
-            <option value="DEPARTED">{language === 'bn' ? 'ছেড়ে গেছে (Departed)' : 'Departed'}</option>
-            <option value="COMPLETED">{language === 'bn' ? 'সম্পন্ন (Completed)' : 'Completed'}</option>
-          </select>
+        {/* Filters */}
+        <div className="flex flex-col sm:flex-row w-full md:w-auto gap-3 z-10">
+          {/* Status Filter */}
+          <div className="relative w-full sm:w-56 group">
+            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+               <ShieldCheck className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              aria-label={language === 'bn' ? 'ট্রিপ স্ট্যাটাস ফিল্টার' : 'Trip Status Filter'}
+              className="block w-full pl-10 pr-10 py-3.5 appearance-none bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all cursor-pointer shadow-sm"
+            >
+              <option value="ALL">{language === 'bn' ? 'সব স্ট্যাটাস (All)' : 'All Trips'}</option>
+              <option value="SCHEDULED">{language === 'bn' ? 'নির্ধারিত (Scheduled)' : 'Scheduled'}</option>
+              <option value="BOARDING">{language === 'bn' ? 'বোর্ডিং চলছে (Boarding)' : 'Boarding'}</option>
+              <option value="DEPARTED">{language === 'bn' ? 'ছেড়ে গেছে (Departed)' : 'Departed'}</option>
+              <option value="COMPLETED">{language === 'bn' ? 'সম্পন্ন (Completed)' : 'Completed'}</option>
+            </select>
+            <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none">
+              <Filter className="h-3.5 w-3.5 text-slate-400" />
+            </div>
+          </div>
         </div>
       </div>
 

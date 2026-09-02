@@ -44,7 +44,7 @@ export default function PayrollPage() {
   const totalPending = entries.filter(e => e.status === 'PENDING').reduce((sum, e) => sum + e.netPay, 0);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 w-full pb-12">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">

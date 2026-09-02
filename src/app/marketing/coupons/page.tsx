@@ -28,9 +28,9 @@ import {
   MarketingCoupon,
   getMarketingCoupons,
   fetchMarketingCoupons,
-  createMarketingCouponAsync,
-  toggleCouponActiveAsync,
-  deleteMarketingCouponAsync
+  createMarketingCoupon,
+  toggleCouponActive,
+  deleteMarketingCoupon
 } from '@/services/coupon.service';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useApp } from '@/lib/context';
@@ -75,7 +75,7 @@ export default function MarketingCouponsPage() {
     e.preventDefault();
     if (!newCode.trim() || !newTitle.trim() || newDiscountValue <= 0) return;
 
-    await createMarketingCouponAsync({
+    await createMarketingCoupon({
       code: newCode.trim().toUpperCase(),
       title: newTitle.trim(),
       campaignChannel: newChannel,
@@ -101,13 +101,13 @@ export default function MarketingCouponsPage() {
   };
 
   const handleToggle = async (id: string) => {
-    const updated = await toggleCouponActiveAsync(id);
+    const updated = await toggleCouponActive(id);
     setCoupons(updated);
   };
 
   const handleDelete = async (id: string) => {
     if (confirm(language === 'bn' ? 'আপনি কি এই কুপনটি ডিলিট করতে চান?' : 'Are you sure you want to delete this coupon?')) {
-      const updated = await deleteMarketingCouponAsync(id);
+      const updated = await deleteMarketingCoupon(id);
       setCoupons(updated);
     }
   };
@@ -137,7 +137,7 @@ export default function MarketingCouponsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 w-full pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

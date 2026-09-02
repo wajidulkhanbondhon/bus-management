@@ -1,7 +1,9 @@
 import useWebSocket from 'react-use-websocket';
 import { useState, useEffect } from 'react';
+import { WEBSOCKET_BASE } from '@/lib/config';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/api/v1/analytics/ws';
+// Derive the WebSocket URL from the configured backend base URL.
+const SOCKET_URL = process.env.NEXT_PUBLIC_WS_URL || `${WEBSOCKET_BASE}/analytics/ws`;
 
 export function useAnalyticsWebSocket() {
   const [activeVisitors, setActiveVisitors] = useState(0);

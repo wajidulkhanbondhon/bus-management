@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, String, Float, Boolean, DateTime, Text, ForeignKey, Integer
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+from app.db.types import Money
 
 
 class FinancialLedger(Base):
@@ -12,9 +13,9 @@ class FinancialLedger(Base):
     entry_number = Column(String, unique=True, index=True, nullable=False)  # "LED-20260827-C7D4-00892"
     entry_type = Column(String, nullable=False, index=True)
     # "SALE", "DISCOUNT", "PAYMENT_RECEIVED", "REFUND_ISSUED", "ADJUSTMENT", "DAY_CLOSING_TRANSFER"
-    debit = Column(Float, default=0.0)
-    credit = Column(Float, default=0.0)
-    balance = Column(Float, default=0.0)
+    debit = Column(Money, default=0.0)
+    credit = Column(Money, default=0.0)
+    balance = Column(Money, default=0.0)
     payment_method = Column(String, nullable=True, index=True)
     booking_id = Column(String, ForeignKey("bookings.id"), nullable=True)
     payment_id = Column(String, ForeignKey("payments.id"), nullable=True)
@@ -41,15 +42,15 @@ class DayClosing(Base):
     reopened_reason = Column(Text, nullable=True)
     reopened_by_id = Column(String, nullable=True)
 
-    expected_gross_sales = Column(Float, nullable=False)
-    expected_discount = Column(Float, nullable=False)
-    expected_net_sales = Column(Float, nullable=False)
-    expected_collected = Column(Float, nullable=False)
-    expected_due = Column(Float, nullable=False)
-    expected_refunds = Column(Float, default=0.0)
+    expected_gross_sales = Column(Money, nullable=False)
+    expected_discount = Column(Money, nullable=False)
+    expected_net_sales = Column(Money, nullable=False)
+    expected_collected = Column(Money, nullable=False)
+    expected_due = Column(Money, nullable=False)
+    expected_refunds = Column(Money, default=0.0)
 
-    actual_total_cash = Column(Float, nullable=False)
-    cash_difference = Column(Float, nullable=False)
+    actual_total_cash = Column(Money, nullable=False)
+    cash_difference = Column(Money, nullable=False)
     reconcile_status = Column(String, nullable=False)  # "MATCHED", "SHORT", "EXCESS"
 
     notes = Column(Text, nullable=True)
@@ -69,9 +70,9 @@ class DayClosingPaymentSummary(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     day_closing_id = Column(String, ForeignKey("day_closings.id", ondelete="CASCADE"), nullable=False)
     method = Column(String, nullable=False)  # "BKASH", "NAGAD", "HAND_CASH", etc.
-    expected_amount = Column(Float, nullable=False)
-    actual_amount = Column(Float, nullable=False)
-    difference = Column(Float, nullable=False)
+    expected_amount = Column(Money, nullable=False)
+    actual_amount = Column(Money, nullable=False)
+    difference = Column(Money, nullable=False)
     status = Column(String, nullable=False)  # "MATCHED", "SHORT", "EXCESS"
     trx_count = Column(Integer, default=0)
 
@@ -85,7 +86,7 @@ class BusExpense(Base):
     bus_id = Column(String, ForeignKey("buses.id"), nullable=False, index=True)
     trip_id = Column(String, ForeignKey("trips.id"), nullable=True, index=True)
     category = Column(String, nullable=False)  # "FUEL", "TOLL", "MAINTENANCE", "STAFF_ALLOWANCE", "OTHER"
-    amount = Column(Float, nullable=False)
+    amount = Column(Money, nullable=False)
     expense_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     description = Column(Text, nullable=True)
     reported_by_id = Column(String, ForeignKey("users.id"), nullable=False)
@@ -105,7 +106,7 @@ class StaffExpense(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     staff_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     category = Column(String, nullable=False)  # "SALARY", "SNACKS", "TRANSPORT", "BONUS", "OTHER"
-    amount = Column(Float, nullable=False)
+    amount = Column(Money, nullable=False)
     expense_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     description = Column(Text, nullable=True)
     status = Column(String, default="PENDING")  # "PENDING", "PAID"

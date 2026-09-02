@@ -20,7 +20,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Settings,
-  Building2
+  Building2,
+  Clock
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,8 @@ import { createBusAction } from '@/actions/bus.actions';
 import { useApp } from '@/lib/context';
 import { DEFAULT_COMPANIES, getStoredCompanies } from '@/lib/company-storage';
 import { CompanyManagerModal } from './company-manager-modal';
+import { UniversityItem, getStoredUniversities, DEFAULT_UNIVERSITIES } from '@/lib/university-storage';
+import { UniversityManagerModal } from './university-manager-modal';
 
 interface BusCreateFormProps {
   layouts: any[];
@@ -75,10 +78,12 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
   const [routeOrigin, setRouteOrigin] = useState('Dhaka (Farmgate / Gabtoli)');
   const [routeDestination, setRouteDestination] = useState('Rajshahi University (RU)');
   const [targetUniversity, setTargetUniversity] = useState('রাজশাহী বিশ্ববিদ্যালয় (RU)');
-  const [capacity, setCapacity] = useState(45);
+  const [capacity, setCapacity] = useState(layouts[0]?.totalSeats || layouts[0]?.total_seats || 45);
   const [busType, setBusType] = useState<'MALE' | 'FEMALE' | 'MIXED'>('MIXED');
   const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE' | 'MAINTENANCE'>('ACTIVE');
   const [seatLayoutId, setSeatLayoutId] = useState(layouts[0]?.id || '');
+  const [examUnit, setExamUnit] = useState('');
+  const [baseFare, setBaseFare] = useState(550);
   const [notes, setNotes] = useState('');
 
   // Company / Vendor state
@@ -87,6 +92,10 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
   const [isCompanyPending, setIsCompanyPending] = useState(true);
   const [selectedCompany, setSelectedCompany] = useState(DEFAULT_COMPANIES[0]);
   const [customCompanyInput, setCustomCompanyInput] = useState('');
+
+  // Dynamic Universities List & Manager state
+  const [uniList, setUniList] = useState<UniversityItem[]>(DEFAULT_UNIVERSITIES);
+  const [isUniManagerOpen, setIsUniManagerOpen] = useState(false);
 
   // Queue Pagination State for Bus Numbers (10 per window, scalable to 50+)
   const [queuePage, setQueuePage] = useState(0);
@@ -97,6 +106,7 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
     if (loaded.length > 0 && !loaded.includes(selectedCompany)) {
       setSelectedCompany(loaded[0]);
     }
+    setUniList(getStoredUniversities());
   }, []);
 
   // Hotel / Accommodation Package state
@@ -118,9 +128,19 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
     'কাস্টম হোটেল / রেস্ট হাউস (Custom Hotel)'
   ];
 
+  // Schedule & Timings state (যাত্রার তারিখ, ছাড়ার সময় ও বুকিং উইন্ডো)
+  const [departureDate, setDepartureDate] = useState('2026-09-05');
+  const [departureTime, setDepartureTime] = useState('22:30'); // রাত ১০:৩০
+  const [reportingTime, setReportingTime] = useState('21:45'); // রাত ৯:৪৫
+  const [bookingStartDate, setBookingStartDate] = useState('2026-08-25');
+  const [bookingEndDate, setBookingEndDate] = useState('2026-09-04');
+  const [estArrivalTime, setEstArrivalTime] = useState('সকাল ০৬:০০');
+  const [returnJourneyDate, setReturnJourneyDate] = useState('2026-09-07');
+
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [createdSuccessModal, setCreatedSuccessModal] = useState<{ show: boolean; busName: string; busNumber: string } | null>(null);
 
   // 1. Calculate existing bus numbers for activeBusName
   const busesUnderActiveName = useMemo(() => {
@@ -239,18 +259,116 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeBusName) {
-      setErrorMessage(language === 'bn' ? 'অনুগ্রহ করে বাসের একটি নাম নির্বাচন বা এন্ট্রি করুন।' : 'Please select or enter a bus name.');
+
+    // 1. Bus Name & Number Validation
+    if (!activeBusName || !activeBusName.trim()) {
+      setErrorMessage(language === 'bn' ? '⚠️ বাসের নাম আবশ্যক (Please enter/select bus name).' : 'Bus name is required.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    if (!busNumber || !busNumber.trim()) {
+      setErrorMessage(language === 'bn' ? '⚠️ বাসের নম্বর / কোড আবশ্যক (Please enter bus number).' : 'Bus number is required.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
     if (isDuplicate) {
       setErrorMessage(
         language === 'bn'
-          ? `সতর্কতা: '${activeBusName}' এর জন্য '${busNumber}' ইতিমধ্যে বিদ্যমান! অনুগ্রহ করে '${nextAvailableSuggestion?.bnLabel || 'পরবর্তী'}' বা অন্য নম্বর বেছে নিন।`
+          ? `⚠️ সতর্কবার্তা: '${activeBusName}' এর জন্য '${busNumber}' ইতিমধ্যে বিদ্যমান! অনুগ্রহ করে '${nextAvailableSuggestion?.bnLabel || 'পরবর্তী'}' বা অন্য নম্বর বেছে নিন।`
           : `Duplicate Alert: Bus '${busNumber}' already exists under '${activeBusName}'!`
       );
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
+    }
+
+    // 2. Trip Schedule & Booking Window Required Validation
+    if (!departureDate || !departureDate.trim()) {
+      setErrorMessage(language === 'bn' ? '⚠️ যাত্রার তারিখ (Departure Date) নির্বাচন করা আবশ্যক।' : 'Departure date is required.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!departureTime || !departureTime.trim()) {
+      setErrorMessage(language === 'bn' ? '⚠️ বাস ছাড়ার সময় (Departure Time) উল্লেখ করা আবশ্যক।' : 'Departure time is required.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!reportingTime || !reportingTime.trim()) {
+      setErrorMessage(language === 'bn' ? '⚠️ যাত্রী রিপোর্টিং সময় (Reporting Time) উল্লেখ করা আবশ্যক।' : 'Reporting time is required.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!bookingStartDate || !bookingStartDate.trim()) {
+      setErrorMessage(language === 'bn' ? '⚠️ টিকিট বুকিং শুরুর তারিখ (Booking Opens) আবশ্যক।' : 'Booking start date is required.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!bookingEndDate || !bookingEndDate.trim()) {
+      setErrorMessage(language === 'bn' ? '⚠️ টিকিট বুকিং শেষের তারিখ (Booking Closes) আবশ্যক।' : 'Booking end date is required.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (bookingStartDate > bookingEndDate) {
+      setErrorMessage(
+        language === 'bn'
+          ? `⚠️ তারিখ অসঙ্গতি: বুকিং শুরুর তারিখ (${bookingStartDate}) বুকিং শেষের তারিখ (${bookingEndDate}) এর চেয়ে পরে হতে পারে না।`
+          : `Invalid Dates: Booking start date (${bookingStartDate}) cannot be after booking end date (${bookingEndDate}).`
+      );
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (bookingEndDate > departureDate) {
+      setErrorMessage(
+        language === 'bn'
+          ? `⚠️ তারিখ অসঙ্গতি: বুকিং শেষের তারিখ (${bookingEndDate}) মূল যাত্রার তারিখ (${departureDate}) এর পরে হতে পারে না।`
+          : `Invalid Dates: Booking end date (${bookingEndDate}) cannot be after departure date (${departureDate}).`
+      );
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    // 3. Route & Target University Required Validation
+    if (!targetUniversity || !targetUniversity.trim()) {
+      setErrorMessage(language === 'bn' ? '⚠️ লক্ষ্য বিশ্ববিদ্যালয় / ভর্তি কেন্দ্র (Target University) নির্বাচন করা আবশ্যক।' : 'Target University is required.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!routeOrigin || !routeOrigin.trim()) {
+      setErrorMessage(language === 'bn' ? '⚠️ যাত্রা শুরুর স্থান (Route Origin) উল্লেখ করা আবশ্যক।' : 'Route Origin is required.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!routeDestination || !routeDestination.trim()) {
+      setErrorMessage(language === 'bn' ? '⚠️ বাসের গন্তব্য (Route Destination) উল্লেখ করা আবশ্যক।' : 'Route Destination is required.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    // 4. Seating & Custom Layout Required Validation
+    if (!capacity || Number(capacity) <= 0) {
+      setErrorMessage(language === 'bn' ? '⚠️ বাসের সিট ধারণক্ষমতা (Capacity) অন্তত ১ বা তার বেশি হতে হবে।' : 'Capacity must be at least 1.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!seatLayoutId || !seatLayoutId.trim()) {
+      setErrorMessage(language === 'bn' ? '⚠️ অনুগ্রহ করে একটি বাস সিট লেআউট নির্বাচন করুন।' : 'Please select a seat layout.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    // 5. Hotel Tour Package Validation (If Checked)
+    if (hasHotelPackage) {
+      if (!hotelName || !hotelName.trim()) {
+        setErrorMessage(language === 'bn' ? '⚠️ হোটেল প্যাকেজ সক্রিয় থাকায় হোটেলের নাম ও অবস্থান আবশ্যক।' : 'Hotel name is required when hotel package is enabled.');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      if (hotelCostPerPerson === undefined || hotelCostPerPerson < 0) {
+        setErrorMessage(language === 'bn' ? '⚠️ হোটেলের জনপ্রতি চার্জ উল্লেখ করুন (০ বা তার বেশি)।' : 'Please provide valid hotel cost per person.');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
     }
 
     const finalOperator = isCompanyPending
@@ -258,14 +376,32 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
       : (selectedCompany === 'অন্যান্য কোম্পানি (Custom Company)' ? (customCompanyInput.trim() || 'Custom Operator') : selectedCompany);
 
     let enrichedNotes = notes.trim();
+    
+    // 1. Structured Schedule Tag
+    const scheduleTag = `[📅 SCHEDULE: Departure: ${departureDate} ${departureTime} | Reporting: ${reportingTime} | Booking Opens: ${bookingStartDate} | Booking Closes: ${bookingEndDate} | Est Arrival: ${estArrivalTime}${returnJourneyDate ? ` | Return: ${returnJourneyDate}` : ''}]`;
+    
+    // 2. Hotel Package Tag
+    let hotelTag = '';
     if (hasHotelPackage) {
       const perksArr = [];
       if (hotelBreakfast) perksArr.push('ফ্রি নাস্তা');
       if (hotelShuttle) perksArr.push('পরীক্ষার হল শাটল');
       if (hotelWifi) perksArr.push('এসি ও ওয়াইফাই');
-      const hotelTag = `[🏨 HOTEL PACKAGE: ${hotelName.trim()} | Room: ${hotelRoomType} | Stay: ${hotelDuration} | Fee: ৳${hotelCostPerPerson}/person | Inclusions: ${perksArr.join(', ')}]`;
-      enrichedNotes = enrichedNotes ? `${hotelTag} | ${enrichedNotes}` : hotelTag;
+      hotelTag = `[🏨 HOTEL PACKAGE: ${hotelName.trim()} | Room: ${hotelRoomType} | Stay: ${hotelDuration} | Fee: ৳${hotelCostPerPerson}/person | Inclusions: ${perksArr.join(', ')}]`;
     }
+
+    // 3. Target University & Route Tag & Exam Unit Tag
+    const uniTag = targetUniversity ? `[🎯 UNI: ${targetUniversity.trim()}]` : '';
+    const routeTag = routeOrigin && routeDestination ? `[📍 ROUTE: ${routeOrigin.trim()} ➔ ${routeDestination.trim()}]` : '';
+    const unitTag = examUnit ? `UNIT: ${examUnit.trim()};` : '';
+    const fareTag = `[💰 FARE: ${baseFare}]`;
+
+    const tags = [uniTag, routeTag, scheduleTag, hotelTag, unitTag, fareTag, enrichedNotes].filter(Boolean);
+    enrichedNotes = tags.join(' | ');
+
+    setErrorMessage('');
+    setSuccessMessage('');
+    setIsLoading(true);
 
     try {
       const res = await createBusAction({
@@ -284,15 +420,21 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
       });
 
       if (res.success) {
-        setSuccessMessage(
-          language === 'bn'
-            ? `🎉 '${activeBusName}' এর '${busNumber}' সফলভাবে তৈরি হয়েছে!`
-            : `🎉 Bus '${busNumber}' successfully created!`
-        );
+        const msg = language === 'bn'
+          ? `🎉 '${activeBusName}' এর '${busNumber}' সফলভাবে তৈরি হয়েছে!`
+          : `🎉 Bus '${busNumber}' successfully created!`;
+        setSuccessMessage(msg);
+        setCreatedSuccessModal({
+          show: true,
+          busName: activeBusName,
+          busNumber: busNumber.toUpperCase().trim()
+        });
+        const encodedName = encodeURIComponent(activeBusName);
+        const encodedNum = encodeURIComponent(busNumber.toUpperCase().trim());
         setTimeout(() => {
-          router.push('/buses');
+          router.push(`/buses?created=1&busName=${encodedName}&busNumber=${encodedNum}`);
           router.refresh();
-        }, 900);
+        }, 1800);
       } else {
         setErrorMessage(res.error || 'Failed to create bus');
       }
@@ -304,7 +446,7 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
+    <div className="max-w-4xl mx-auto space-y-6 pb-12" suppressHydrationWarning>
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/buses">
@@ -335,9 +477,16 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
       )}
 
       {successMessage && (
-        <div className="flex items-center gap-2.5 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 text-sm border-2 border-emerald-300 dark:border-emerald-800 shadow-sm animate-in fade-in">
-          <CheckCircle className="w-5 h-5 shrink-0 text-emerald-600" />
-          <span className="font-bold">{successMessage}</span>
+        <div className="flex items-center gap-3 p-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-sm font-bold shadow-xl shadow-emerald-600/25 border-2 border-emerald-400 animate-in fade-in slide-in-from-top-3">
+          <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+            <CheckCircle className="w-5 h-5 text-white animate-pulse" />
+          </div>
+          <div>
+            <span className="font-black text-base">{successMessage}</span>
+            <p className="text-xs text-white/90 font-normal mt-0.5">
+              {language === 'bn' ? 'বাস তালিকায় রিডাইরেক্ট করা হচ্ছে...' : 'Redirecting to fleet roster...'}
+            </p>
+          </div>
         </div>
       )}
 
@@ -468,7 +617,6 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
                       value={customBusNameInput}
                       onChange={(e) => setCustomBusNameInput(e.target.value)}
                       placeholder="e.g. রাবি স্পেশাল নাইট কোচ (RU Night Express)"
-                      autoFocus
                       required
                       className="border-2 border-blue-500 font-bold text-sm bg-blue-50/40 dark:bg-blue-950/20"
                     />
@@ -644,12 +792,139 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
               </div>
             </div>
 
-            {/* Section 2: Transport Company / Operator Vendor Assignment */}
+            {/* Section 2: Trip Schedule, Departure Date & Timings, Booking Window */}
+            <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-blue-600" />
+                  <span>{language === 'bn' ? '২. যাত্রার সময়সূচী, ছাড়ার সময় ও বুকিং উইন্ডো' : '2. Trip Schedule & Booking Window'}</span>
+                </div>
+                <Badge variant="primary" className="text-[11px] font-bold font-mono">
+                  📅 {departureDate} • {departureTime}
+                </Badge>
+              </h3>
+
+              <div className="p-4 sm:p-5 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border-2 border-blue-200 dark:border-blue-900 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Departure Date */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      {language === 'bn' ? 'যাত্রার তারিখ (Departure Date) *' : 'Departure Date *'}
+                    </label>
+                    <input
+                      type="date"
+                      value={departureDate}
+                      onChange={(e) => setDepartureDate(e.target.value)}
+                      required
+                      className="w-full text-xs font-bold font-mono px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Departure Time */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      {language === 'bn' ? 'বাস ছাড়ার সময় (Departure Time) *' : 'Departure Time *'}
+                    </label>
+                    <input
+                      type="text"
+                      value={departureTime}
+                      onChange={(e) => setDepartureTime(e.target.value)}
+                      placeholder="e.g. রাত ১০:৩০ / 10:30 PM"
+                      required
+                      className="w-full text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                    />
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {['রাত ১০:৩০', 'রাত ১১:০০', 'সকাল ০৭:০০', 'সকাল ০৮:০০', 'দুপুর ০২:৩০'].map((tVal) => (
+                        <button
+                          key={tVal}
+                          type="button"
+                          onClick={() => {
+                            setDepartureTime(tVal);
+                            if (tVal === 'রাত ১০:৩০') setReportingTime('রাত ০৯:৪৫');
+                            else if (tVal === 'রাত ১১:০০') setReportingTime('রাত ১০:১৫');
+                            else if (tVal === 'সকাল ০৭:০০') setReportingTime('সকাল ০৬:১৫');
+                            else if (tVal === 'সকাল ০৮:০০') setReportingTime('সকাল ০৭:১৫');
+                            else if (tVal === 'দুপুর ০২:৩০') setReportingTime('দুপুর ০১:৪৫');
+                          }}
+                          className="text-[10px] px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 font-semibold hover:bg-blue-200 transition-colors"
+                        >
+                          {tVal}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Reporting Time */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      {language === 'bn' ? 'যাত্রী রিপোর্টিং সময় (Reporting Time) *' : 'Reporting Time *'}
+                    </label>
+                    <input
+                      type="text"
+                      value={reportingTime}
+                      onChange={(e) => setReportingTime(e.target.value)}
+                      placeholder="e.g. রাত ০৯:৪৫ / 09:45 PM"
+                      required
+                      className="w-full text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                    />
+                    <span className="text-[10px] text-slate-500 block mt-1">
+                      {language === 'bn' ? 'বাস ছাড়ার ৩০-৪৫ মিনিট পূর্বে কাউন্টারে উপস্থিতি' : 'Presence 30-45 mins before departure'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-blue-200/80 dark:border-blue-900/80">
+                  {/* Booking Window Start */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      {language === 'bn' ? '🎟️ বুকিং শুরু (Booking Opens) *' : 'Booking Opens *'}
+                    </label>
+                    <input
+                      type="date"
+                      value={bookingStartDate}
+                      onChange={(e) => setBookingStartDate(e.target.value)}
+                      required
+                      className="w-full text-xs font-bold font-mono px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Booking Window End / Cutoff */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      {language === 'bn' ? '🛑 বুকিং শেষ / কাট-অফ (Booking Closes) *' : 'Booking Closes *'}
+                    </label>
+                    <input
+                      type="date"
+                      value={bookingEndDate}
+                      onChange={(e) => setBookingEndDate(e.target.value)}
+                      required
+                      className="w-full text-xs font-bold font-mono px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Estimated Arrival Time & Return Date */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      {language === 'bn' ? 'গন্তব্যে পৌঁছানোর সময় (Est Arrival)' : 'Est Arrival'}
+                    </label>
+                    <input
+                      type="text"
+                      value={estArrivalTime}
+                      onChange={(e) => setEstArrivalTime(e.target.value)}
+                      placeholder="e.g. সকাল ০৬:০০ / 06:00 AM"
+                      className="w-full text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3: Transport Company / Operator Vendor Assignment */}
             <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <BusIcon className="w-4 h-4 text-emerald-600" />
-                  <span>{language === 'bn' ? '২. পরিবহন কোম্পানি / বাস অপারেটর' : '2. Transport Company / Vendor'}</span>
+                  <span>{language === 'bn' ? '৩. পরিবহন কোম্পানি / বাস অপারেটর' : '3. Transport Company / Vendor'}</span>
                 </div>
                 {isCompanyPending ? (
                   <Badge variant="warning" className="text-[11px] font-bold">
@@ -716,12 +991,12 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
               </div>
             </div>
 
-            {/* Section 3: Hotel & Accommodation Tour Package Integration */}
+            {/* Section 4: Hotel & Accommodation Tour Package Integration */}
             <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <GraduationCap className="w-4 h-4 text-purple-600" />
-                  <span>{language === 'bn' ? '৩. হোটেল ও আবাসন প্যাকেজ (ট্যুর প্যাকেজ)' : '3. Hotel & Accommodation Tour Package'}</span>
+                  <span>{language === 'bn' ? '৪. হোটেল ও আবাসন প্যাকেজ (ট্যুর প্যাকেজ)' : '4. Hotel & Accommodation Tour Package'}</span>
                 </div>
                 {hasHotelPackage ? (
                   <Badge variant="purple" className="text-[11px] font-bold">
@@ -873,12 +1148,23 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
               </div>
             </div>
 
-            {/* Section 4: Custom Route & Target University */}
+            {/* Section 5: Custom Route & Target University */}
             <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-indigo-600" />
-                <span>{language === 'bn' ? '৪. রুট ও টার্গেট বিশ্ববিদ্যালয়' : '4. Route & Target University'}</span>
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-indigo-600" />
+                  <span>{language === 'bn' ? '৫. রুট ও টার্গেট বিশ্ববিদ্যালয়' : '5. Route & Target University'}</span>
+                </h3>
+
+                <button
+                  type="button"
+                  onClick={() => setIsUniManagerOpen(true)}
+                  className="px-3 py-1.5 text-xs font-bold rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                >
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  <span>{language === 'bn' ? '➕ নতুন বিশ্ববিদ্যালয় যুক্ত করুন' : 'Add / Manage Universities'}</span>
+                </button>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
@@ -897,59 +1183,164 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                  {t.targetUniversity} *
-                </label>
-                <div className="space-y-2">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
+                    {t.targetUniversity} *
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    {uniList.length} {language === 'bn' ? 'টি বিশ্ববিদ্যালয় তালিকাভুক্ত' : 'universities'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <select
+                    value={uniList.some(u => u.nameBn === targetUniversity) ? targetUniversity : 'CUSTOM'}
+                    onChange={(e) => {
+                      if (e.target.value === 'ADD_NEW') {
+                        setIsUniManagerOpen(true);
+                      } else if (e.target.value !== 'CUSTOM') {
+                        const found = uniList.find(u => u.nameBn === e.target.value);
+                        if (found) {
+                          setTargetUniversity(found.nameBn);
+                          setRouteDestination(found.nameEn || found.nameBn);
+                        }
+                      }
+                    }}
+                    className="px-3.5 py-2.5 text-xs sm:text-sm font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-xl shadow-2xs focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">{language === 'bn' ? '-- তালিকা থেকে বিশ্ববিদ্যালয় নির্বাচন করুন --' : '-- Select University --'}</option>
+                    {uniList.map((uni) => (
+                      <option key={uni.id} value={uni.nameBn}>
+                        {uni.nameBn} {uni.isCustom ? '⭐ (কাস্টম)' : ''}
+                      </option>
+                    ))}
+                    <option value="CUSTOM">{language === 'bn' ? '✍️ ম্যানুয়ালি নাম লিখুন...' : '✍️ Custom / Type manually'}</option>
+                    <option value="ADD_NEW" className="text-blue-600 font-bold">➕ নতুন বিশ্ববিদ্যালয় তৈরি করুন...</option>
+                  </select>
+
                   <Input
                     value={targetUniversity}
                     onChange={(e) => setTargetUniversity(e.target.value)}
-                    placeholder="e.g. রাজশাহী বিশ্ববিদ্যালয় (RU)"
+                    placeholder="e.g. রাজশাহী বিশ্ববিদ্যালয় (RU) বা যেকোনো নাম"
                     required
                   />
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    <span className="text-[11px] font-bold text-slate-400 mr-1 flex items-center">
-                      {language === 'bn' ? 'প্রস্তাবিত:' : 'Quick Select:'}
-                    </span>
-                    {DEFAULT_FLEET_PRESETS.map((p) => (
-                      <button
-                        key={p.uni}
-                        type="button"
-                        onClick={() => {
-                          setTargetUniversity(p.uni);
-                          setRouteDestination(p.dest);
-                          setCapacity(p.capacity);
-                        }}
-                        className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
-                          targetUniversity === p.uni
-                            ? 'bg-blue-600 text-white font-bold border-blue-600'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
-                        }`}
-                      >
-                        {p.uni}
-                      </button>
-                    ))}
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    {language === 'bn' ? 'ভর্তি পরীক্ষার ইউনিট (Exam Unit)' : 'Exam Unit'}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="exam-units"
+                      value={examUnit}
+                      onChange={(e) => setExamUnit(e.target.value)}
+                      placeholder={language === 'bn' ? 'যেমন: A Unit, Kha Unit, বা Engineering' : 'e.g. A Unit, Kha Unit, or Engineering'}
+                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-xl shadow-2xs focus:ring-2 focus:ring-blue-500"
+                    />
+                    <datalist id="exam-units">
+                      <option value="A Unit (Science)" />
+                      <option value="B Unit (Arts)" />
+                      <option value="C Unit (Commerce)" />
+                      <option value="D Unit (Combined)" />
+                      <option value="Kha Unit" />
+                      <option value="Engineering" />
+                    </datalist>
                   </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    {language === 'bn' ? 'টিকিটের মূল্য (Ticket Fare / Price)' : 'Ticket Fare'} <span className="text-rose-500">*</span>
+                  </label>
+                  <Input
+                    type="number"
+                    value={baseFare}
+                    onChange={(e) => setBaseFare(Number(e.target.value))}
+                    min={0}
+                    placeholder="e.g. 550"
+                    required
+                  />
+                </div>
+
+                {/* Quick Select Badges from Dynamic University List */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <span className="text-[11px] font-bold text-slate-400 mr-1 flex items-center">
+                    {language === 'bn' ? 'দ্রুত বাছাই:' : 'Quick Select:'}
+                  </span>
+                  {uniList.slice(0, 10).map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        setTargetUniversity(u.nameBn);
+                        setRouteDestination(u.nameEn || u.nameBn);
+                      }}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                        targetUniversity === u.nameBn
+                          ? 'bg-blue-600 text-white font-bold border-blue-600 shadow-2xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      <span>{u.nameBn.split(' ')[0]}</span>
+                      {u.isCustom && <span className="ml-1 text-[9px] text-amber-400">⭐</span>}
+                    </button>
+                  ))}
+                  {uniList.length > 10 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsUniManagerOpen(true)}
+                      className="text-[11px] px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-300 font-bold hover:underline cursor-pointer"
+                    >
+                      + আরও {uniList.length - 10}টি...
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Section 5: Capacity, Gender & Seating Matrix */}
+            {/* Section 6: Capacity, Gender & Seating Matrix */}
             <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center gap-2">
                 <Layers className="w-4 h-4 text-purple-600" />
-                <span>{language === 'bn' ? '৫. সিট সংখ্যা ও লেআউট নির্ধারণ' : '5. Seating & Custom Layout'}</span>
+                <span>{language === 'bn' ? '৬. সিট সংখ্যা ও লেআউট নির্ধারণ' : '6. Seating & Custom Layout'}</span>
               </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <Input
-                  label={`${language === 'bn' ? 'সিট ধারণক্ষমতা (Capacity)' : 'Seating Capacity'} *`}
-                  type="number"
-                  value={capacity}
-                  onChange={(e) => setCapacity(Number(e.target.value))}
-                  required
-                />
+                <div>
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    {language === 'bn' ? 'সিট ধারণক্ষমতা (Capacity Dropdown) *' : 'Seat Capacity *'}
+                  </label>
+                  <div className="space-y-1.5">
+                    <select
+                      value={[45, 40, 36, 32, 28].includes(capacity) ? String(capacity) : 'CUSTOM'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val !== 'CUSTOM') {
+                          setCapacity(Number(val));
+                        }
+                      }}
+                      className="w-full text-xs font-bold px-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs cursor-pointer font-mono"
+                    >
+                      <option value="45">45 সিট (Standard Coach / 2+2)</option>
+                      <option value="40">40 সিট (Semi-Chair / Comfort)</option>
+                      <option value="36">36 সিট (Executive / Business)</option>
+                      <option value="32">32 সিট (Sleeper / Royal)</option>
+                      <option value="28">28 সিট (VIP / Premium Suite)</option>
+                      <option value="CUSTOM">✍️ কাস্টম সিট সংখ্যা লিখুন...</option>
+                    </select>
+                    <Input
+                      type="number"
+                      value={capacity}
+                      onChange={(e) => setCapacity(Number(e.target.value))}
+                      placeholder="কাস্টম ধারণক্ষমতা (সিট)"
+                      required
+                      className="text-xs font-bold font-mono"
+                    />
+                  </div>
+                </div>
 
                 <div>
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
@@ -983,33 +1374,67 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    {language === 'bn' ? 'কাস্টম সিট লেআউট সংযুক্ত করুন' : 'Bind Custom Seat Layout'}
+                    {language === 'bn' ? 'বাস সিট লেআউট নির্বাচন করুন *' : 'Select Seat Layout *'}
                   </label>
-                  <Link href="/buses/seat-builder" className="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline">
-                    + {t.seatBuilder}
+                  <Link href="/buses/seat-builder" className="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline flex items-center gap-1">
+                    ⚙️ {language === 'bn' ? 'ভাড়া ও লেআউট ম্যানেজার' : 'Manage Layouts & Fares'}
                   </Link>
                 </div>
                 <select
                   value={seatLayoutId}
                   onChange={(e) => {
-                    const lId = e.target.value;
-                    setSeatLayoutId(lId);
-                    const selectedLay = layouts.find(l => l.id === lId);
+                    const val = e.target.value;
+                    setSeatLayoutId(val);
+
+                    // Check server layouts
+                    const selectedLay = layouts.find(l => l.id === val);
                     if (selectedLay) {
-                      setCapacity(selectedLay.totalSeats);
+                      const layCap = selectedLay.totalSeats || selectedLay.total_seats;
+                      if (layCap) setCapacity(layCap);
+                      if (selectedLay.university) {
+                        setTargetUniversity(selectedLay.university);
+                      }
                     }
                   }}
-                  className="w-full text-xs px-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl font-medium bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  className="w-full text-xs px-3.5 py-3 border border-slate-300 dark:border-slate-700 rounded-xl font-bold bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
                 >
-                  <option value="">{language === 'bn' ? 'ডিফল্ট স্ট্যান্ডার্ড লেআউট' : 'Default Standard Layout'}</option>
-                  {layouts.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name} ({l.totalSeats} Seats, {l.totalRows}x{l.totalCols} Grid)
-                    </option>
-                  ))}
+                  {layouts.length === 0 ? (
+                    <option value="">{language === 'bn' ? '-- কোনো সংরক্ষিত লেআউট পাওয়া যায়নি --' : '-- No Saved Layouts Found --'}</option>
+                  ) : (
+                    layouts.map((l) => {
+                      const cap = l.totalSeats || l.total_seats || 45;
+                      const uni = l.university ? ` [${l.university}]` : '';
+                      const unit = l.unit ? ` (${l.unit})` : '';
+                      return (
+                        <option key={l.id} value={l.id}>
+                          {l.name} — {cap} সিট{uni}{unit}
+                        </option>
+                      );
+                    })
+                  )}
                 </select>
+
+                {layouts.length === 0 ? (
+                  <div className="mt-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3 text-xs text-amber-800 dark:text-amber-300">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>{language === 'bn' ? 'কোনো সংরক্ষিত লেআউট নেই। আগে লেআউট ম্যানেজারে একটি লেআউট সেভ করুন।' : 'No saved layouts found. Please create and save a layout in Layout Manager.'}</span>
+                    </div>
+                    <Link href="/buses/seat-builder">
+                      <Button size="sm" variant="outline" className="text-xs h-7 px-2.5 font-bold border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/50">
+                        + {language === 'bn' ? 'লেআউট তৈরি' : 'Create Layout'}
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-slate-400 mt-1 block">
+                    {language === 'bn' 
+                      ? `সংরক্ষিত লেআউট সিলেক্ট করলে বাসের সিট সংখ্যা (${capacity} Seats) ও বিশ্ববিদ্যালয় স্বয়ংক্রিয়ভাবে আপডেট হয়ে যাবে।` 
+                      : `Selecting a saved layout auto-updates seat capacity (${capacity} Seats) and university info.`}
+                  </span>
+                )}
               </div>
 
               <div>
@@ -1025,6 +1450,31 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
                 />
               </div>
             </div>
+
+            {/* Bottom Status / Error / Success Alerts */}
+            {errorMessage && (
+              <div className="flex items-start gap-3 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 text-sm border-2 border-rose-300 dark:border-rose-800 shadow-sm animate-in fade-in">
+                <AlertCircle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
+                <div>
+                  <div className="font-bold">{language === 'bn' ? 'ত্রুটি / সতর্কতা:' : 'Validation Error:'}</div>
+                  <p className="mt-0.5 text-xs font-semibold">{errorMessage}</p>
+                </div>
+              </div>
+            )}
+
+            {successMessage && (
+              <div className="flex items-center gap-3 p-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-sm font-bold shadow-xl shadow-emerald-600/25 border-2 border-emerald-400 animate-in fade-in slide-in-from-top-3">
+                <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                  <CheckCircle className="w-5 h-5 text-white animate-pulse" />
+                </div>
+                <div>
+                  <span className="font-black text-base">{successMessage}</span>
+                  <p className="text-xs text-white/90 font-normal mt-0.5">
+                    {language === 'bn' ? 'বাস তালিকায় রিডাইরেক্ট করা হচ্ছে...' : 'Redirecting to fleet roster...'}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
@@ -1049,6 +1499,39 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
         </CardContent>
       </Card>
 
+      {/* Floating Centered Success Confirmation Modal */}
+      {createdSuccessModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border-2 border-emerald-500 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center space-y-5 shadow-2xl shadow-emerald-500/20 animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white mx-auto shadow-lg shadow-emerald-500/30">
+              <CheckCircle className="w-9 h-9 animate-bounce" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                {language === 'bn' ? '🎉 বাস সফলভাবে তৈরি হয়েছে!' : '🎉 Bus Created Successfully!'}
+              </h3>
+              <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 py-2 px-3 rounded-xl border border-emerald-200 dark:border-emerald-800 font-mono">
+                {createdSuccessModal.busName} • [{createdSuccessModal.busNumber}]
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {language === 'bn'
+                  ? 'বাসটি ফ্লিট তালিকায় যুক্ত হয়েছে। স্বয়ংক্রিয়ভাবে রিডাইরেক্ট করা হচ্ছে...'
+                  : 'The bus has been added to the fleet roster. Redirecting...'}
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <Link href={`/buses?created=1&busName=${encodeURIComponent(createdSuccessModal.busName)}&busNumber=${encodeURIComponent(createdSuccessModal.busNumber)}`}>
+                <Button variant="primary" className="w-full font-bold shadow-lg shadow-emerald-500/25">
+                  <span>{language === 'bn' ? '✓ বাস তালিকা দেখুন' : '✓ View All Buses'}</span>
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Company Manager Modal (Add / Edit / Delete) */}
       <CompanyManagerModal
         isOpen={isCompanyManagerOpen}
@@ -1059,6 +1542,21 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
           if (!updated.includes(selectedCompany) && updated.length > 0) {
             setSelectedCompany(updated[0]);
           }
+        }}
+        language={language}
+      />
+
+      {/* Dynamic University & Exam Center Manager Modal (Add / Manage) */}
+      <UniversityManagerModal
+        isOpen={isUniManagerOpen}
+        onClose={() => setIsUniManagerOpen(false)}
+        universities={uniList}
+        onUpdateUniversities={(updated) => {
+          setUniList(updated);
+        }}
+        onSelectUniversity={(uni) => {
+          setTargetUniversity(uni.nameBn);
+          setRouteDestination(uni.nameEn || uni.nameBn);
         }}
         language={language}
       />

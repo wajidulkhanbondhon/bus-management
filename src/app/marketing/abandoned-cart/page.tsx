@@ -57,7 +57,7 @@ export default function AbandonedCartPage() {
   const recoveryRate = ((recoveredCarts / dummyCarts.length) * 100).toFixed(1);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 w-full pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

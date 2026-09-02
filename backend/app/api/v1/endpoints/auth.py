@@ -1,11 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.core.security import verify_password, create_access_token
+from app.core.security import verify_password, create_access_token, hash_passenger_pin, verify_passenger_pin
 from app.core.deps import get_current_user
 from app.core.rate_limiter import rate_limit
 from app.models.user import User
-from app.schemas.auth import LoginRequest, Token, UserOut, VerifyOTPRequest
+from app.models.passenger_pin import PassengerPin
+from app.models.booking import Booking
+from app.schemas.auth import (
+    LoginRequest,
+    Token,
+    UserOut,
+    VerifyOTPRequest,
+    PassengerVerifyRequest,
+    PassengerVerifyResponse,
+)
 import random
 from datetime import datetime, timedelta, timezone
 
@@ -97,4 +106,82 @@ def read_current_user(current_user: User = Depends(get_current_user)):
         "discount_limit": current_user.discount_limit,
         "is_active": current_user.is_active,
         "permissions": permissions
+    }
+
+
+@router.post(
+    "/passenger-verify",
+    response_model=PassengerVerifyResponse,
+    dependencies=[Depends(rate_limit(requests_per_minute=10, key_prefix="passenger_verify"))]
+)
+def passenger_verify(req: PassengerVerifyRequest, db: Session = Depends(get_db)):
+    """Verifies a passenger phone + PIN against the server-side store.
+
+    Replaces the old client-side localStorage PIN flow: the PIN itself is never
+    persisted on the device; only a short-lived signed token is returned.
+    """
+    clean_phone = req.phone.strip()
+    record = db.query(PassengerPin).filter(PassengerPin.phone == clean_phone).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="No PIN registered for this phone number")
+
+    if not verify_passenger_pin(clean_phone, req.pin, record.pin_hash):
+        raise HTTPException(status_code=401, detail="Invalid PIN")
+
+    # Issue a short-lived passenger token scoped to the phone number.
+    access_token = create_access_token(
+        subject=f"passenger:{clean_phone}",
+        role="PASSENGER",
+        expires_delta=timedelta(hours=12)
+    )
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": "PASSENGER",
+        "phone": clean_phone,
+        "full_name": record.full_name or req.name or clean_phone,
+    }
+
+
+@router.post(
+    "/passenger-register",
+    response_model=PassengerVerifyResponse,
+    dependencies=[Depends(rate_limit(requests_per_minute=5, key_prefix="passenger_register"))]
+)
+def passenger_register(req: PassengerVerifyRequest, db: Session = Depends(get_db)):
+    """Registers (or resets) a passenger PIN on the server.
+
+    Also verifies the phone belongs to a real booking so the portal can't be
+    used to squat arbitrary phone numbers.
+    """
+    clean_phone = req.phone.strip()
+    existing_booking = db.query(Booking).filter(Booking.contact_phone == clean_phone).first()
+    if not existing_booking:
+        raise HTTPException(status_code=404, detail="No booking found for this phone number")
+
+    record = db.query(PassengerPin).filter(PassengerPin.phone == clean_phone).first()
+    if record:
+        record.pin_hash = hash_passenger_pin(clean_phone, req.pin)
+        if req.name:
+            record.full_name = req.name.strip()
+    else:
+        record = PassengerPin(
+            phone=clean_phone,
+            pin_hash=hash_passenger_pin(clean_phone, req.pin),
+            full_name=req.name.strip() if req.name else existing_booking.contact_name,
+        )
+        db.add(record)
+    db.commit()
+
+    access_token = create_access_token(
+        subject=f"passenger:{clean_phone}",
+        role="PASSENGER",
+        expires_delta=timedelta(hours=12)
+    )
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": "PASSENGER",
+        "phone": clean_phone,
+        "full_name": record.full_name or clean_phone,
     }

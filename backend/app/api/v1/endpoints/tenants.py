@@ -10,11 +10,13 @@ from app.schemas.tenant import TenantCreate, TenantOut
 router = APIRouter()
 
 
+@router.get("", response_model=List[TenantOut], include_in_schema=False)
 @router.get("/", response_model=List[TenantOut])
 def list_tenants(db: Session = Depends(get_db)):
     return db.query(Tenant).filter(Tenant.is_active == True).all()
 
 
+@router.post("", response_model=TenantOut, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=TenantOut, status_code=status.HTTP_201_CREATED)
 def create_tenant(
     req: TenantCreate,

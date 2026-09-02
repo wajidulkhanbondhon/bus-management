@@ -25,9 +25,8 @@ def run_autonomous_learning():
             _save_learned_rule(db, "recent booking surge", content, ["SUPER_ADMIN", "MANAGER"])
 
         # Example Insight 2: Total Revenue in last 4 hours
-        # Assumes amount is numeric
-        payments = db.query(Payment).filter(Payment.created_at >= four_hours_ago, Payment.status == "COMPLETED").all()
-        total_revenue = sum(p.amount for p in payments)
+        payments = db.query(Payment).filter(Payment.created_at >= four_hours_ago).all()
+        total_revenue = sum(float(p.amount) for p in payments)
         if total_revenue > 0:
             content = f"গত ৪ ঘণ্টায় মোট রেভিনিউ হয়েছে ৳{total_revenue:,.2f}।"
             _save_learned_rule(db, "recent revenue 4 hours", content, ["SUPER_ADMIN"])

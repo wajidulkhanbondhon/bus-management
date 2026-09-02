@@ -11,3 +11,4 @@ from app.models.payment import Payment, PaymentTransaction, Refund
 from app.models.finance import FinancialLedger, DayClosing, DayClosingPaymentSummary
 from app.models.audit import AuditLog, Notification, SystemSetting
 from app.models.analytics import DailyAnalytics
+from app.models.passenger_pin import PassengerPin

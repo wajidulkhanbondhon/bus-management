@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from app.models.booking import Booking
@@ -6,16 +7,25 @@ from app.models.finance import DayClosing, DayClosingPaymentSummary
 from app.schemas.day_closing import SubmitDayClosingRequest
 
 
-def calculate_day_closing_summary(db: Session, date_input: datetime) -> Dict[str, Any]:
+def _day_bounds(date_input: datetime) -> tuple[datetime, datetime]:
+    """Build timezone-aware day boundaries (UTC) from a possibly-naive input."""
+    if date_input.tzinfo is None:
+        date_input = date_input.replace(tzinfo=timezone.utc)
     start_of_day = date_input.replace(hour=0, minute=0, second=0, microsecond=0)
     end_of_day = date_input.replace(hour=23, minute=59, second=59, microsecond=999999)
+    return start_of_day, end_of_day
 
+
+def calculate_day_closing_summary(db: Session, date_input: datetime) -> Dict[str, Any]:
+    start_of_day, end_of_day = _day_bounds(date_input)
+
+    # Bookings created in the day window — revenue base.
     bookings = (
         db.query(Booking)
         .filter(
             Booking.created_at >= start_of_day,
             Booking.created_at <= end_of_day,
-            Booking.booking_status.in_(["CONFIRMED", "COMPLETED", "PARTIALLY_REFUNDED"])
+            Booking.booking_status.in_(["CONFIRMED", "COMPLETED"])
         )
         .all()
     )
@@ -25,6 +35,7 @@ def calculate_day_closing_summary(db: Session, date_input: datetime) -> Dict[str
     expected_net = sum(b.net_amount for b in bookings)
     expected_due = sum(b.due_amount for b in bookings)
 
+    # Payments recorded in the window — even for bookings from prior days.
     payments = (
         db.query(Payment)
         .filter(Payment.created_at >= start_of_day, Payment.created_at <= end_of_day)
@@ -32,6 +43,7 @@ def calculate_day_closing_summary(db: Session, date_input: datetime) -> Dict[str
     )
     expected_collected = sum(p.amount for p in payments)
 
+    # Refunds issued in the window — netted against collections.
     refunds = (
         db.query(Refund)
         .filter(Refund.created_at >= start_of_day, Refund.created_at <= end_of_day)
@@ -69,8 +81,17 @@ def calculate_day_closing_summary(db: Session, date_input: datetime) -> Dict[str
 
 
 def submit_day_closing(db: Session, req: SubmitDayClosingRequest, staff_id: str, tenant_id: Optional[str] = None) -> DayClosing:
+    # Prevent double-closing the same day (closing_date is unique per row).
+    start_of_day, _ = _day_bounds(req.closing_date)
+    existing = (
+        db.query(DayClosing)
+        .filter(DayClosing.closing_date == start_of_day)
+        .first()
+    )
+    if existing:
+        raise ValueError(f"Day {start_of_day.date().isoformat()} has already been closed")
+
     summary = calculate_day_closing_summary(db, req.closing_date)
-    start_of_day = summary["date"]
 
     cash_diff = 0.0
     payment_summaries = []
@@ -79,7 +100,7 @@ def submit_day_closing(db: Session, req: SubmitDayClosingRequest, staff_id: str,
 
     for m in req.method_actuals:
         expected = summary["methods"].get(m.method, {}).get("expected", 0.0)
-        diff = m.actual_amount - expected
+        diff = round(m.actual_amount - expected, 2)
         status = "MATCHED" if diff == 0 else ("SHORT" if diff < 0 else "EXCESS")
         if status == "SHORT":
             has_short = True

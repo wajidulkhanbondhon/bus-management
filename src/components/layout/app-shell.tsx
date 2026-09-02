@@ -29,7 +29,7 @@ export function AppShell({ children, currentUser }: AppShellProps) {
     xl: 'text-lg [&_table]:text-base [&_h1]:text-4xl [&_h2]:text-3xl [&_h3]:text-xl'
   }[contentFontSize || 'base'];
 
-  const isPublicPage = pathname === '/' || pathname.startsWith('/track') || pathname === '/login' || pathname.startsWith('/universities') || pathname.startsWith('/supervisor') || pathname.startsWith('/passenger') || pathname.startsWith('/book');
+  const isPublicPage = pathname === '/' || pathname.startsWith('/track') || pathname === '/login' || pathname.startsWith('/universities') || pathname.startsWith('/supervisor') || pathname.startsWith('/passenger') || (pathname.startsWith('/book') && !pathname.startsWith('/bookings'));
 
   if (pathname === '/login' || pathname === '/supervisor/login') {
     return <>{children}</>;
@@ -40,7 +40,7 @@ export function AppShell({ children, currentUser }: AppShellProps) {
       <div suppressHydrationWarning className="min-h-screen flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200 selection:bg-blue-600 selection:text-white">
         {/* Streamlined Public Passenger Header */}
         <header className="sticky top-0 z-50 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-xs dark:shadow-md transition-colors duration-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="w-full px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-3 group">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-black text-lg shadow-md shadow-blue-500/25 group-hover:scale-105 transition-transform">
@@ -128,7 +128,7 @@ export function AppShell({ children, currentUser }: AppShellProps) {
 
         {/* Public Passenger Footer */}
         <footer className="border-t border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-400 text-xs py-8 px-4 transition-colors duration-200" suppressHydrationWarning>
-          <div className="max-w-7xl mx-auto space-y-4">
+          <div className="w-full space-y-4">
             <div className="text-center space-y-1.5">
               <p className="font-bold text-sm text-slate-800 dark:text-slate-300">
                 ATOMS Admission Express & Student Transit
@@ -311,9 +311,9 @@ function PassengerHeaderAuthButton({ language }: { language: string }) {
     setMounted(true);
     const updateSession = () => {
       if (typeof window !== 'undefined') {
+        // The phone number is remembered locally (PIN is server-side only).
         const phone = localStorage.getItem('atoms_passenger_phone');
-        const pin = localStorage.getItem('atoms_passenger_pin');
-        if (phone && pin && pin.length === 4) {
+        if (phone) {
           // Look up name if present in directory
           try {
             const rawHistory = localStorage.getItem('atoms_passenger_history');

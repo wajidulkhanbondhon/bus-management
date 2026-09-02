@@ -13,6 +13,7 @@ from app.models.coupon import MarketingCoupon
 from app.models.knowledge import KnowledgeRule
 from app.models.security import BlockedIP, SecurityEvent
 from app.models.analytics import DailyAnalytics
+from app.models.passenger_pin import PassengerPin
 __all__ = [
     "Base",
     "Tenant",
@@ -52,4 +53,5 @@ __all__ = [
     "BlockedIP",
     "SecurityEvent",
     "DailyAnalytics",
+    "PassengerPin",
 ]

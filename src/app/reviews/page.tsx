@@ -51,7 +51,7 @@ export default function ReviewsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 w-full pb-12">
       <div>
         <div className="flex items-center gap-2">
           <Badge variant="primary" className="bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400 border-amber-200 dark:border-amber-800">

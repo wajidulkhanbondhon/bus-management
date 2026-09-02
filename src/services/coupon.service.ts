@@ -18,71 +18,16 @@ export interface MarketingCoupon {
   createdAt: string;
 }
 
-const DEFAULT_COUPONS: MarketingCoupon[] = [
-  {
-    id: 'coup-001',
-    code: 'ADMISSION100',
-    title: 'ভর্তি পরীক্ষা স্পেশাল ফেসবুক ক্যাম্পেইন',
-    campaignChannel: 'FACEBOOK',
-    discountType: 'FIXED',
-    discountValue: 100,
-    targetUniversity: 'ALL',
-    maxUsageLimit: 500,
-    usageCount: 28,
-    isActive: true,
-    notes: 'ফেসবুক পেজ ক্যাম্পেইন থেকে প্রাপ্ত শিক্ষার্থীদের জন্য',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'coup-002',
-    code: 'CAMPUS50',
-    title: 'ক্যাম্পাস বুথ প্রমোশন ডিসকাউন্ট',
-    campaignChannel: 'CAMPUS_BOOTH',
-    discountType: 'FIXED',
-    discountValue: 50,
-    targetUniversity: 'ALL',
-    maxUsageLimit: 1000,
-    usageCount: 64,
-    isActive: true,
-    notes: 'বিভিন্ন কলেজ ও কোচিং ক্যাম্পাসে লিফলেট ও বুথ অফার',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'coup-003',
-    code: 'PROMO10',
-    title: 'স্পেশাল ১০% মেগা প্রমো কোড',
-    campaignChannel: 'SMS_CAMPAIGN',
-    discountType: 'PERCENTAGE',
-    discountValue: 10,
-    maxDiscountLimit: 150,
-    targetUniversity: 'ALL',
-    maxUsageLimit: 200,
-    usageCount: 15,
-    isActive: true,
-    notes: 'রেজিস্টার্ড স্টুডেন্টদের এসএমএস অফার',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'coup-004',
-    code: 'SPECIAL200',
-    title: 'ভাই-বোন ও গ্রুপ ভর্তি স্পেশাল',
-    campaignChannel: 'SPECIAL_EVENT',
-    discountType: 'FIXED',
-    discountValue: 200,
-    targetUniversity: 'ALL',
-    maxUsageLimit: 100,
-    usageCount: 7,
-    isActive: true,
-    notes: 'বিশেষ বিবেচনা ও গ্রুপ আবেদনকারীদের জন্য',
-    createdAt: new Date().toISOString()
-  }
-];
+// In-memory cache of coupons fetched from the backend. This is NOT a source
+// of truth and never fabricates coupons — it only mirrors server data so the
+// list view doesn't flash empty on refetch.
+let cachedCoupons: MarketingCoupon[] | null = null;
 
 const STORAGE_KEY = 'atoms_marketing_coupons';
 
 function mapApiToCoupon(c: any): MarketingCoupon {
   return {
-    id: c.id || `coup-${Date.now()}`,
+    id: c.id || '',
     code: c.code || '',
     title: c.title || '',
     campaignChannel: c.campaign_channel || c.campaignChannel || 'FACEBOOK',
@@ -116,106 +61,73 @@ function mapCouponToApi(c: Partial<MarketingCoupon>): any {
   };
 }
 
-export function getMarketingCoupons(): MarketingCoupon[] {
-  if (typeof window === 'undefined') return DEFAULT_COUPONS;
+function readLocalCache(): MarketingCoupon[] {
+  if (typeof window === 'undefined') return cachedCoupons || [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_COUPONS));
-      return DEFAULT_COUPONS;
-    }
-    return JSON.parse(raw);
+    return raw ? JSON.parse(raw) : (cachedCoupons || []);
   } catch {
-    return DEFAULT_COUPONS;
+    return cachedCoupons || [];
   }
+}
+
+function writeLocalCache(coupons: MarketingCoupon[]): void {
+  cachedCoupons = coupons;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(coupons));
+    } catch {
+      // ignore quota errors
+    }
+  }
+}
+
+export function getMarketingCoupons(): MarketingCoupon[] {
+  return readLocalCache();
 }
 
 export function saveMarketingCoupons(coupons: MarketingCoupon[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(coupons));
-  } catch (e) {
-    console.error('Failed to save coupons:', e);
-  }
+  writeLocalCache(coupons);
 }
 
 export async function fetchMarketingCoupons(): Promise<MarketingCoupon[]> {
-  try {
-    const res = await fastApiClient.getCoupons();
-    if (res.success && Array.isArray(res.data) && res.data.length > 0) {
-      const mapped = res.data.map(mapApiToCoupon);
-      saveMarketingCoupons(mapped);
-      return mapped;
-    }
-  } catch (e) {
-    console.warn('FastAPI coupons fetch failed, fallback to cache:', e);
+  const res = await fastApiClient.getCoupons();
+  if (res.success && Array.isArray(res.data)) {
+    const mapped = res.data.map(mapApiToCoupon);
+    writeLocalCache(mapped);
+    return mapped;
   }
-  return getMarketingCoupons();
+  // On failure return whatever was previously cached (real server data only).
+  return readLocalCache();
 }
 
-export async function createMarketingCouponAsync(data: Omit<MarketingCoupon, 'id' | 'usageCount' | 'createdAt'>): Promise<MarketingCoupon> {
-  try {
-    const apiPayload = mapCouponToApi(data);
-    const res = await fastApiClient.createCoupon(apiPayload);
-    if (res.success && res.data) {
-      const created = mapApiToCoupon(res.data);
-      const current = getMarketingCoupons().filter(c => c.id !== created.id);
-      const updated = [created, ...current];
-      saveMarketingCoupons(updated);
-      return created;
-    }
-  } catch (e) {
-    console.warn('API coupon create failed, using local save:', e);
+export async function createMarketingCoupon(data: Omit<MarketingCoupon, 'id' | 'usageCount' | 'createdAt'>): Promise<MarketingCoupon> {
+  const res = await fastApiClient.createCoupon(mapCouponToApi(data));
+  if (!res.success || !res.data) {
+    throw new Error(res.error || 'Failed to create coupon');
   }
-  return createMarketingCoupon(data);
+  const created = mapApiToCoupon(res.data);
+  writeLocalCache([created, ...readLocalCache()]);
+  return created;
 }
 
-export function createMarketingCoupon(data: Omit<MarketingCoupon, 'id' | 'usageCount' | 'createdAt'>): MarketingCoupon {
-  const coupons = getMarketingCoupons();
-  const newCoupon: MarketingCoupon = {
-    ...data,
-    id: `coup-${Date.now()}`,
-    code: data.code.trim().toUpperCase(),
-    usageCount: 0,
-    createdAt: new Date().toISOString()
-  };
-  const updated = [newCoupon, ...coupons];
-  saveMarketingCoupons(updated);
-
-  // Background API attempt
-  fastApiClient.createCoupon(mapCouponToApi(data)).catch(() => {});
-  return newCoupon;
-}
-
-export async function toggleCouponActiveAsync(couponId: string): Promise<MarketingCoupon[]> {
-  try {
-    await fastApiClient.toggleCoupon(couponId);
-  } catch (e) {
-    console.warn('API coupon toggle failed:', e);
+export async function toggleCouponActive(couponId: string): Promise<MarketingCoupon[]> {
+  const res = await fastApiClient.toggleCoupon(couponId);
+  if (!res.success) {
+    throw new Error(res.error || 'Failed to toggle coupon');
   }
-  return toggleCouponActive(couponId);
-}
-
-export function toggleCouponActive(couponId: string): MarketingCoupon[] {
-  const coupons = getMarketingCoupons();
-  const updated = coupons.map(c => c.id === couponId ? { ...c, isActive: !c.isActive } : c);
-  saveMarketingCoupons(updated);
+  const updated = readLocalCache().map(c => c.id === couponId ? { ...c, isActive: !c.isActive } : c);
+  writeLocalCache(updated);
   return updated;
 }
 
-export async function deleteMarketingCouponAsync(couponId: string): Promise<MarketingCoupon[]> {
-  try {
-    await fastApiClient.deleteCoupon(couponId);
-  } catch (e) {
-    console.warn('API coupon delete failed:', e);
+export async function deleteMarketingCoupon(couponId: string): Promise<MarketingCoupon[]> {
+  const res = await fastApiClient.deleteCoupon(couponId);
+  if (!res.success) {
+    throw new Error(res.error || 'Failed to delete coupon');
   }
-  return deleteMarketingCoupon(couponId);
-}
-
-export function deleteMarketingCoupon(couponId: string): MarketingCoupon[] {
-  const coupons = getMarketingCoupons();
-  const updated = coupons.filter(c => c.id !== couponId);
-  saveMarketingCoupons(updated);
+  const updated = readLocalCache().filter(c => c.id !== couponId);
+  writeLocalCache(updated);
   return updated;
 }
 
@@ -228,7 +140,7 @@ export interface CouponApplyResult {
   message: string;
 }
 
-export async function validateAndCalculateCouponAsync(
+export async function validateAndCalculateCoupon(
   code: string,
   grossAmount: number,
   targetUniversity?: string
@@ -244,110 +156,25 @@ export async function validateAndCalculateCouponAsync(
     };
   }
 
-  try {
-    const res = await fastApiClient.validateCoupon(cleanCode, grossAmount, targetUniversity);
-    if (res.success && res.data && res.data.valid) {
-      return {
-        isValid: true,
-        discountType: res.data.discount_type || 'FIXED',
-        discountRate: res.data.discount_value || 0,
-        calculatedDiscount: res.data.calculated_discount || 0,
-        message: `✅ কুপন "${res.data.code}" সফলভাবে কার্যকর হয়েছে! (${res.data.discount_type === 'FIXED' ? `৳${res.data.discount_value} ছাড়` : `${res.data.discount_value}% শতাংশ ছাড়`})`
-      };
-    }
-  } catch {
-    // fallback to local calculation
-  }
-
-  return validateAndCalculateCoupon(code, grossAmount, targetUniversity);
-}
-
-export function validateAndCalculateCoupon(
-  code: string,
-  grossAmount: number,
-  targetUniversity?: string
-): CouponApplyResult {
-  const cleanCode = code.trim().toUpperCase();
-  if (!cleanCode) {
+  // Coupon validity is decided by the backend only — the client never
+  // fabricates or grants discounts from locally-stored data.
+  const res = await fastApiClient.validateCoupon(cleanCode, grossAmount, targetUniversity);
+  if (res.success && res.data && res.data.valid) {
     return {
-      isValid: false,
-      discountType: 'FIXED',
-      discountRate: 0,
-      calculatedDiscount: 0,
-      message: 'অনুগ্রহ করে একটি কুপন কোড লিখুন।'
+      isValid: true,
+      discountType: res.data.discount_type || 'FIXED',
+      discountRate: res.data.discount_value || 0,
+      calculatedDiscount: res.data.calculated_discount || 0,
+      message: `✅ কুপন "${res.data.code}" সফলভাবে কার্যকর হয়েছে! (${res.data.discount_type === 'FIXED' ? `৳${res.data.discount_value} ছাড়` : `${res.data.discount_value}% শতাংশ ছাড়`})`
     };
   }
 
-  const coupons = getMarketingCoupons();
-  const found = coupons.find(c => c.code.toUpperCase() === cleanCode);
-
-  if (!found) {
-    return {
-      isValid: false,
-      discountType: 'FIXED',
-      discountRate: 0,
-      calculatedDiscount: 0,
-      message: '❌ দুঃখিত, এই কুপন কোডটি সঠিক নয় বা সিস্টেমের ডাটাবেজে পাওয়া যায়নি।'
-    };
-  }
-
-  if (!found.isActive) {
-    return {
-      isValid: false,
-      discountType: 'FIXED',
-      discountRate: 0,
-      calculatedDiscount: 0,
-      message: '❌ এই কুপন কোডটি বর্তমানে নিষ্ক্রিয় (Inactive) রয়েছে।'
-    };
-  }
-
-  if (found.expiryDate && new Date(found.expiryDate) < new Date()) {
-    return {
-      isValid: false,
-      discountType: 'FIXED',
-      discountRate: 0,
-      calculatedDiscount: 0,
-      message: '❌ এই কুপনটির মেয়াদের সময়সীমা শেষ হয়ে গেছে।'
-    };
-  }
-
-  if (found.usageCount >= found.maxUsageLimit) {
-    return {
-      isValid: false,
-      discountType: 'FIXED',
-      discountRate: 0,
-      calculatedDiscount: 0,
-      message: '❌ এই কুপনের সর্বোচ্চ ব্যবহারের লিমিট পূর্ণ হয়ে গেছে।'
-    };
-  }
-
-  if (found.minPurchaseAmount && grossAmount < found.minPurchaseAmount) {
-    return {
-      isValid: false,
-      discountType: 'FIXED',
-      discountRate: 0,
-      calculatedDiscount: 0,
-      message: `❌ এই কুপনটি পেতে ন্যূনতম ৳${found.minPurchaseAmount} টাকার টিকিট বুক করতে হবে।`
-    };
-  }
-
-  // Calculate actual discount amount
-  let calculatedDiscount = 0;
-  if (found.discountType === 'FIXED') {
-    calculatedDiscount = Math.min(found.discountValue, grossAmount);
-  } else {
-    calculatedDiscount = Math.round((grossAmount * found.discountValue) / 100);
-    if (found.maxDiscountLimit && calculatedDiscount > found.maxDiscountLimit) {
-      calculatedDiscount = found.maxDiscountLimit;
-    }
-  }
-
+  const message = res.data?.message || res.error || 'এই কুপন কোডটি সঠিক নয় বা সিস্টেমের ডাটাবেজে পাওয়া যায়নি।';
   return {
-    isValid: true,
-    coupon: found,
-    discountType: found.discountType,
-    discountRate: found.discountValue,
-    calculatedDiscount,
-    message: `✅ কুপন "${found.code}" সফলভাবে কার্যকর হয়েছে! (${found.discountType === 'FIXED' ? `৳${found.discountValue} ছাড়` : `${found.discountValue}% শতাংশ ছাড়`})`
+    isValid: false,
+    discountType: 'FIXED',
+    discountRate: 0,
+    calculatedDiscount: 0,
+    message,
   };
 }

@@ -103,6 +103,7 @@ def delete_role(
     return {"success": True, "message": "Role deleted"}
 
 
+@router.get("", response_model=List[UserDetailOut], include_in_schema=False)
 @router.get("/", response_model=List[UserDetailOut])
 def list_staff(
     db: Session = Depends(get_db),
@@ -133,6 +134,7 @@ def list_staff(
     return results
 
 
+@router.post("", response_model=UserDetailOut, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=UserDetailOut, status_code=status.HTTP_201_CREATED)
 def create_staff(
     req: UserCreate,

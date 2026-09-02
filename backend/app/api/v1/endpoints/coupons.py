@@ -72,6 +72,7 @@ def seed_coupons_if_empty(db: Session, tenant_id: Optional[str] = None):
         db.commit()
 
 
+@router.get("", response_model=List[CouponOut], include_in_schema=False)
 @router.get("/", response_model=List[CouponOut])
 def list_coupons(
     db: Session = Depends(get_db),
@@ -126,6 +127,7 @@ def validate_coupon(
     }
 
 
+@router.post("", response_model=CouponOut, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=CouponOut, status_code=status.HTTP_201_CREATED)
 def create_coupon(
     req: CouponCreate,

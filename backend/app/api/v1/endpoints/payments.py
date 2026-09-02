@@ -18,6 +18,7 @@ from app.services.booking_service import (
 router = APIRouter()
 
 
+@router.get("", response_model=List[PaymentOut], include_in_schema=False)
 @router.get("/", response_model=List[PaymentOut])
 def list_payments(
     tenant_id: Optional[str] = Depends(get_current_tenant_id),

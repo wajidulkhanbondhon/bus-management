@@ -17,7 +17,7 @@ export function PublicHelplineBar() {
 
   return (
     <section className="py-8 border-t border-slate-200 dark:border-slate-800/50 bg-white/50 dark:bg-transparent transition-colors duration-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8">
           <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 px-5 py-2.5 rounded-full text-sm font-bold shadow-xs">
             <PhoneCall className="w-4 h-4 animate-pulse text-emerald-600 dark:text-emerald-400" />

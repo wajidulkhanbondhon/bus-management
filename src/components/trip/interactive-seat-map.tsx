@@ -46,7 +46,6 @@ import { formatCurrency, formatTime, formatDate } from '@/lib/utils';
 import { lockSeatAction, unlockSeatAction, holdSeatAction, releaseSeatHoldAction } from '@/actions/inventory.actions';
 import { createPreBookingAction } from '@/actions/booking.actions';
 import {
-  hasRegisteredPin,
   savePassengerPin,
   generateWhatsAppPinUrl,
   lookupPassengerByPhone,
@@ -129,7 +128,6 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedPhone = localStorage.getItem('atoms_passenger_phone');
-      const savedPin = localStorage.getItem('atoms_passenger_pin');
       if (savedPhone) {
         setContactPhone(savedPhone);
         const dir = lookupPassengerByPhone(savedPhone);
@@ -138,24 +136,35 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
           if (dir.gender) setPassengerGender(dir.gender);
           if (dir.admissionId && !studentAdmissionId) setStudentAdmissionId(dir.admissionId);
         }
-        if (!savedPin || savedPin.length !== 4) {
-          setUserNeedsPin(true);
-        } else {
-          setUserNeedsPin(false);
-        }
-      } else {
-        setUserNeedsPin(true);
       }
+      // Legacy PIN artifacts are no longer used.
+      localStorage.removeItem('atoms_passenger_pin');
+      localStorage.removeItem('atoms_passenger_pins');
     }
   }, []);
 
-  // Check PIN requirement whenever phone number changes
+  // Check PIN requirement whenever phone number changes (server-backed)
   useEffect(() => {
+    let cancelled = false;
     if (contactPhone && contactPhone.length === 11) {
       const clean = contactPhone.replace(/\D/g, '');
-      const registered = hasRegisteredPin(clean);
-      setUserNeedsPin(!registered);
+      fetch('/api/backend/auth/passenger-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: clean, pin: '' }),
+      })
+        .then((res) => {
+          if (cancelled) return;
+          // 404 = no PIN registered yet; 401 = wrong pin; both mean "not verified".
+          setUserNeedsPin(res.status === 404);
+        })
+        .catch(() => {
+          if (!cancelled) setUserNeedsPin(true);
+        });
+    } else {
+      setUserNeedsPin(true);
     }
+    return () => { cancelled = true; };
   }, [contactPhone]);
 
   // Default Fare Segments
@@ -167,7 +176,9 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
   ];
 
   const getSegmentForRow = (rowChar: string): FareRangeSegment | undefined => {
+    if (!rowChar || typeof rowChar !== 'string') return undefined;
     return defaultSegments.find(seg => {
+      if (!seg?.startRow || !seg?.endRow) return false;
       const startIdx = rowLetters.indexOf(seg.startRow.toUpperCase());
       const endIdx = rowLetters.indexOf(seg.endRow.toUpperCase());
       const curIdx = rowLetters.indexOf(rowChar.toUpperCase());
@@ -255,9 +266,9 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
 
     setIsBookingSubmitting(true);
     try {
-      // 1. If PIN was entered, save it
+      // 1. If PIN was entered, register it server-side
       if (userNeedsPin && authPin.length === 4) {
-        savePassengerPin(cleanPhone, authPin, contactName.trim());
+        await savePassengerPin(cleanPhone, authPin, contactName.trim());
         const waUrl = generateWhatsAppPinUrl(cleanPhone, authPin, contactName.trim());
         setWhatsappModalData({
           name: contactName.trim(),
@@ -387,8 +398,8 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
     const isLocked = seat.status === 'LOCKED';
     const isAvailable = seat.status === 'AVAILABLE';
 
-    const seatNum = seat.seatNumber?.toUpperCase();
-    const dynamicLock = dynamicAdjacentLocks.get(seatNum);
+    const seatNum = (seat.seatNumber || (seat as any).seat_number || (seat as any).label || '').trim().toUpperCase();
+    const dynamicLock = seatNum ? dynamicAdjacentLocks.get(seatNum) : undefined;
 
     const isFemaleOnly = seat.genderAllowed === 'FEMALE_ONLY' || seat.booking?.passengerGender === 'FEMALE' || dynamicLock?.genderAllowed === 'FEMALE_ONLY';
     const isMaleOnly = seat.genderAllowed === 'MALE_ONLY' || seat.booking?.passengerGender === 'MALE' || dynamicLock?.genderAllowed === 'MALE_ONLY';
@@ -404,18 +415,18 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
         type="button"
         onClick={() => handleSeatClick(seat)}
         disabled={!isAvailable && !currentUserId}
-        title={dynamicLock ? `${dynamicLock.reason} (${dynamicLock.genderAllowed === 'FEMALE_ONLY' ? 'শুধুমাত্র নারী' : 'শুধুমাত্র পুরুষ'})` : `সিট: ${seat.seatNumber} | ভাড়া: ৳${seatPrice}`}
+        title={dynamicLock ? `${dynamicLock.reason} (${dynamicLock.genderAllowed === 'FEMALE_ONLY' ? 'শুধুমাত্র নারী' : 'শুধুমাত্র পুরুষ'})` : `সিট: ${seatNum || 'Seat'} | ভাড়া: ৳${seatPrice}`}
         className={`w-14 h-14 sm:w-16 sm:h-16 shrink-0 p-1.5 rounded-2xl flex flex-col items-center justify-between font-black transition-all duration-200 ease-out relative select-none cursor-pointer ${
           isBooked
             ? 'bg-gradient-to-b from-rose-50 via-rose-100 to-rose-200 dark:from-rose-950/70 dark:to-rose-900/70 text-rose-950 dark:text-rose-200 border-2 border-rose-300 dark:border-rose-700 opacity-60 shadow-xs cursor-not-allowed'
             : isHeld
-            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/70 dark:to-amber-900/70 text-amber-950 dark:text-amber-200 border-2 border-amber-300 dark:border-amber-700 opacity-75 shadow-xs cursor-not-allowed'
+            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/70 dark:to-amber-900/70 text-amber-950 dark:text-amber-200 border-2 border-amber-400 dark:border-amber-600 opacity-70 shadow-xs cursor-not-allowed'
             : isLocked
-            ? 'bg-gradient-to-b from-slate-200 to-slate-300 dark:from-slate-800 dark:to-slate-900 text-slate-800 dark:text-slate-300 border-2 border-slate-400 opacity-80 cursor-not-allowed'
+            ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 border border-slate-300 dark:border-slate-700 opacity-50 cursor-not-allowed'
             : isSelected
-            ? 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 text-white border-2 border-blue-300 shadow-xl shadow-blue-500/40 ring-4 ring-blue-400/40 -translate-y-1 z-10'
+            ? 'bg-gradient-to-b from-blue-600 via-blue-700 to-indigo-800 text-white border-2 border-blue-300 dark:border-blue-400 shadow-lg shadow-blue-600/30 scale-105 z-10 ring-4 ring-blue-500/30'
             : isFemaleOnly
-            ? 'bg-gradient-to-b from-pink-50 via-pink-100 to-pink-200 dark:from-pink-950/80 dark:to-pink-900/80 text-pink-950 dark:text-pink-100 border-2 border-pink-400 dark:border-pink-500 shadow-xs hover:border-pink-500 hover:shadow-md'
+            ? 'bg-gradient-to-b from-pink-50 via-pink-100 to-pink-200 dark:from-pink-950/60 dark:to-pink-900/60 text-pink-950 dark:text-pink-200 border-2 border-pink-400 dark:border-pink-600 hover:border-pink-500 shadow-sm'
             : isMaleOnly
             ? 'bg-gradient-to-b from-blue-50 via-blue-100 to-blue-200 dark:from-blue-950/80 dark:to-blue-900/80 text-blue-950 dark:text-blue-100 border-2 border-blue-400 dark:border-blue-500 shadow-xs hover:border-blue-500 hover:shadow-md'
             : 'bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-850 dark:to-slate-900 text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-600 shadow-xs hover:border-blue-500 hover:shadow-md'
@@ -487,7 +498,7 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="space-y-6 w-full px-4 sm:px-6 lg:px-8 py-6">
       {/* Top Banner */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -594,48 +605,48 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
               <div className="absolute -right-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-r-md shadow-xs" title="Right Mirror" />
 
               {/* COCKPIT SECTION: Bonnet Engine Grill + Front Windshield + Driver Cabin + Door Steps */}
-              <div className="mb-6 pb-4 border-b-2 border-dashed border-slate-200 dark:border-slate-800">
+              <div className="mb-5 pb-3.5 border-b-2 border-dashed border-slate-200 dark:border-slate-800">
                 {/* Windshield Glass */}
-                <div className="h-7 bg-blue-100/80 dark:bg-blue-950/60 rounded-t-2xl border-t-2 border-blue-300 dark:border-blue-800 mb-2.5 flex items-center justify-center">
+                <div className="h-6 sm:h-7 bg-blue-100/80 dark:bg-blue-950/60 rounded-t-2xl border-t-2 border-blue-300 dark:border-blue-800 mb-2.5 flex items-center justify-center">
                   <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-blue-700 dark:text-blue-300 font-mono">
-                    {language === 'bn' ? 'সামনের উইন্ডশিল্ড গ্লাস (FRONT WINDSHIELD)' : 'FRONT WINDSHIELD GLASS'}
+                    {language === 'bn' ? 'সামনের উইন্ডশিল্ড গ্লাস' : 'FRONT WINDSHIELD GLASS'}
                   </span>
                 </div>
 
-                {/* Dashboard & Cockpit: Larger Door, Bonnet, and Driver Cabins */}
-                <div className="h-20 bg-slate-900 dark:bg-slate-950 rounded-2xl p-3 sm:p-4 flex items-center justify-between text-white shadow-inner relative overflow-hidden">
+                {/* Dashboard & Cockpit: Medium-large, comfortable, legible Door, Bonnet, and Driver Cabins */}
+                <div className="bg-slate-900 dark:bg-slate-950 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between text-white shadow-inner relative overflow-hidden">
                   {/* Left: Passenger Entry Door / Gate */}
-                  <div className="flex items-center gap-2.5 bg-emerald-950 border-2 border-emerald-500 px-4 py-2 rounded-2xl shadow-md">
+                  <div className="flex items-center gap-2.5 bg-emerald-950 border-2 border-emerald-500/80 px-3.5 py-2 rounded-xl shadow-md">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
                     <div>
                       <div className="text-xs sm:text-sm font-black text-emerald-400 leading-tight">
                         {language === 'bn' ? 'বাসের গেট' : 'ENTRY DOOR'}
                       </div>
-                      <div className="text-[10px] text-emerald-200 font-bold leading-none mt-0.5">
-                        {language === 'bn' ? 'প্রবেশদ্বার' : 'Entry'}
+                      <div className="text-[10px] sm:text-[11px] text-emerald-300 font-bold leading-none mt-0.5">
+                        {language === 'bn' ? 'প্রবেশদ্বার (Entry)' : 'Entry Gate'}
                       </div>
                     </div>
                   </div>
 
                   {/* Center: Bonnet / Engine Hood */}
-                  <div className="text-center px-4 py-1.5 bg-slate-800 rounded-2xl border-2 border-slate-600 shadow-md">
-                    <div className="text-xs font-black text-amber-400 font-mono tracking-wider">
+                  <div className="text-center px-3.5 py-1.5 bg-slate-800 rounded-xl border-2 border-slate-600 shadow-md">
+                    <div className="text-xs sm:text-sm font-black text-amber-400 font-mono tracking-wide">
                       {language === 'bn' ? 'বনেট / ইঞ্জিন' : 'ENGINE BONNET'}
                     </div>
                     <div className="text-[9px] text-slate-300 font-bold mt-0.5">Front Chassis</div>
                   </div>
 
                   {/* Right: Driver Cabin & Steering Wheel */}
-                  <div className="flex items-center gap-2.5 bg-blue-950 border-2 border-blue-500 px-4 py-2 rounded-2xl text-right shadow-md">
+                  <div className="flex items-center gap-2.5 bg-blue-950 border-2 border-blue-500/80 px-3.5 py-2 rounded-xl text-right shadow-md">
                     <div>
                       <div className="text-xs sm:text-sm font-black text-blue-400 leading-tight">
                         {language === 'bn' ? 'ড্রাইভার কেবিন' : 'DRIVER CABIN'}
                       </div>
-                      <div className="text-[10px] text-blue-200 font-bold leading-none mt-0.5">
-                        {language === 'bn' ? 'কন্ট্রোল' : 'Cockpit'}
+                      <div className="text-[10px] sm:text-[11px] text-blue-300 font-bold leading-none mt-0.5">
+                        {language === 'bn' ? 'কন্ট্রোল (Cockpit)' : 'Cockpit'}
                       </div>
                     </div>
-                    <div className="w-7 h-7 rounded-full bg-blue-600/50 border-2 border-blue-300 flex items-center justify-center text-xs font-black text-blue-100">
+                    <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600/50 border-2 border-blue-300 flex items-center justify-center text-xs font-black text-blue-100">
                       ✇
                     </div>
                   </div>
@@ -652,8 +663,10 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
 
                   // Sort row seats deterministically by column index or seat number digit
                   const sortedRowSeats = [...rowCells].sort((a, b) => {
-                    const colA = typeof a.colIndex === 'number' ? a.colIndex : (parseInt(a.seatNumber?.slice(1)) || 0);
-                    const colB = typeof b.colIndex === 'number' ? b.colIndex : (parseInt(b.seatNumber?.slice(1)) || 0);
+                    const sNumA = (a.seatNumber || (a as any).seat_number || (a as any).label || '').trim();
+                    const sNumB = (b.seatNumber || (b as any).seat_number || (b as any).label || '').trim();
+                    const colA = typeof a.colIndex === 'number' ? a.colIndex : (parseInt(sNumA.replace(/\D/g, '')) || 0);
+                    const colB = typeof b.colIndex === 'number' ? b.colIndex : (parseInt(sNumB.replace(/\D/g, '')) || 0);
                     return colA - colB;
                   });
 

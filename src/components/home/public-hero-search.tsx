@@ -79,9 +79,9 @@ export function PublicHeroSearch({
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      // The phone number is remembered locally (PIN is server-side only).
       const phone = localStorage.getItem('atoms_passenger_phone');
-      const pin = localStorage.getItem('atoms_passenger_pin');
-      if (phone && pin && pin.length === 4) {
+      if (phone) {
         try {
           const rawHistory = localStorage.getItem('atoms_passenger_history');
           const history = rawHistory ? JSON.parse(rawHistory) : [];
@@ -105,7 +105,7 @@ export function PublicHeroSearch({
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(59,130,246,0.12),transparent)]" />
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px),linear-gradient(to_bottom,#e2e8f0_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-25 dark:opacity-20" />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div className="w-full px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center pt-6 pb-12 lg:pb-16 lg:pt-8">
             {/* Left: Hero Info & Live Stats */}
             <motion.div
@@ -276,7 +276,7 @@ export function PublicHeroSearch({
 
       {/* ═══════ 2. SEARCH / FILTER BAR ═══════ */}
       <section className="sticky top-16 z-30 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800/80 py-4 transition-colors duration-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800/90 rounded-2xl p-4 shadow-lg dark:shadow-2xl">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               {/* Origin */}

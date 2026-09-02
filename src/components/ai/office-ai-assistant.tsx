@@ -199,7 +199,7 @@ export function OfficeAIAssistant() {
   };
 
   const startVoiceRecognition = () => {
-    // @ts-expect-error
+    // @ts-expect-error Web Speech API is not defined in standard Window typing
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("দুঃখিত, আপনার ব্রাউজার ভয়েস ইনপুট সাপোর্ট করে না। Google Chrome ব্যবহার করুন।");

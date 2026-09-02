@@ -11,7 +11,7 @@ export default async function FinancialLedgerPage() {
   const entries = await getFinancialLedgerEntries({ limit: 100 });
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">

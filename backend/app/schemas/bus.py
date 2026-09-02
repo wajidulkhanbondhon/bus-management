@@ -53,6 +53,18 @@ class BusCreate(BusBase):
     pass
 
 
+class BusUpdate(BaseModel):
+    bus_name: Optional[str] = None
+    bus_number: Optional[str] = None
+    operator: Optional[str] = None
+    reg_number: Optional[str] = None
+    capacity: Optional[int] = None
+    bus_type: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    seat_layout_id: Optional[str] = None
+
+
 class BusOut(BusBase):
     id: str
     tenant_id: Optional[str] = None
@@ -60,3 +72,4 @@ class BusOut(BusBase):
 
     class Config:
         from_attributes = True
+

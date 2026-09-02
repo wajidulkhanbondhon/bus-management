@@ -20,7 +20,7 @@ export function BookingTrackerBanner() {
 
   return (
     <section className="py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="bg-gradient-to-r from-blue-50 via-indigo-50/50 to-slate-100 dark:from-blue-950/60 dark:via-indigo-950/40 dark:to-slate-900 border border-blue-200 dark:border-blue-900/40 rounded-3xl p-6 sm:p-10 flex flex-col lg:flex-row items-center justify-between gap-8 shadow-xs dark:shadow-none">
           <div className="space-y-2 max-w-xl">
             <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">

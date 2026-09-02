@@ -12,16 +12,24 @@ import {
 import { getCurrentUser, requirePermission } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
+function safeRevalidatePath(path: string, type?: 'page' | 'layout') {
+  try {
+    revalidatePath(path, type);
+  } catch {
+    // Ignore static generation context error in Server Actions
+  }
+}
+
 export async function createBusAction(data: CreateBusInput) {
   try {
     const user = await requirePermission('bus_trip:manage');
     const bus = await createBus(data, user.id);
-    revalidatePath('/');
-    revalidatePath('/buses');
-    revalidatePath('/buses/create');
-    revalidatePath('/trips');
-    revalidatePath('/trips/create');
-    revalidatePath('/dashboard');
+    safeRevalidatePath('/');
+    safeRevalidatePath('/buses');
+    safeRevalidatePath('/buses/create');
+    safeRevalidatePath('/trips');
+    safeRevalidatePath('/trips/create');
+    safeRevalidatePath('/dashboard');
     return { success: true, bus };
   } catch (error: any) {
     return { success: false, error: error.message || 'Failed to create bus' };
@@ -32,8 +40,8 @@ export async function updateBusAction(id: string, data: Partial<CreateBusInput>)
   try {
     const user = await requirePermission('bus_trip:manage');
     const bus = await updateBus(id, data, user.id);
-    revalidatePath('/buses');
-    revalidatePath('/dashboard');
+    safeRevalidatePath('/buses');
+    safeRevalidatePath('/dashboard');
     return { success: true, bus };
   } catch (error: any) {
     return { success: false, error: error.message || 'Failed to update bus' };
@@ -44,20 +52,23 @@ export async function deleteBusAction(id: string) {
   try {
     const user = await requirePermission('bus_trip:manage');
     await deleteBus(id, user.id);
-    revalidatePath('/buses');
-    revalidatePath('/dashboard');
+    safeRevalidatePath('/buses');
+    safeRevalidatePath('/dashboard');
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message || 'Failed to delete bus' };
   }
 }
 
-export async function createCustomLayoutAction(input: CustomLayoutInput) {
+export async function createCustomLayoutAction(input: CustomLayoutInput): Promise<{ success: boolean; layout?: any; error?: string }> {
   try {
     const user = await requirePermission('bus_trip:manage');
     const layout = await createCustomLayout(input, user.id);
-    revalidatePath('/buses/seat-builder');
-    revalidatePath('/buses');
+    safeRevalidatePath('/buses/seat-builder');
+    safeRevalidatePath('/buses');
+    safeRevalidatePath('/buses/create');
+    safeRevalidatePath('/trips/create');
+    safeRevalidatePath('/bookings/new');
     return { success: true, layout };
   } catch (error: any) {
     return { success: false, error: error.message || 'Failed to save seat layout' };
@@ -68,8 +79,11 @@ export async function deleteSeatLayoutAction(id: string) {
   try {
     const user = await requirePermission('bus_trip:manage');
     await deleteSeatLayout(id, user.id);
-    revalidatePath('/buses/seat-builder');
-    revalidatePath('/buses');
+    safeRevalidatePath('/buses/seat-builder');
+    safeRevalidatePath('/buses');
+    safeRevalidatePath('/buses/create');
+    safeRevalidatePath('/trips/create');
+    safeRevalidatePath('/bookings/new');
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message || 'Failed to delete layout' };
@@ -80,7 +94,7 @@ export async function createFareZoneAction(data: { name: string; description?: s
   try {
     const user = await requirePermission('bus_trip:manage');
     const zone = await createFareZone(data, user.id);
-    revalidatePath('/buses/seat-builder');
+    safeRevalidatePath('/buses/seat-builder');
     return { success: true, zone };
   } catch (error: any) {
     return { success: false, error: error.message || 'Failed to create fare zone' };
@@ -91,7 +105,7 @@ export async function updateFareZoneAction(id: string, data: { name?: string; de
   try {
     const user = await requirePermission('bus_trip:manage');
     const zone = await updateFareZone(id, data, user.id);
-    revalidatePath('/buses/seat-builder');
+    safeRevalidatePath('/buses/seat-builder');
     return { success: true, zone };
   } catch (error: any) {
     return { success: false, error: error.message || 'Failed to update fare zone' };
@@ -102,7 +116,7 @@ export async function deleteFareZoneAction(id: string) {
   try {
     const user = await requirePermission('bus_trip:manage');
     await deleteFareZone(id, user.id);
-    revalidatePath('/buses/seat-builder');
+    safeRevalidatePath('/buses/seat-builder');
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message || 'Failed to delete fare zone' };
@@ -119,7 +133,7 @@ export async function createRouteAction(data: {
   try {
     const user = await requirePermission('bus_trip:manage');
     const route = await createRoute(data, user.id);
-    revalidatePath('/trips/create');
+    safeRevalidatePath('/trips/create');
     return { success: true, route };
   } catch (error: any) {
     return { success: false, error: error.message || 'Failed to create route' };

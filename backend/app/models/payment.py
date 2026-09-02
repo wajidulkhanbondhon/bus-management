@@ -6,6 +6,7 @@ from sqlalchemy.types import TypeDecorator
 from cryptography.fernet import Fernet
 from app.core.config import settings
 from app.db.session import Base
+from app.db.types import Money
 
 try:
     fernet = Fernet(settings.FERNET_SECRET_KEY.encode())
@@ -37,7 +38,7 @@ class Payment(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     receipt_number = Column(String, unique=True, index=True, nullable=False)  # "RCT-20260827-B1E9-0042"
     booking_id = Column(String, ForeignKey("bookings.id"), nullable=False, index=True)
-    amount = Column(Float, nullable=False)
+    amount = Column(Money, nullable=False)
     method = Column(String, nullable=False)  # "BKASH", "NAGAD", "ROCKET", "HAND_CASH", "BANK_TRANSFER"
     received_by_id = Column(String, ForeignKey("users.id"), nullable=False)
     notes = Column(Text, nullable=True)
@@ -74,7 +75,7 @@ class Refund(Base):
     refund_number = Column(String, unique=True, index=True, nullable=False)  # "RF-20260827-E5A1-0012"
     booking_id = Column(String, ForeignKey("bookings.id"), nullable=False, index=True)
     payment_id = Column(String, ForeignKey("payments.id"), nullable=True)
-    amount = Column(Float, nullable=False)
+    amount = Column(Money, nullable=False)
     method = Column(String, nullable=False)
     reason = Column(Text, nullable=False)
     processed_by_id = Column(String, nullable=False)

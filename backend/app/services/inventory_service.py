@@ -35,70 +35,33 @@ def get_trip_seat_inventory(db: Session, trip_id: str, staff_id: Optional[str] =
     if not bus:
         raise ValueError("Bus not found")
 
-    if not bus.seat_layout_id or not bus.seat_layout:
-        total_seats = bus.capacity or 40
-        layout = db.query(SeatLayout).filter(SeatLayout.total_seats == total_seats).first()
-        if not layout:
-            layout = SeatLayout(
-                name=f"Standard {total_seats}-Seat Layout",
-                description=f"Auto generated layout for {bus.bus_name}",
-                total_rows=10 if total_seats <= 40 else 11,
-                total_cols=4,
-                total_seats=total_seats,
-                layout_json="{}"
-            )
-            db.add(layout)
-            db.commit()
-            db.refresh(layout)
+    if bus.seat_layout_id:
+        seats = db.query(Seat).filter(Seat.seat_layout_id == bus.seat_layout_id).order_by(Seat.row_index, Seat.col_index).all()
+    else:
+        seats = []
 
-            rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']
-            created_count = 0
-            for r_idx, r in enumerate(rows):
-                cols = 5 if (r == 'K' and total_seats >= 45) else 4
-                for c in range(1, cols + 1):
-                    if created_count >= total_seats:
-                        break
-                    seat = Seat(
-                        seat_layout_id=layout.id,
-                        seat_number=f"{r}{c}",
-                        row_index=r_idx,
-                        col_index=c - 1,
-                        seat_type="VIP" if r_idx < 2 else "STANDARD",
-                        gender_allowed="ANY",
-                        base_fare=650.0 if r_idx < 2 else (trip.base_price or 550.0)
-                    )
-                    db.add(seat)
-                    created_count += 1
-            db.commit()
-            db.refresh(layout)
-
-        bus.seat_layout_id = layout.id
-        db.commit()
-        db.refresh(bus)
-
-    seats = db.query(Seat).filter(Seat.seat_layout_id == bus.seat_layout_id).order_by(Seat.row_index, Seat.col_index).all()
     if not seats:
         total_seats = bus.capacity or 40
         rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']
         created_count = 0
+        seats = []
         for r_idx, r in enumerate(rows):
             cols = 5 if (r == 'K' and total_seats >= 45) else 4
             for c in range(1, cols + 1):
                 if created_count >= total_seats:
                     break
-                seat = Seat(
-                    seat_layout_id=bus.seat_layout_id,
-                    seat_number=f"{r}{c}",
-                    row_index=r_idx,
-                    col_index=c - 1,
-                    seat_type="VIP" if r_idx < 2 else "STANDARD",
-                    gender_allowed="ANY",
-                    base_fare=650.0 if r_idx < 2 else (trip.base_price or 550.0)
-                )
-                db.add(seat)
+                class DynamicSeat:
+                    pass
+                s = DynamicSeat()
+                s.id = f"dynamic-{trip_id}-{r}{c}"
+                s.seat_number = f"{r}{c}"
+                s.row_index = r_idx
+                s.col_index = c - 1
+                s.seat_type = "VIP" if r_idx < 2 else "STANDARD"
+                s.gender_allowed = "ANY"
+                s.base_fare = 650.0 if r_idx < 2 else (trip.base_price or 550.0)
+                seats.append(s)
                 created_count += 1
-        db.commit()
-        seats = db.query(Seat).filter(Seat.seat_layout_id == bus.seat_layout_id).order_by(Seat.row_index, Seat.col_index).all()
 
     # Active Bookings
     active_booking_seats = (
@@ -199,12 +162,17 @@ def hold_seat(db: Session, trip_id: str, seat_id: str, staff_id: str, duration_m
 
     clean_expired_inventory(db, trip_id)
 
+    # Lock the seat row itself to serialize concurrent hold/booking attempts.
+    seat = db.query(Seat).filter(Seat.id == seat_id).with_for_update().first()
+    if not seat:
+        raise ValueError("Seat not found")
+
     # Check if already booked or held
     existing = db.query(BookingSeat).join(Booking).filter(
         BookingSeat.seat_id == seat_id,
         Booking.trip_id == trip_id,
         Booking.booking_status.in_(["CONFIRMED", "COMPLETED", "PRE_BOOKED", "PAYMENT_TIMER_ACTIVE", "HELD", "VERIFICATION_PENDING"])
-    ).first()
+    ).with_for_update().first()
     if existing:
         raise ValueError("Seat is already booked or held")
 
@@ -214,7 +182,7 @@ def hold_seat(db: Session, trip_id: str, seat_id: str, staff_id: str, duration_m
         SeatLock.seat_id == seat_id,
         SeatLock.is_active == True,
         or_(SeatLock.locked_until == None, SeatLock.locked_until > now)
-    ).first()
+    ).with_for_update().first()
     if locked:
         raise ValueError(f"Seat is currently locked ({locked.reason})")
 
@@ -244,12 +212,17 @@ def lock_seat(
     clean_expired_inventory(db, trip_id)
     now = datetime.now(timezone.utc)
 
+    # Lock the seat row to serialize concurrent lock/booking attempts.
+    seat = db.query(Seat).filter(Seat.id == seat_id).with_for_update().first()
+    if not seat:
+        raise ValueError("Seat not found")
+
     # 1. Check if already booked
     existing = db.query(BookingSeat).join(Booking).filter(
         BookingSeat.seat_id == seat_id,
         Booking.trip_id == trip_id,
         Booking.booking_status.in_(["CONFIRMED", "COMPLETED", "PRE_BOOKED", "PAYMENT_TIMER_ACTIVE", "HELD", "VERIFICATION_PENDING"])
-    ).first()
+    ).with_for_update().first()
     if existing:
         raise ValueError("Cannot lock seat: it is already booked or held in an active booking")
 
@@ -259,7 +232,7 @@ def lock_seat(
         SeatLock.seat_id == seat_id,
         SeatLock.is_active == True,
         or_(SeatLock.locked_until == None, SeatLock.locked_until > now)
-    ).first()
+    ).with_for_update().first()
     if active_lock:
         raise ValueError(f"Seat is already locked ({active_lock.reason})")
 

@@ -84,8 +84,9 @@ export function PassengerSeatSelectorModal({ isOpen, onClose, trip, seats }: Pro
 
     seats.forEach(s => {
       let rowKey = 'A';
-      if (s.seatNumber && /^[A-Za-z]/.test(s.seatNumber)) {
-        rowKey = s.seatNumber.charAt(0).toUpperCase();
+      const sNum = (s?.seatNumber || (s as any)?.seat_number || (s as any)?.label || '').trim();
+      if (sNum && /^[A-Za-z]/.test(sNum)) {
+        rowKey = sNum.charAt(0).toUpperCase();
       } else if (typeof s.rowIndex === 'number') {
         rowKey = String.fromCharCode(65 + s.rowIndex);
       }
@@ -99,8 +100,10 @@ export function PassengerSeatSelectorModal({ isOpen, onClose, trip, seats }: Pro
 
     return sortedRowKeys.map(rowKey => {
       const rowSeats = rowMap.get(rowKey)!.sort((a, b) => {
-        const numA = parseInt(a.seatNumber.replace(/\D/g, '')) || (a.colIndex ?? 0);
-        const numB = parseInt(b.seatNumber.replace(/\D/g, '')) || (b.colIndex ?? 0);
+        const sNumA = (a?.seatNumber || (a as any)?.seat_number || (a as any)?.label || '').trim();
+        const sNumB = (b?.seatNumber || (b as any)?.seat_number || (b as any)?.label || '').trim();
+        const numA = parseInt(sNumA.replace(/\D/g, '')) || (a.colIndex ?? 0);
+        const numB = parseInt(sNumB.replace(/\D/g, '')) || (b.colIndex ?? 0);
         return numA - numB;
       });
 
@@ -218,8 +221,8 @@ export function PassengerSeatSelectorModal({ isOpen, onClose, trip, seats }: Pro
     const isBooked = seat.status === 'BOOKED';
     const isHeld = seat.status === 'HELD' || seat.status === 'LOCKED';
 
-    const seatNum = seat.seatNumber?.toUpperCase();
-    const dynamicLock = dynamicLocks.get(seatNum);
+    const seatNum = (seat.seatNumber || (seat as any).seat_number || (seat as any).label || '').trim().toUpperCase();
+    const dynamicLock = seatNum ? dynamicLocks.get(seatNum) : undefined;
     const isFemaleLock = dynamicLock?.genderAllowed === 'FEMALE_ONLY';
     const isMaleLock = dynamicLock?.genderAllowed === 'MALE_ONLY';
 
@@ -229,7 +232,7 @@ export function PassengerSeatSelectorModal({ isOpen, onClose, trip, seats }: Pro
         type="button"
         onClick={() => handleSeatClick(seat)}
         disabled={!isAvailable}
-        title={dynamicLock ? `${dynamicLock.reason} (${dynamicLock.genderAllowed === 'FEMALE_ONLY' ? 'শুধুমাত্র নারী' : 'শুধুমাত্র পুরুষ'})` : `সিট: ${seat.seatNumber} | ভাড়া: ৳${seat.fare}`}
+        title={dynamicLock ? `${dynamicLock.reason} (${dynamicLock.genderAllowed === 'FEMALE_ONLY' ? 'শুধুমাত্র নারী' : 'শুধুমাত্র পুরুষ'})` : `সিট: ${seatNum || 'Seat'} | ভাড়া: ৳${seat.fare}`}
         className={`w-13 h-14 sm:w-14 sm:h-15 shrink-0 rounded-2xl font-black text-xs transition-all relative flex flex-col items-center justify-between p-1.5 select-none ${
           isSelected
             ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white border-2 border-blue-300 shadow-lg shadow-blue-600/40 ring-4 ring-blue-400/40 -translate-y-1 scale-105 z-10 cursor-pointer'

@@ -11,6 +11,7 @@ from app.schemas.trip import TripCreate, TripOut, BusRouteCreate, BusRouteUpdate
 router = APIRouter()
 
 
+@router.get("", response_model=List[TripOut], include_in_schema=False)
 @router.get("/", response_model=List[TripOut])
 def list_trips(
     origin: Optional[str] = None,
@@ -40,6 +41,7 @@ def list_trips(
     return query.order_by(Trip.departure_date.asc(), Trip.departure_time.asc()).all()
 
 
+@router.post("", response_model=TripOut, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=TripOut, status_code=status.HTTP_201_CREATED)
 def schedule_trip(
     req: TripCreate,

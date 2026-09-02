@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+from app.db.types import Money
 
 
 class Bus(Base):
@@ -57,7 +58,7 @@ class Seat(Base):
     seat_type = Column(String, default="STANDARD")     # "STANDARD", "VIP", "STAFF", "RESERVED", "EMERGENCY"
     gender_allowed = Column(String, default="ANY")     # "MALE_ONLY", "FEMALE_ONLY", "ANY"
     fare_zone_id = Column(String, ForeignKey("fare_zones.id"), nullable=True)
-    base_fare = Column(Float, default=500.0)
+    base_fare = Column(Money, default=500.0)
     is_active = Column(Boolean, default=True)
 
     # Relationships
@@ -74,7 +75,7 @@ class FareZone(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, unique=True, nullable=False)  # "VIP Front", "Standard A-E", "Rear Economy"
     description = Column(String, nullable=True)
-    default_fare = Column(Float, nullable=False)
+    default_fare = Column(Money, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

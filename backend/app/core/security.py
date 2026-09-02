@@ -1,4 +1,6 @@
 import bcrypt
+import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
 from typing import Any, Union, Optional
 from jose import jwt
@@ -20,6 +22,19 @@ def get_password_hash(password: str) -> str:
     pw_bytes = password.encode('utf-8')[:72]
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(pw_bytes, salt).decode('utf-8')
+
+
+def hash_passenger_pin(phone: str, pin: str) -> str:
+    """Hashes a passenger PIN keyed by phone number (constant-time HMAC)."""
+    key = settings.SECRET_KEY.encode('utf-8')
+    message = f"{phone.strip()}:{pin}".encode('utf-8')
+    return hmac.new(key, message, hashlib.sha256).hexdigest()
+
+
+def verify_passenger_pin(phone: str, pin: str, pin_hash: str) -> bool:
+    """Verifies a passenger PIN against the stored HMAC hash (constant-time)."""
+    expected = hash_passenger_pin(phone, pin)
+    return hmac.compare_digest(expected, pin_hash)
 
 
 def create_access_token(

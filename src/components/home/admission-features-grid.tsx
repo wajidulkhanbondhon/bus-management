@@ -53,7 +53,7 @@ export function AdmissionFeaturesGrid() {
 
   return (
     <section className="py-12 bg-white/50 dark:bg-slate-900/30 transition-colors duration-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {features.map((item, i) => {
             const Icon = item.icon;

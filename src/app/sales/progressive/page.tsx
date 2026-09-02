@@ -11,7 +11,7 @@ export default async function ProgressiveSalesPage() {
   const dashboard = await getLiveDashboardData();
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       <div>
         <div className="flex items-center gap-2">
           <Badge variant="primary">Progressive Telemetry</Badge>

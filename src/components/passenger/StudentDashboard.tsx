@@ -179,8 +179,8 @@ export function StudentDashboard({ bookings, language }: StudentDashboardProps) 
                     </Pie>
                     <Tooltip 
                       contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                      formatter={(value: number) => [
-                        `${value} ${language === 'bn' ? 'টি ট্রিপ' : 'Trips'}`, 
+                      formatter={(value) => [
+                        `${Number(value ?? 0)} ${language === 'bn' ? 'টি ট্রিপ' : 'Trips'}`, 
                         language === 'bn' ? 'ভ্রমণ' : 'Journeys'
                       ]}
                     />

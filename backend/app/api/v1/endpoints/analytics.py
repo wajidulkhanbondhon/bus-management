@@ -1,40 +1,52 @@
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Request
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.analytics import DailyAnalytics
 from app.core.analytics import analytics_manager
-from datetime import date
+from app.core.deps import get_current_user
+from app.models.user import User
+from datetime import date, timedelta
 import asyncio
 
 router = APIRouter()
 
 @router.post("/visit")
-def register_visit(request: Request, db: Session = Depends(get_db)):
+def register_visit(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     # 1. Update in-memory active users (using client IP as session id for simplicity)
     session_id = request.client.host
     analytics_manager.mark_visitor_active(session_id)
-    
+
     # 2. Update today's total visitors in DB
     today = date.today()
     analytics = db.query(DailyAnalytics).filter(DailyAnalytics.date == today).first()
-    
+
     if not analytics:
         analytics = DailyAnalytics(date=today, total_visitors=1)
         db.add(analytics)
     else:
         analytics.total_visitors += 1
-        
+
     db.commit()
-    
-    # Fire off a background broadcast
-    asyncio.create_task(analytics_manager.broadcast_active_visitors())
-    
+
+    # Fire off a background broadcast without blocking the request thread.
+    background_tasks.add_task(analytics_manager.broadcast_active_visitors)
+
     return {"status": "ok"}
 
 @router.get("/daily-stats")
-def get_daily_stats(db: Session = Depends(get_db)):
-    """Returns analytics for the last 30 days for charting"""
-    stats = db.query(DailyAnalytics).order_by(DailyAnalytics.date.asc()).limit(30).all()
+def get_daily_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Returns analytics for the last 30 days for charting (newest 30, ascending)."""
+    today = date.today()
+    start = today - timedelta(days=29)
+    stats = (
+        db.query(DailyAnalytics)
+        .filter(DailyAnalytics.date >= start, DailyAnalytics.date <= today)
+        .order_by(DailyAnalytics.date.asc())
+        .all()
+    )
     return stats
 
 @router.websocket("/ws")
@@ -43,8 +55,10 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            # We don't really expect clients to send anything, 
+            # We don't really expect clients to send anything,
             # but we need to keep connection open.
             pass
     except WebSocketDisconnect:
+        analytics_manager.disconnect(websocket)
+    except Exception:
         analytics_manager.disconnect(websocket)

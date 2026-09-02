@@ -20,14 +20,14 @@ def create_db_engine():
         engine = create_engine(
             db_url,
             pool_pre_ping=True,
-            connect_args={"connect_timeout": 2}
+            connect_args={"connect_timeout": 5}
         )
         with engine.connect() as conn:
             pass
         return engine
     except Exception as e:
-        logger.warning(f"⚠️ PostgreSQL on {db_url} is not running ({e}). Falling back to local SQLite 'sqlite:///./atoms_bus.db' for development.")
-        return create_engine("sqlite:///./atoms_bus.db", connect_args={"check_same_thread": False})
+        logger.error(f"🚨 CRITICAL ERROR: PostgreSQL on {db_url} is not accessible! ({e}). Please ensure the PostgreSQL server is running and credentials are correct.")
+        raise e
 
 
 engine = create_db_engine()

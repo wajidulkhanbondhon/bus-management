@@ -1,5 +1,24 @@
 import { fastApiClient } from '@/lib/api-client';
 
+export interface ProgressiveSalesSlot {
+  slotLabel: string;
+  targetTime: string;
+  time: string;
+  bookings: number;
+  sales: number;
+  collected: number;
+  cumulativeSales: number;
+  cumulativeTickets: number;
+  intervalSales: number;
+  intervalTickets: number;
+}
+
+export interface HourlySalesPoint {
+  hour: string;
+  sales: number;
+  tickets: number;
+}
+
 export async function getLiveDashboardData(dateInput?: string | Date) {
   let kpisData: any = null;
   let bookingsData: any[] = [];
@@ -115,29 +134,23 @@ export async function getLiveDashboardData(dateInput?: string | Date) {
       todayTickets,
       todayCollected,
       todayDue,
-      occupancyRate: 85,
-      activeBuses: activeBuses || 2,
-      activeTrips: activeTrips || 1,
+      occupancyRate: tripsData.length > 0
+        ? Math.round(tripsData.reduce((sum, t) => {
+            const totalSeats = t.bus?.seatLayout?.totalSeats || t.bus?.capacity || 0;
+            const bookedSeats = t.bookings?.length || 0;
+            return totalSeats > 0 ? sum + (bookedSeats / totalSeats) : sum;
+          }, 0) / tripsData.length * 100)
+        : 0,
+      activeBuses,
+      activeTrips,
       shortExcess: 0
     },
     todayTrips: tripsData,
     todayBookings,
     recentPayments: paymentsData,
     methodBreakdown: methodTotals,
-    hourlySales: [
-      { hour: '08:00', sales: 0, tickets: 0 },
-      { hour: '10:00', sales: 0, tickets: 0 },
-      { hour: '12:00', sales: 0, tickets: 0 },
-      { hour: '14:00', sales: todaySales, tickets: todayTickets },
-      { hour: '16:00', sales: 0, tickets: 0 },
-      { hour: '18:00', sales: 0, tickets: 0 }
-    ],
-    progressiveSales: [
-      { slotLabel: 'Morning 08:00', targetTime: '08:00', time: '08:00', bookings: 0, sales: 0, collected: 0, cumulativeSales: 0, cumulativeTickets: 0, intervalSales: 0, intervalTickets: 0 },
-      { slotLabel: 'Midday 12:00', targetTime: '12:00', time: '12:00', bookings: 0, sales: 0, collected: 0, cumulativeSales: 0, cumulativeTickets: 0, intervalSales: 0, intervalTickets: 0 },
-      { slotLabel: 'Afternoon 16:00', targetTime: '16:00', time: '16:00', bookings: todayTickets, sales: todaySales, collected: todayCollected, cumulativeSales: todaySales, cumulativeTickets: todayTickets, intervalSales: todaySales, intervalTickets: todayTickets },
-      { slotLabel: 'Evening 20:00', targetTime: '20:00', time: '20:00', bookings: 0, sales: 0, collected: 0, cumulativeSales: todaySales, cumulativeTickets: todayTickets, intervalSales: 0, intervalTickets: 0 }
-    ],
+    hourlySales: [] as HourlySalesPoint[],
+    progressiveSales: [] as ProgressiveSalesSlot[],
     busPerformance,
     paymentBreakdown: {
       BKASH: methodTotals.BKASH.total,
@@ -154,8 +167,8 @@ export async function getLiveDashboardData(dateInput?: string | Date) {
     })),
     passengerDemographics: {
       male: bookingsData.filter((b: any) => b.passenger_gender === 'MALE').length,
-      female: bookingsData.filter((b: any) => b.passenger_gender === 'FEMALE').length || 1,
-      students: bookingsData.filter((b: any) => b.is_student).length || 1,
+      female: bookingsData.filter((b: any) => b.passenger_gender === 'FEMALE').length,
+      students: bookingsData.filter((b: any) => b.is_student).length,
       guardians: bookingsData.filter((b: any) => !b.is_student).length
     },
     recentTransactions,

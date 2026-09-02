@@ -7,7 +7,7 @@ import json
 import uuid
 
 from app.db.session import get_db, engine, Base
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_role
 from app.models.tenant import Tenant
 from app.models.user import User, Role, Permission
 from app.models.bus import Bus, SeatLayout, Seat, FareZone
@@ -63,8 +63,11 @@ def model_to_dict(obj: Any) -> Dict[str, Any]:
     return data
 
 @router.get("/stats")
-def get_database_stats(db: Session = Depends(get_db)):
-    """Returns total record counts for all core tables"""
+def get_database_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN"]))
+):
+    """Returns total record counts for all core tables (SUPER_ADMIN only)."""
     stats = {}
     for table_name, model in TABLE_MODELS:
         try:
@@ -80,8 +83,11 @@ def get_database_stats(db: Session = Depends(get_db)):
     }
 
 @router.get("/export")
-def export_database_backup(db: Session = Depends(get_db)):
-    """Exports full database as a structured JSON backup archive"""
+def export_database_backup(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN"]))
+):
+    """Exports full database as a structured JSON backup archive (SUPER_ADMIN only)."""
     backup_data: Dict[str, Any] = {
         "meta": {
             "version": "1.0.0",
@@ -107,9 +113,10 @@ def export_database_backup(db: Session = Depends(get_db)):
 @router.post("/import")
 async def import_database_backup(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN"]))
 ):
-    """Imports and restores database from a JSON backup archive"""
+    """Imports and restores database from a JSON backup archive (SUPER_ADMIN only)."""
     try:
         content = await file.read()
         backup_json = json.loads(content.decode("utf-8"))

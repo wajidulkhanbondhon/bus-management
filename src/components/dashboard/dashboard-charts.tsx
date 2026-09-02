@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AreaChart,
   Area,
@@ -18,8 +18,21 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { useApp } from '@/lib/context';
 
+function useMounted() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  return mounted;
+}
+
 export function ProgressiveSalesChart({ data }: { data?: any }) {
+  const mounted = useMounted();
   const chartData = Array.isArray(data) ? data : [];
+
+  if (!mounted) {
+    return <div className="h-72 w-full bg-slate-50 dark:bg-slate-800/40 rounded-xl animate-pulse" />;
+  }
 
   return (
     <div className="h-72 w-full">
@@ -51,9 +64,14 @@ export function ProgressiveSalesChart({ data }: { data?: any }) {
 }
 
 export function RouteRevenueBarChart({ data }: { data?: any }) {
+  const mounted = useMounted();
   const { language } = useApp();
   const colors = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626'];
   const chartData = Array.isArray(data) ? data : [];
+
+  if (!mounted) {
+    return <div className="h-72 w-full bg-slate-50 dark:bg-slate-800/40 rounded-xl animate-pulse" />;
+  }
 
   return (
     <div className="h-72 w-full">
@@ -90,6 +108,7 @@ export function RouteRevenueBarChart({ data }: { data?: any }) {
 }
 
 export function PaymentMethodsDonutChart({ data }: { data?: any }) {
+  const mounted = useMounted();
   const methodColors: Record<string, string> = {
     BKASH: '#e11d48',
     NAGAD: '#ea580c',
@@ -138,6 +157,10 @@ export function PaymentMethodsDonutChart({ data }: { data?: any }) {
     });
   }
 
+  if (!mounted) {
+    return <div className="h-72 w-full bg-slate-50 dark:bg-slate-800/40 rounded-xl animate-pulse" />;
+  }
+
   return (
     <div className="h-72 w-full flex flex-col justify-center items-center">
       <ResponsiveContainer width="100%" height="80%">
@@ -175,6 +198,7 @@ export function PaymentMethodsDonutChart({ data }: { data?: any }) {
 }
 
 export function PassengerDemographicsChart({ data }: { data?: any }) {
+  const mounted = useMounted();
   const { language } = useApp();
 
   let chartData: any[] = [];
@@ -187,6 +211,10 @@ export function PassengerDemographicsChart({ data }: { data?: any }) {
       { name: language === 'bn' ? 'মহিলা' : 'Female', count: data.female || 1, color: '#ec4899' },
       { name: language === 'bn' ? 'পুরুষ' : 'Male', count: data.male || 0, color: '#059669' }
     ];
+  }
+
+  if (!mounted) {
+    return <div className="h-72 w-full bg-slate-50 dark:bg-slate-800/40 rounded-xl animate-pulse" />;
   }
 
   return (

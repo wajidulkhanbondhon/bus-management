@@ -29,36 +29,36 @@ export default function AdminDashboardPage() {
     // Fetch historical data
     const fetchAnalytics = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'}/analytics/daily-stats`);
+        setLoading(true);
+        const response = await fetch('/api/backend/analytics/daily-stats', { cache: 'no-store' });
         if (response.ok) {
           const data = await response.json();
-          // Transform data for charts
           const transformedSales = data.map((d: any) => ({
             time: d.date,
-            value: d.total_tickets_sold || Math.floor(Math.random() * 100), // Fake fallback if 0
+            value: d.total_tickets_sold || 0,
           }));
           const transformedRevenue = data.map((d: any) => ({
             time: d.date,
-            value: d.total_revenue || Math.floor(Math.random() * 5000), // Fake fallback if 0
+            value: d.total_revenue || 0,
           }));
           const transformedVisitors = data.map((d: any) => ({
             time: d.date,
-            value: d.total_visitors || Math.floor(Math.random() * 300),
+            value: d.total_visitors || 0,
           }));
-          
-          setSalesData(transformedSales.length > 0 ? transformedSales : getDummyData(100, dateRange, granularity));
-          setRevenueData(transformedRevenue.length > 0 ? transformedRevenue : getDummyData(5000, dateRange, granularity));
-          setVisitorData(transformedVisitors.length > 0 ? transformedVisitors : getDummyData(300, dateRange, granularity));
+
+          setSalesData(transformedSales);
+          setRevenueData(transformedRevenue);
+          setVisitorData(transformedVisitors);
         } else {
-          setSalesData(getDummyData(100, dateRange, granularity));
-          setRevenueData(getDummyData(5000, dateRange, granularity));
-          setVisitorData(getDummyData(300, dateRange, granularity));
+          setSalesData([]);
+          setRevenueData([]);
+          setVisitorData([]);
         }
       } catch (e) {
         console.error('Failed to fetch analytics', e);
-        setSalesData(getDummyData(100, dateRange, granularity));
-        setRevenueData(getDummyData(5000, dateRange, granularity));
-        setVisitorData(getDummyData(300, dateRange, granularity));
+        setSalesData([]);
+        setRevenueData([]);
+        setVisitorData([]);
       } finally {
         setLoading(false);
       }
@@ -66,47 +66,6 @@ export default function AdminDashboardPage() {
 
     fetchAnalytics();
   }, [dateRange, customStartDate, customEndDate, granularity]);
-
-  // Generate dummy data if database is empty for visual testing
-  const getDummyData = (multiplier = 100, range = '30D', gran = 'day') => {
-    const data = [];
-    const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
-    let count = 30;
-    let step = 86400; // 1 day in seconds
-    
-    if (gran === 'sec') {
-      count = 60;
-      step = 1;
-    } else if (gran === 'min') {
-      count = 60;
-      step = 60;
-    } else if (gran === 'day') {
-      if (range === '7D') count = 7;
-      else if (range === '1Y') count = 365;
-      else count = 30;
-      step = 86400;
-    } else if (gran === 'month') {
-      count = 12;
-      step = 86400 * 30;
-    }
-
-    for (let i = count; i >= 0; i--) {
-      const time = now - (i * step);
-      
-      // Adjust multiplier based on granularity to keep numbers realistic but large
-      let adjustedMultiplier = multiplier * 2; // Doubled per user request
-      if (gran === 'month') adjustedMultiplier = multiplier * 50;
-      else if (gran === 'day') adjustedMultiplier = multiplier * 6;
-      else if (gran === 'min') adjustedMultiplier = multiplier * 1;
-      else if (gran === 'sec') adjustedMultiplier = multiplier * 0.2;
-
-      data.push({
-        time: (gran === 'day' || gran === 'month') ? new Date(time * 1000).toISOString().split('T')[0] : time as any,
-        value: Math.floor(Math.random() * adjustedMultiplier) + Math.floor(adjustedMultiplier * 0.5),
-      });
-    }
-    return data;
-  };
 
   const handleExportCSV = () => {
     const headers = ['Date', 'Total Tickets Sold', 'Admin Tickets', 'Student Tickets', 'Total Revenue', 'Admin Revenue', 'Student Revenue', 'Total Visitors'];
@@ -132,7 +91,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
+      <div className="w-full space-y-8">
         
         <header className="flex justify-between items-end pb-4 border-b border-gray-300 dark:border-gray-800">
           <div>
@@ -207,13 +166,8 @@ export default function AdminDashboardPage() {
             <button 
               onClick={() => {
                 setLoading(true);
-                // Regenerate data to simulate real refresh
-                setTimeout(() => {
-                  setSalesData(getDummyData(100, dateRange, granularity));
-                  setRevenueData(getDummyData(5000, dateRange, granularity));
-                  setVisitorData(getDummyData(300, dateRange, granularity));
-                  setLoading(false);
-                }, 600);
+                // Re-fetch real data from the backend
+                window.location.reload();
               }}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center"
             >

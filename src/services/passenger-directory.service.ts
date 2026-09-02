@@ -261,37 +261,60 @@ export function getStoredPin(phone: string): string | null {
 }
 
 /**
- * Saves or updates a student/passenger PIN and creates/updates directory profile
+ * Verifies a phone + PIN against the backend. Returns a short-lived token
+ * on success, or null on failure. The PIN is never stored on the device.
  */
-export function savePassengerPin(
+export async function verifyPassengerPin(phone: string, pin: string): Promise<string | null> {
+  if (typeof window === 'undefined' || !phone || !pin) return null;
+  const cleanPhone = phone.replace(/[\s\-\+]/g, '');
+  if (cleanPhone.length < 11 || pin.length !== 4) return null;
+
+  try {
+    const res = await fetch('/api/backend/auth/passenger-verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: cleanPhone, pin }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Saves or updates a student/passenger PIN and creates/updates directory profile.
+ *
+ * The PIN is sent to the backend, which stores only an HMAC hash. The client
+ * keeps the phone number (for convenience) but NEVER persists the PIN — a
+ * short-lived signed token is returned instead.
+ */
+export async function savePassengerPin(
   phone: string,
   pin: string,
   name?: string,
   meta?: Partial<DirectoryPassenger>
-) {
-  if (typeof window === 'undefined' || !phone || !pin) return;
+): Promise<string | null> {
+  if (typeof window === 'undefined' || !phone || !pin) return null;
   const cleanPhone = phone.replace(/[\s\-\+]/g, '');
-  if (cleanPhone.length < 11 || pin.length !== 4) return;
+  if (cleanPhone.length < 11 || pin.length !== 4) return null;
 
   try {
-    // 1. Update active session
+    const res = await fetch('/api/backend/auth/passenger-register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: cleanPhone, pin, name: name?.trim() || undefined }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    // Only the phone number is remembered locally; the PIN stays server-side.
     localStorage.setItem('atoms_passenger_phone', cleanPhone);
-    localStorage.setItem('atoms_passenger_pin', pin);
+    localStorage.removeItem('atoms_passenger_pin');
+    localStorage.removeItem('atoms_passenger_pins');
 
-    // 2. Update multi-user registry
-    let registry: Record<string, string> = {};
-    const registryStr = localStorage.getItem('atoms_passenger_pins');
-    if (registryStr) {
-      try {
-        registry = JSON.parse(registryStr);
-      } catch {
-        registry = {};
-      }
-    }
-    registry[cleanPhone] = pin;
-    localStorage.setItem('atoms_passenger_pins', JSON.stringify(registry));
-
-    // 3. Save to directory profile
+    // Save to directory profile
     if (name) {
       recordPassengerInDirectory({
         name: name.trim(),
@@ -304,8 +327,9 @@ export function savePassengerPin(
         guardianRelationship: meta?.guardianRelationship
       });
     }
+    return data.access_token || null;
   } catch {
-    // Ignore storage errors
+    return null;
   }
 }
 

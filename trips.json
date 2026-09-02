@@ -1,0 +1,52 @@
+﻿{
+    "success":  true,
+    "count":  2,
+    "data":  [
+                 {
+                     "id":  "920aca6f-0d56-4723-b6eb-e1dcd8d39cd1",
+                     "tripCode":  "DU-EXP-2026",
+                     "bus":  {
+                                 "id":  "1e7e7c41-0852-4ee2-bf43-bbf225537464",
+                                 "name":  "Padma Admission Express 01 (Female Special)",
+                                 "number":  "RAJ-METRO-BA-11-2026",
+                                 "type":  "FEMALE",
+                                 "capacity":  40,
+                                 "seatLayoutId":  null,
+                                 "notes":  null
+                             },
+                     "route":  {
+                                   "id":  "9d23c592-39fa-4539-b967-113077416740",
+                                   "name":  "Rajshahi to Dhaka University (Curzon \u0026 TSC Gate)",
+                                   "origin":  "Rajshahi (Talaimari/Bhadra/Railgate)",
+                                   "destination":  "Dhaka University Campus"
+                               },
+                     "departureDate":  "2026-09-05T00:00:00",
+                     "departureTime":  "2026-08-31T22:30:00.435939",
+                     "basePrice":  550,
+                     "status":  "SCHEDULED"
+                 },
+                 {
+                     "id":  "f96b0a8e-bfdb-4027-a173-9f1c5e54357a",
+                     "tripCode":  "JU-EXP-2026",
+                     "bus":  {
+                                 "id":  "3bbb5e22-4bd3-4940-96fc-239297bdb731",
+                                 "name":  "Barendra Admission Express 02 (General Mixed)",
+                                 "number":  "RAJ-METRO-BA-11-2027",
+                                 "type":  "MIXED",
+                                 "capacity":  40,
+                                 "seatLayoutId":  null,
+                                 "notes":  null
+                             },
+                     "route":  {
+                                   "id":  "d28321e3-05c4-4f2d-89de-e40fd1249fda",
+                                   "name":  "Rajshahi to Jahangirnagar University (Dairy Gate)",
+                                   "origin":  "Rajshahi (Talaimari/Bhadra/Railgate)",
+                                   "destination":  "Jahangirnagar University Campus"
+                               },
+                     "departureDate":  "2026-09-07T00:00:00",
+                     "departureTime":  "2026-08-31T23:00:00.435939",
+                     "basePrice":  550,
+                     "status":  "SCHEDULED"
+                 }
+             ]
+}

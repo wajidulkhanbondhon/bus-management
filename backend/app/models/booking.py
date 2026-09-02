@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, String, Float, Boolean, DateTime, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+from app.db.types import Money
 
 
 class Booking(Base):
@@ -39,11 +40,11 @@ class Booking(Base):
     approved_at = Column(DateTime, nullable=True)
     rejection_reason = Column(Text, nullable=True)
 
-    gross_amount = Column(Float, nullable=False)
-    discount_amount = Column(Float, default=0.0)
-    net_amount = Column(Float, nullable=False)
-    paid_amount = Column(Float, default=0.0)
-    due_amount = Column(Float, nullable=False)
+    gross_amount = Column(Money, nullable=False)
+    discount_amount = Column(Money, default=0.0)
+    net_amount = Column(Money, nullable=False)
+    paid_amount = Column(Money, default=0.0)
+    due_amount = Column(Money, nullable=False)
 
     # Journey Type & Boarding Points
     journey_type = Column(String, default="ROUND_TRIP")  # "ROUND_TRIP", "OUTBOUND_ONLY", "RETURN_ONLY", "ASYMMETRIC"
@@ -74,7 +75,7 @@ class BookingSeat(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     booking_id = Column(String, ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False)
     seat_id = Column(String, ForeignKey("seats.id"), nullable=False, index=True)
-    fare_snapshot = Column(Float, nullable=False)
+    fare_snapshot = Column(Money, nullable=False)
 
     __table_args__ = (UniqueConstraint("booking_id", "seat_id", name="uq_booking_seat"),)
 
@@ -108,8 +109,8 @@ class Discount(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     booking_id = Column(String, ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False, index=True)
     discount_type = Column(String, default="FIXED")  # "FIXED", "PERCENTAGE"
-    discount_rate = Column(Float, nullable=False)
-    discount_amount = Column(Float, nullable=False)
+    discount_rate = Column(Money, nullable=False)
+    discount_amount = Column(Money, nullable=False)
     reason = Column(String, nullable=False)
     applied_by_id = Column(String, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

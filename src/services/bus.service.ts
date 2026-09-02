@@ -15,10 +15,33 @@ export interface CreateBusInput {
   targetUniversity?: string;
 }
 
+export function normalizeBus(b: any) {
+  if (!b) return b;
+  return {
+    ...b,
+    id: b.id,
+    busName: b.busName || b.bus_name || '',
+    bus_name: b.bus_name || b.busName || '',
+    busNumber: b.busNumber || b.bus_number || '',
+    bus_number: b.bus_number || b.busNumber || '',
+    operator: b.operator || 'Central Transport Office',
+    regNumber: b.regNumber || b.reg_number || '',
+    reg_number: b.reg_number || b.regNumber || '',
+    capacity: b.capacity ?? 40,
+    busType: b.busType || b.bus_type || 'MIXED',
+    bus_type: b.bus_type || b.busType || 'MIXED',
+    status: b.status || 'ACTIVE',
+    notes: b.notes || '',
+    seatLayoutId: b.seatLayoutId || b.seat_layout_id || null,
+    seat_layout_id: b.seat_layout_id || b.seatLayoutId || null,
+    seatLayout: b.seatLayout || b.seat_layout || null,
+  };
+}
+
 export async function getAllBuses() {
   const res = await fastApiClient.getBuses();
-  if (res.success && res.data) {
-    return res.data;
+  if (res.success && res.data && Array.isArray(res.data)) {
+    return res.data.map(normalizeBus);
   }
   return [];
 }
@@ -26,7 +49,7 @@ export async function getAllBuses() {
 export async function getBusById(id: string) {
   const res = await fastApiClient.getBusById(id);
   if (res.success && res.data) {
-    return res.data;
+    return normalizeBus(res.data);
   }
   const all = await getAllBuses();
   return all.find((b: any) => b.id === id) || null;
@@ -47,7 +70,7 @@ export async function createBus(input: CreateBusInput, userId?: string) {
   });
 
   if (res.success && res.data) {
-    return res.data;
+    return normalizeBus(res.data);
   }
   
   if (res.error) {
@@ -57,10 +80,35 @@ export async function createBus(input: CreateBusInput, userId?: string) {
 }
 
 export async function updateBus(id: string, input: Partial<CreateBusInput>, userId?: string) {
+  const payload: any = {};
+  if (input.busName !== undefined) payload.bus_name = input.busName;
+  if (input.busNumber !== undefined) payload.bus_number = input.busNumber;
+  if (input.operator !== undefined) payload.operator = input.operator;
+  if (input.regNumber !== undefined) payload.reg_number = input.regNumber;
+  if (input.capacity !== undefined) payload.capacity = Number(input.capacity);
+  if (input.busType !== undefined) payload.bus_type = input.busType;
+  if (input.status !== undefined) payload.status = input.status;
+  if (input.notes !== undefined) payload.notes = input.notes;
+  if (input.seatLayoutId !== undefined) payload.seat_layout_id = input.seatLayoutId || null;
+
+  const res = await fastApiClient.updateBus(id, payload);
+  if (res.success && res.data) {
+    return res.data;
+  }
+  if (res.error) {
+    throw new Error(res.error);
+  }
   return { success: true, id };
 }
 
 export async function deleteBus(id: string, userId?: string) {
+  const res = await fastApiClient.deleteBus(id);
+  if (res.success) {
+    return res.data || { success: true, id };
+  }
+  if (res.error) {
+    throw new Error(res.error);
+  }
   return { success: true, id };
 }
 

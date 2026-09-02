@@ -23,7 +23,7 @@ export function DynamicChart({ data, datasets, type, color = '#3b82f6', granular
   useEffect(() => {
     if (!chartContainerRef.current) return;
     
-    const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const isDark = theme === 'dark' || (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     const textColor = isDark ? '#9ca3af' : '#4b5563';
     const gridColor = isDark ? 'rgba(75, 85, 99, 0.2)' : 'rgba(209, 213, 219, 0.5)';
     const borderColor = isDark ? 'rgba(75, 85, 99, 0.5)' : 'rgba(209, 213, 219, 1)';
@@ -83,7 +83,7 @@ export function DynamicChart({ data, datasets, type, color = '#3b82f6', granular
     const lastDataPointsRef = { current: [] as { time: string | number; value: number }[] };
 
     // Helper to add series
-    const addSeriesData = (seriesData: { time: string; value: number }[], seriesColor: string) => {
+    const addSeriesData = (seriesData: { time: string | number; value: number }[], seriesColor: string) => {
       let series;
       if (type === 'area') {
         series = chart.addSeries(AreaSeries, {

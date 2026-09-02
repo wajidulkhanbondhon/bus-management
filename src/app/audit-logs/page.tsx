@@ -20,7 +20,7 @@ export default async function AuditLogsPage({
   });
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       <div>
         <div className="flex items-center gap-2">
           <Badge variant="primary">Security & Traceability</Badge>

@@ -77,10 +77,11 @@ export function calculateDynamicAdjacentSeatLocks(
 
   // Map of booked seats and their genders
   const bookedSeatInfo = new Map<string, { gender: string; bookingId?: string }>();
-  seats.forEach(s => {
+  (seats || []).forEach(s => {
     const isBooked = s.status === 'BOOKED' || s.status === 'HELD';
-    if (isBooked && s.booking?.passengerGender) {
-      bookedSeatInfo.set(s.seatNumber.toUpperCase(), {
+    const sNum = (s?.seatNumber || (s as any)?.seat_number || (s as any)?.label || (s as any)?.seatId || '').trim().toUpperCase();
+    if (isBooked && s?.booking?.passengerGender && sNum) {
+      bookedSeatInfo.set(sNum, {
         gender: s.booking.passengerGender.toUpperCase(),
         bookingId: s.booking.id
       });
@@ -88,10 +89,12 @@ export function calculateDynamicAdjacentSeatLocks(
   });
 
   // Check each available seat for adjacent booked seats
-  seats.forEach(seat => {
-    if (seat.status !== 'AVAILABLE') return;
+  (seats || []).forEach(seat => {
+    if (seat?.status !== 'AVAILABLE') return;
 
-    const seatNum = seat.seatNumber.toUpperCase();
+    const seatNum = (seat?.seatNumber || (seat as any)?.seat_number || (seat as any)?.label || (seat as any)?.seatId || '').trim().toUpperCase();
+    if (!seatNum) return;
+
     const pair = getAdjacentSeatPair(seatNum);
     const adjacentSeatNum = pair.find(num => num !== seatNum);
 

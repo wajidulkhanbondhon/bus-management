@@ -2,7 +2,7 @@ import React from 'react';
 
 export default function DashboardLoading() {
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-6 animate-pulse">
+    <div className="w-full w-full space-y-6 animate-pulse">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="h-8 w-48 bg-slate-200 dark:bg-slate-800 rounded-lg mb-2"></div>
