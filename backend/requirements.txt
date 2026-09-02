@@ -37,5 +37,5 @@ httpx>=0.27.0
 requests>=2.32.0
 
 # AI Services
-google-generativeai>=0.7.0
+google-generativeai>=0.8.6
 groq>=0.9.0
