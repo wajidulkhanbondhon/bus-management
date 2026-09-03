@@ -76,17 +76,12 @@ async def get_current_user(
     user_id = payload["sub"]
     user = await db.query(User).filter((User.id == user_id) | (User.email == user_id), User.is_active == True).first()
     if not user:
-        if user_id == "admin-super-001" or payload.get("role") == "SUPER_ADMIN":
-            user = await db.query(User).filter(User.email == "admin@transport.office").first()
-            if not user:
-                user = await db.query(User).first()
-        if not user:
-            logger.warning("auth_user_not_found", user_id=user_id)
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found or inactive",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        logger.warning("auth_user_not_found", user_id=user_id)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 

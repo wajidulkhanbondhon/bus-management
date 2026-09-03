@@ -50,6 +50,7 @@ import {
   CreditCard,
   ShieldCheck,
   Settings,
+  Trash2,
   LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -237,6 +238,21 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       ]
     },
     {
+      id: 'recycle-bin',
+      title: language === 'bn' ? 'রিসাইকেল বিন' : 'Recycle Bin',
+      subtitle: language === 'bn' ? 'ডাটা রিস্টোর হাব' : 'Trash & Data Restore',
+      icon: Trash2,
+      colorClass: 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/20',
+      items: [
+        { href: '/recycle-bin', label: language === 'bn' ? '📁 ফোল্ডার এক্সপ্লোরার' : '📁 Folders Explorer', icon: Trash2, highlight: true },
+        { href: '/recycle-bin?folder=buses', label: language === 'bn' ? '📁 বাস ও ফ্লিট' : '📁 Buses Folder', icon: BusFront },
+        { href: '/recycle-bin?folder=trips', label: language === 'bn' ? '📁 ট্রিপ ও শিডিউল' : '📁 Trips Folder', icon: CalendarRange },
+        { href: '/recycle-bin?folder=layouts', label: language === 'bn' ? '📁 সিট লেআউট' : '📁 Layouts Folder', icon: Armchair },
+        { href: '/recycle-bin?folder=universities', label: language === 'bn' ? '📁 বিশ্ববিদ্যালয়' : '📁 Universities Folder', icon: GraduationCap },
+        { href: '/recycle-bin?folder=coupons', label: language === 'bn' ? '📁 কুপন ও অফার' : '📁 Coupons Folder', icon: TicketPercent }
+      ]
+    },
+    {
       id: 'settings',
       title: language === 'bn' ? 'সেটিংস' : 'Settings',
       subtitle: language === 'bn' ? 'সিস্টেম কনফিগ' : 'System Configuration',
@@ -262,7 +278,8 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       '/staff',
       '/universities',
       '/settings',
-      '/passenger'
+      '/passenger',
+      '/recycle-bin'
     ].includes(href);
 
     return isExactRoot
@@ -440,6 +457,7 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
             return (
               <div
                 key={section.id}
+                suppressHydrationWarning
                 className={cn(
                   'rounded-xl transition-all duration-200',
                   isOpen
@@ -452,6 +470,7 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
                 {/* 1. Parent/Main Header: Bold & Distinct Top-Level Section */}
                 <button
                   type="button"
+                  suppressHydrationWarning
                   onClick={() => toggleSection(section.id)}
                   className="w-full p-2 flex items-center justify-between text-left rounded-xl transition-all duration-150 active:scale-[0.99] cursor-pointer group"
                 >
@@ -483,12 +502,15 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
                   </div>
                   
                   <div className="flex items-center gap-1.5 shrink-0 ml-1">
-                    <span className={cn(
-                      'text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md transition-all duration-200',
-                      isOpen
-                        ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
-                    )}>
+                    <span
+                      suppressHydrationWarning
+                      className={cn(
+                        'text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md transition-all duration-200',
+                        isOpen
+                          ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
+                      )}
+                    >
                       {section.items.length}
                     </span>
                     <div className={cn(
@@ -505,6 +527,7 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
 
                 {/* 2. Sub-segments: Indented Tree Rail with Sub-Item Icons */}
                 <div
+                  suppressHydrationWarning
                   className={cn(
                     'grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
                     isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
@@ -558,22 +581,28 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
 
                             <div className="flex items-center gap-1 shrink-0 ml-1">
                               {item.badge && (
-                                <span className={cn(
-                                  'text-[8px] font-extrabold px-1.5 py-0.2 rounded-full tracking-wide uppercase',
-                                  isActive 
-                                    ? 'bg-white/25 text-white' 
-                                    : 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300'
-                                )}>
+                                <span
+                                  suppressHydrationWarning
+                                  className={cn(
+                                    'text-[8px] font-extrabold px-1.5 py-0.2 rounded-full tracking-wide uppercase',
+                                    isActive 
+                                      ? 'bg-white/25 text-white' 
+                                      : 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300'
+                                  )}
+                                >
                                   {item.badge}
                                 </span>
                               )}
                               {item.alertBadge && (
-                                <span className={cn(
-                                  'text-[8px] font-extrabold px-1.5 py-0.2 rounded-full tracking-wide uppercase',
-                                  isActive 
-                                    ? 'bg-white/25 text-white' 
-                                    : 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300'
-                                )}>
+                                <span
+                                  suppressHydrationWarning
+                                  className={cn(
+                                    'text-[8px] font-extrabold px-1.5 py-0.2 rounded-full tracking-wide uppercase',
+                                    isActive 
+                                      ? 'bg-white/25 text-white' 
+                                      : 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300'
+                                  )}
+                                >
                                   {item.alertBadge}
                                 </span>
                               )}

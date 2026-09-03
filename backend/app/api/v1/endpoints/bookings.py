@@ -60,7 +60,7 @@ async def create_booking(
     try:
         client_ip = request.client.host if request.client else None
         effective_tenant = current_user.tenant_id if (current_user.role and current_user.role.name != "SUPER_ADMIN") else (tenant_id or current_user.tenant_id)
-        return create_counter_booking(db, req, current_user.id, effective_tenant, client_ip)
+        return await create_counter_booking(db, req, current_user.id, effective_tenant, client_ip)
     except SeatAlreadyBookedException as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
@@ -72,12 +72,12 @@ async def pre_book(
     req: CreatePreBookingRequest,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
     db: WrappedAsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF", "VIEWER"]))
+    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
 ):
     try:
         # Non-super-admin staff are always scoped to their own tenant.
         effective_tenant = current_user.tenant_id if (current_user.role and current_user.role.name != "SUPER_ADMIN") else (tenant_id or current_user.tenant_id)
-        return create_pre_booking(db, req, effective_tenant)
+        return await create_pre_booking(db, req, effective_tenant)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -105,14 +105,14 @@ async def verify_booking(
     response_model=BookingOut,
     dependencies=[Depends(rate_limit(requests_per_minute=10, key_prefix="pay"))]
 )
-def confirm_payment(
+async def confirm_payment(
     req: ConfirmPreBookingPaymentRequest,
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF", "ACCOUNTANT"]))
 ):
     try:
-        return confirm_pre_booking_payment(db, req, current_user.id, idempotency_key)
+        return await confirm_pre_booking_payment(db, req, current_user.id, idempotency_key)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -139,7 +139,7 @@ async def track_booking(
     db: WrappedAsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user)
 ):
-    booking = db.query(Booking).filter(
+    booking = await db.query(Booking).filter(
         (Booking.booking_number == query_str.strip()) |
         (Booking.contact_phone == query_str.strip()) |
         (Booking.id == query_str.strip())

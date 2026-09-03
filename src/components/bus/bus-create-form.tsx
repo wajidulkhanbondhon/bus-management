@@ -21,7 +21,10 @@ import {
   ChevronRight,
   Settings,
   Building2,
-  Clock
+  Clock,
+  X,
+  Bot,
+  Wand2
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,7 +34,7 @@ import { createBusAction } from '@/actions/bus.actions';
 import { useApp } from '@/lib/context';
 import { DEFAULT_COMPANIES, getStoredCompanies } from '@/lib/company-storage';
 import { CompanyManagerModal } from './company-manager-modal';
-import { UniversityItem, getStoredUniversities, DEFAULT_UNIVERSITIES } from '@/lib/university-storage';
+import { UniversityItem, getStoredUniversities, DEFAULT_UNIVERSITIES, getUniversityUnits } from '@/lib/university-storage';
 import { UniversityManagerModal } from './university-manager-modal';
 
 interface BusCreateFormProps {
@@ -48,9 +51,94 @@ const DEFAULT_FLEET_PRESETS = [
   { name: 'জাবি ক্যাম্পাস স্পেশাল (JU Special)', uni: 'জাহাঙ্গীরনগর বিশ্ববিদ্যালয় (JU)', dest: 'Jahangirnagar University (JU)', capacity: 40 },
   { name: 'কুয়েট খুলনা এক্সপ্রেস (KUET Express)', uni: 'খুলনা প্রকৌশল ও প্রযুক্তি (KUET)', dest: 'KUET Khulna', capacity: 40 },
   { name: 'বুয়েট ইঞ্জিনিয়ারিং কোচ (BUET Special)', uni: 'বুয়েট / ইঞ্জিনিয়ারিং গুচ্ছ', dest: 'BUET Dhaka', capacity: 40 },
-  { name: 'দেশ ট্রাভেলস এক্সপ্রেস (Desh Travels)', uni: 'কেন্দ্রীয় ভর্তি সার্ভিস', dest: 'All Universities', capacity: 40 },
-  { name: 'শ্যামলী স্পেশাল সার্ভিস (Shyamoli)', uni: 'কেন্দ্রীয় পরিবহন নেটওয়ার্ক', dest: 'All Centers', capacity: 40 }
+  { name: 'রাজশাহী বিশ্ববিদ্যালয় A Unit স্পেশাল কোচ', uni: 'রাজশাহী বিশ্ববিদ্যালয় (RU)', dest: 'Rajshahi University (RU)', capacity: 45 },
+  { name: 'কৃষি গুচ্ছ স্পেশাল কোচ (Agri Cluster)', uni: 'কৃষি গুচ্ছ (Agri Cluster)', dest: 'Agricultural Universities', capacity: 40 }
 ];
+
+// Helper to compute next available bus number across the entire fleet (kept for general fallback)
+export function getFleetNextBusNumber(busesList: any[] = []): string {
+  const usedInts = new Set<number>();
+  busesList.forEach(b => {
+    const raw = (b.busNumber || b.bus_number || '').trim();
+    const en = raw.replace(/[০-৯]/g, (d: string) => '০১২৩৪৫৬৭৮৯'.indexOf(d).toString());
+    const match = en.match(/(\d+)/);
+    if (match) {
+      usedInts.add(parseInt(match[1], 10));
+    }
+  });
+
+  let next = 1;
+  while (usedInts.has(next)) {
+    next++;
+  }
+
+  const pad = next < 10 ? `0${next}` : `${next}`;
+  const bnPad = pad.replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[Number(d)]);
+  return `বাস-${bnPad}`;
+}
+
+// Helper to compute next available bus number scoped to University / Category
+export function getCategoryScopedNextBusNumber(
+  existingBuses: any[] = [],
+  targetUni: string = '',
+  busName: string = ''
+): { nextBnLabel: string; usedNumbers: string[]; nextInt: number; uniqueCode: string } {
+  const normUni = (targetUni || '').trim().toLowerCase().split(' (')[0];
+  const normName = (busName || '').trim().toLowerCase().split(' (')[0];
+
+  // Filter buses that match this university or name category
+  const categoryBuses = existingBuses.filter(b => {
+    if (!b) return false;
+    const bUni = (b.targetUniversity || '').trim().toLowerCase().split(' (')[0];
+    const bName = (b.busName || b.bus_name || '').trim().toLowerCase().split(' (')[0];
+    
+    if (normUni && normUni !== 'all' && normUni !== 'সকল' && normUni !== '') {
+      if (bUni && (bUni.includes(normUni) || normUni.includes(bUni))) return true;
+    }
+    if (normName && normName !== '') {
+      if (bName && (bName.includes(normName) || normName.includes(bName))) return true;
+    }
+    return false;
+  });
+
+  const usedInts = new Set<number>();
+  const usedNumbers: string[] = [];
+
+  categoryBuses.forEach(b => {
+    const raw = (b.busNumber || b.bus_number || '').trim();
+    if (raw) usedNumbers.push(raw.toUpperCase());
+    const en = raw.replace(/[০-৯]/g, (d: string) => '০১২৩৪৫৬৭৮৯'.indexOf(d).toString());
+    const match = en.match(/(\d+)/);
+    if (match) {
+      usedInts.add(parseInt(match[1], 10));
+    }
+  });
+
+  // Calculate next integer for this category (starts from 1!)
+  let nextInt = 1;
+  while (usedInts.has(nextInt)) {
+    nextInt++;
+  }
+
+  const pad = nextInt < 10 ? `0${nextInt}` : `${nextInt}`;
+  const bnPad = pad.replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[Number(d)]);
+  const nextBnLabel = `বাস-${bnPad}`;
+
+  // Next Fleet-Wide Unique Accounting Code (ATOMS-101, ATOMS-102, ...)
+  const allExistingCodes = new Set<number>();
+  existingBuses.forEach(b => {
+    const notes = b.notes || '';
+    const m = notes.match(/\[🏷️?\s*CODE:\s*ATOMS-(\d+)\]/i);
+    if (m) allExistingCodes.add(parseInt(m[1], 10));
+  });
+  let nextCodeInt = 101;
+  while (allExistingCodes.has(nextCodeInt)) {
+    nextCodeInt++;
+  }
+  const uniqueCode = `ATOMS-${nextCodeInt}`;
+
+  return { nextBnLabel, usedNumbers, nextInt, uniqueCode };
+}
 
 export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProps) {
   const router = useRouter();
@@ -67,24 +155,51 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
   }, [existingBuses]);
 
   // Form States
+  const [targetUniversity, setTargetUniversity] = useState('');
   const [isCustomNameMode, setIsCustomNameMode] = useState(false);
   const [selectedPresetName, setSelectedPresetName] = useState(availableBusNames[0] || 'রাবি স্পেশাল কোচ (RU Special)');
   const [customBusNameInput, setCustomBusNameInput] = useState('');
   
   const activeBusName = isCustomNameMode ? customBusNameInput.trim() : selectedPresetName.trim();
 
-  const [busNumber, setBusNumber] = useState('বাস-০১');
+  // Dynamic Category Scoped Bus Numbering & Unique Accounting Code
+  const categorySeqInfo = useMemo(() => {
+    return getCategoryScopedNextBusNumber(existingBuses, targetUniversity, activeBusName);
+  }, [existingBuses, targetUniversity, activeBusName]);
+
+  const [busNumber, setBusNumber] = useState(categorySeqInfo.nextBnLabel);
+  const [uniqueSystemCode, setUniqueSystemCode] = useState(categorySeqInfo.uniqueCode);
+
+  useEffect(() => {
+    setBusNumber(categorySeqInfo.nextBnLabel);
+    setUniqueSystemCode(categorySeqInfo.uniqueCode);
+  }, [categorySeqInfo.nextBnLabel, categorySeqInfo.uniqueCode]);
+
   const [regNumber, setRegNumber] = useState('');
   const [routeOrigin, setRouteOrigin] = useState('Dhaka (Farmgate / Gabtoli)');
-  const [routeDestination, setRouteDestination] = useState('Rajshahi University (RU)');
-  const [targetUniversity, setTargetUniversity] = useState('রাজশাহী বিশ্ববিদ্যালয় (RU)');
-  const [capacity, setCapacity] = useState(layouts[0]?.totalSeats || layouts[0]?.total_seats || 45);
+  const [routeDestination, setRouteDestination] = useState('');
+  const [capacity, setCapacity] = useState(45);
   const [busType, setBusType] = useState<'MALE' | 'FEMALE' | 'MIXED'>('MIXED');
   const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE' | 'MAINTENANCE'>('ACTIVE');
-  const [seatLayoutId, setSeatLayoutId] = useState(layouts[0]?.id || '');
+  const [seatLayoutId, setSeatLayoutId] = useState('');
   const [examUnit, setExamUnit] = useState('');
+  const [isCustomUnitMode, setIsCustomUnitMode] = useState(false);
   const [baseFare, setBaseFare] = useState(550);
   const [notes, setNotes] = useState('');
+
+  // Light AI Assistant State
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [aiFeedback, setAiFeedback] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+
+  // Dynamic Universities List & Manager state
+  const [uniList, setUniList] = useState<UniversityItem[]>(DEFAULT_UNIVERSITIES);
+  const [isUniManagerOpen, setIsUniManagerOpen] = useState(false);
+
+  // Dynamic Units for the currently selected target university
+  const currentUniversityUnits = useMemo(() => {
+    return getUniversityUnits(targetUniversity, uniList);
+  }, [targetUniversity, uniList]);
 
   // Company / Vendor state
   const [companyList, setCompanyList] = useState<string[]>(DEFAULT_COMPANIES);
@@ -92,10 +207,6 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
   const [isCompanyPending, setIsCompanyPending] = useState(true);
   const [selectedCompany, setSelectedCompany] = useState(DEFAULT_COMPANIES[0]);
   const [customCompanyInput, setCustomCompanyInput] = useState('');
-
-  // Dynamic Universities List & Manager state
-  const [uniList, setUniList] = useState<UniversityItem[]>(DEFAULT_UNIVERSITIES);
-  const [isUniManagerOpen, setIsUniManagerOpen] = useState(false);
 
   // Queue Pagination State for Bus Numbers (10 per window, scalable to 50+)
   const [queuePage, setQueuePage] = useState(0);
@@ -133,26 +244,349 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
   const [departureTime, setDepartureTime] = useState('22:30'); // রাত ১০:৩০
   const [reportingTime, setReportingTime] = useState('21:45'); // রাত ৯:৪৫
   const [bookingStartDate, setBookingStartDate] = useState('2026-08-25');
+  const [bookingStartTime, setBookingStartTime] = useState('10:00'); // সকাল ১০:০০
   const [bookingEndDate, setBookingEndDate] = useState('2026-09-04');
+  const [bookingEndTime, setBookingEndTime] = useState('23:59'); // রাত ১১:৫৯
   const [estArrivalTime, setEstArrivalTime] = useState('সকাল ০৬:০০');
   const [returnJourneyDate, setReturnJourneyDate] = useState('2026-09-07');
+
+  // Preset Capacity Filter for 1-Click Presets
+  const [presetCapacityFilter, setPresetCapacityFilter] = useState<number | null>(null);
+
+  // Central Auto-Load Handler: When a layout is selected, instantly load maximum details
+  const applyLayoutDetails = (layoutId: string) => {
+    setSeatLayoutId(layoutId);
+    if (!layoutId) {
+      setExamUnit('');
+      setTargetUniversity('');
+      setRouteDestination('');
+      setPresetCapacityFilter(null);
+      return;
+    }
+    const selectedLay = layouts.find(l => l.id === layoutId);
+    if (!selectedLay) return;
+
+    // 1. Capacity (Strictly locked to layout)
+    const layCap = selectedLay.totalSeats || selectedLay.total_seats || 45;
+    setCapacity(layCap);
+
+    // 2. University: Extract from university field, layout JSON, or name
+    let uni = selectedLay.university || '';
+    if (!uni) {
+      const jsonRaw = selectedLay.layoutJson || selectedLay.layout_json;
+      if (jsonRaw) {
+        try {
+          const p = typeof jsonRaw === 'string' ? JSON.parse(jsonRaw) : jsonRaw;
+          if (p?.university) uni = p.university;
+        } catch {}
+      }
+    }
+    if (!uni) {
+      const text = `${selectedLay.name} ${selectedLay.description || ''}`.toLowerCase();
+      if (text.includes('রাজশাহী') || text.includes('ru') || text.includes('রাবি')) uni = 'রাজশাহী বিশ্ববিদ্যালয় (RU)';
+      else if (text.includes('ঢাকা') || text.includes('du') || text.includes('ঢাবি')) uni = 'ঢাকা বিশ্ববিদ্যালয় (DU)';
+      else if (text.includes('চট্টগ্রাম') || text.includes('cu') || text.includes('চবি')) uni = 'চট্টগ্রাম বিশ্ববিদ্যালয় (CU)';
+      else if (text.includes('জাহাঙ্গীরনগর') || text.includes('ju') || text.includes('জাবি')) uni = 'জাহাঙ্গীরনগর বিশ্ববিদ্যালয় (JU)';
+      else if (text.includes('গুচ্ছ') || text.includes('gst')) uni = 'জিএসটি গুচ্ছ (GST Cluster - ২৪ বিশ্ববিদ্যালয়)';
+      else if (text.includes('বুয়েট') || text.includes('buet')) uni = 'বুয়েট (BUET)';
+      else if (text.includes('মেডিকেল') || text.includes('medical')) uni = 'মেডিকেল ও ডেন্টাল (Medical & Dental)';
+    }
+    if (uni) {
+      setTargetUniversity(uni);
+    }
+
+    // 3. Exam Unit: Extract from unit, examUnit, layout JSON, or name
+    let unit = selectedLay.unit || selectedLay.examUnit || selectedLay.exam_unit || '';
+    if (!unit) {
+      const jsonRaw = selectedLay.layoutJson || selectedLay.layout_json;
+      if (jsonRaw) {
+        try {
+          const p = typeof jsonRaw === 'string' ? JSON.parse(jsonRaw) : jsonRaw;
+          if (p?.unit) unit = p.unit;
+          else if (p?.examUnit) unit = p.examUnit;
+          else if (p?.exam_unit) unit = p.exam_unit;
+        } catch {}
+      }
+    }
+    if (!unit) {
+      const text = `${selectedLay.name} ${selectedLay.description || ''}`.toLowerCase();
+      const match = text.match(/(?:unit|ইউনিট)\s*([a-z0-9+ ]+)/i);
+      if (match) unit = `Unit ${match[1].trim()}`;
+      else if (text.includes('unit a') || text.includes('a unit')) unit = 'Unit A';
+      else if (text.includes('unit b') || text.includes('b unit')) unit = 'Unit B';
+      else if (text.includes('unit c') || text.includes('c unit')) unit = 'Unit C';
+      else if (text.includes('kha') || text.includes('খ ইউনিট')) unit = 'Kha / B Unit';
+      else if (text.includes('ka') || text.includes('ক ইউনিট')) unit = 'Ka / A Unit';
+    }
+    const finalUnit = unit || 'সাধারণ (সকল ইউনিট)';
+    setExamUnit(finalUnit);
+
+    // 4. Route Destination, Hotel and Base Fare auto-sync
+    const uniCombined = (uni || selectedLay.name || '').toLowerCase();
+    if (uniCombined.includes('রাজশাহী') || uniCombined.includes('ru')) {
+      setRouteDestination('Rajshahi University (RU)');
+      setBaseFare(550);
+      setHotelName('পদ্মা হোটেল অ্যান্ড রিসোর্ট (Rajshahi)');
+    } else if (uniCombined.includes('ঢাকা') || uniCombined.includes('du')) {
+      setRouteDestination('Dhaka University (DU)');
+      setBaseFare(500);
+      setHotelName('হোটেল ৭১ / এশিয়া হোটেল (Dhaka)');
+    } else if (uniCombined.includes('চট্টগ্রাম') || uniCombined.includes('cu')) {
+      setRouteDestination('Chittagong University (CU)');
+      setBaseFare(650);
+      setHotelName('হোটেল আগ্রাবাদ / জিইসি (Chittagong)');
+    } else if (uniCombined.includes('জাহাঙ্গীরনগর') || uniCombined.includes('ju')) {
+      setRouteDestination('Jahangirnagar University (JU - Savar)');
+      setBaseFare(400);
+      setHotelName('সাভার ইন রিসোর্ট (Savar)');
+    } else if (uniCombined.includes('গুচ্ছ') || uniCombined.includes('gst')) {
+      setRouteDestination('GST Exam Center (জিএসটি পরীক্ষা কেন্দ্র)');
+      setBaseFare(550);
+    } else if (uniCombined.includes('বুয়েট') || uniCombined.includes('buet')) {
+      setRouteDestination('BUET Campus (ঢাকা)');
+      setBaseFare(500);
+    }
+
+    // 5. Dynamic Bus Name Suggestion (Never include company name in the bus title!)
+    if (!isCustomNameMode) {
+      const shortUni = uni ? uni.split(' (')[0] : 'ভর্তি কোচ';
+      const unitShort = finalUnit && finalUnit !== 'সাধারণ (সকল ইউনিট)' ? ` ${finalUnit.split(' (')[0]}` : '';
+      const autoName = `${shortUni}${unitShort} স্পেশাল কোচ (${layCap} সিট)`;
+      setSelectedPresetName(autoName);
+    }
+  };
+
+  // Initial Auto-Load when layouts are loaded ONLY IF a layout was explicitly chosen
+  useEffect(() => {
+    if (seatLayoutId) {
+      applyLayoutDetails(seatLayoutId);
+    }
+  }, [layouts]);
+
+  // Light AI Assistant Functions
+  const executeAiSmartSetup = (promptInput: string) => {
+    if (!promptInput.trim()) return;
+    setIsAiProcessing(true);
+    setAiFeedback(null);
+
+    const text = promptInput.toLowerCase();
+
+    // 1. Detect University & Destination & Base Fare
+    let detectedUni = '';
+    let detectedDest = '';
+    let detectedFare = 550;
+    let detectedHotel = '';
+
+    if (text.includes('রাজশাহী') || text.includes('ru') || text.includes('রাবি')) {
+      detectedUni = 'রাজশাহী বিশ্ববিদ্যালয় (RU)';
+      detectedDest = 'Rajshahi University (RU)';
+      detectedFare = 550;
+      detectedHotel = 'পদ্মা হোটেল অ্যান্ড রিসোর্ট (Rajshahi)';
+    } else if (text.includes('ঢাকা') || text.includes('du') || text.includes('ঢাবি')) {
+      detectedUni = 'ঢাকা বিশ্ববিদ্যালয় (DU)';
+      detectedDest = 'Dhaka University (DU)';
+      detectedFare = 500;
+      detectedHotel = 'হোটেল ৭১ / এশিয়া হোটেল (Dhaka)';
+    } else if (text.includes('চট্টগ্রাম') || text.includes('cu') || text.includes('চবি')) {
+      detectedUni = 'চট্টগ্রাম বিশ্ববিদ্যালয় (CU)';
+      detectedDest = 'Chittagong University (CU)';
+      detectedFare = 650;
+      detectedHotel = 'হোটেল আগ্রাবাদ / জিইসি (Chittagong)';
+    } else if (text.includes('জাহাঙ্গীরনগর') || text.includes('ju') || text.includes('জাবি')) {
+      detectedUni = 'জাহাঙ্গীরনগর বিশ্ববিদ্যালয় (JU)';
+      detectedDest = 'Jahangirnagar University (JU - Savar)';
+      detectedFare = 400;
+      detectedHotel = 'সাভার ইন রিসোর্ট (Savar)';
+    } else if (text.includes('মেডিকেল') || text.includes('medical') || text.includes('ডেন্টাল')) {
+      detectedUni = 'মেডিকেল ও ডেন্টাল (Medical & Dental)';
+      detectedDest = 'Medical Exam Center (ঢাকা/বিভাগীয় কেন্দ্র)';
+      detectedFare = 500;
+    } else if (text.includes('বুয়েট') || text.includes('buet')) {
+      detectedUni = 'বুয়েট (BUET)';
+      detectedDest = 'BUET Campus (ঢাকা)';
+      detectedFare = 500;
+    } else if (text.includes('গুচ্ছ') || text.includes('gst')) {
+      detectedUni = 'জিএসটি গুচ্ছ (GST Cluster - ২৪ বিশ্ববিদ্যালয়)';
+      detectedDest = 'GST Exam Center';
+      detectedFare = 550;
+    }
+
+    if (detectedUni) setTargetUniversity(detectedUni);
+    if (detectedDest) setRouteDestination(detectedDest);
+    if (detectedFare) setBaseFare(detectedFare);
+    if (detectedHotel) setHotelName(detectedHotel);
+
+    // 2. Detect Capacity
+    let detectedCap = 0;
+    const capMatch = text.match(/\b(45|40|36|28|52|30|32|38|42|50)\b/);
+    if (capMatch) {
+      detectedCap = parseInt(capMatch[1], 10);
+    }
+
+    // 3. Find best matching layout in database
+    let bestLayout = layouts.find(l => {
+      const lText = `${l.name} ${l.university || ''} ${l.description || ''}`.toLowerCase();
+      const lCap = l.totalSeats || l.total_seats;
+      const uniMatches = detectedUni ? lText.includes(detectedUni.split(' (')[0].toLowerCase()) : true;
+      const capMatches = detectedCap ? lCap === detectedCap : true;
+      return uniMatches && capMatches;
+    });
+
+    if (!bestLayout && detectedCap) {
+      bestLayout = layouts.find(l => (l.totalSeats || l.total_seats) === detectedCap);
+    }
+    if (!bestLayout && detectedUni) {
+      bestLayout = layouts.find(l => {
+        const lText = `${l.name} ${l.university || ''}`.toLowerCase();
+        return lText.includes(detectedUni.split(' (')[0].toLowerCase());
+      });
+    }
+    if (!bestLayout && layouts.length > 0) {
+      bestLayout = layouts[0];
+    }
+
+    if (bestLayout) {
+      applyLayoutDetails(bestLayout.id);
+    }
+
+    // 4. Detect Gender Policy
+    let detectedGender: 'MALE' | 'FEMALE' | 'MIXED' = 'MIXED';
+    if (text.includes('ছাত্রী') || text.includes('female') || text.includes('মহিলা') || text.includes('মেয়ে')) {
+      detectedGender = 'FEMALE';
+      setBusType('FEMALE');
+    } else if (text.includes('ছাত্র') || text.includes('male') || text.includes('পুরুষ') || text.includes('ছেলে')) {
+      detectedGender = 'MALE';
+      setBusType('MALE');
+    } else {
+      setBusType('MIXED');
+    }
+
+    // 5. Detect Hotel Package
+    if (text.includes('হোটেল') || text.includes('hotel') || text.includes('আবাসন') || text.includes('প্যাকেজ')) {
+      setHasHotelPackage(true);
+    }
+
+    // 6. Detect Departure Time (Night / Morning)
+    if (text.includes('সকাল') || text.includes('morning') || text.includes('দিন')) {
+      setDepartureTime('06:30');
+      setReportingTime('05:45');
+      setEstArrivalTime('দুপুর ১২:৩০');
+    } else {
+      setDepartureTime('22:30');
+      setReportingTime('21:45');
+      setEstArrivalTime('সকাল ০৬:০০');
+    }
+
+    // 7. Auto-Generate Smart Student Notes / Advisory
+    const uniLabel = detectedUni ? detectedUni.split(' (')[0] : 'ভর্তি পরীক্ষা';
+    const genderLabel = detectedGender === 'FEMALE' ? 'শুধুমাত্র ছাত্রীদের জন্য সংরক্ষিত' : detectedGender === 'MALE' ? 'শুধুমাত্র ছাত্রদের জন্য' : 'সাধারণ (ছাত্র-ছাত্রী ও অভিভাবক)';
+    const hotelNotice = text.includes('হোটেল') ? '🏨 নির্ধারিত হোটেল রুমে থাকার ব্যবস্থা অন্তর্ভুক্ত।' : '';
+
+    const aiGeneratedNotes = `🎓 [${uniLabel} ভর্তি পরীক্ষা ২০২৬ স্পেশাল বাস সার্ভিস]\n• বাস পলিসি: ${genderLabel}\n• রিপোর্টিং: ছাড়ার ৪৫ মিনিট পূর্বে কাউন্টারে উপস্থিত থাকতে হবে।\n• ড্রপ-অফ: সরাসরি পরীক্ষা কেন্দ্রের প্রধান ফটকে শিক্ষার্থীদের নামিয়ে দেওয়া হবে।\n${hotelNotice ? hotelNotice + '\n' : ''}• হেল্পলাইন: যাত্রার দিন সুপারভাইজারের নম্বর টিকিটে স্বয়ংক্রিয়ভাবে প্রদান করা হবে।`;
+    setNotes(aiGeneratedNotes);
+
+    setTimeout(() => {
+      setIsAiProcessing(false);
+      setAiFeedback({
+        message: `🤖 AI সফলভাবে ${uniLabel} (${bestLayout ? (bestLayout.totalSeats || bestLayout.total_seats || 45) + ' সিট' : 'বাস'}) কনফিগার করেছে!`,
+        type: 'success'
+      });
+    }, 350);
+  };
+
+  const handleAiScheduleOptimize = () => {
+    setDepartureTime('22:30');
+    setReportingTime('21:45');
+    setEstArrivalTime('সকাল ০৬:০০');
+    setAiFeedback({
+      message: '⚡ AI স্মার্ট শিডিউল অপ্টিমাইজড: রাত ১০:৩০ এ ছাড়া, ৯:৪৫ এ রিপোর্টিং এবং সকাল ৬:০০ টায় পৌঁছানো নির্ধারণ করা হয়েছে।',
+      type: 'info'
+    });
+  };
+
+  const handleAiNoticeGenerate = () => {
+    const uniLabel = targetUniversity ? targetUniversity.split(' (')[0] : 'বিশ্ববিদ্যালয়';
+    const genderLabel = busType === 'FEMALE' ? 'শুধুমাত্র ছাত্রীদের জন্য সংরক্ষিত' : busType === 'MALE' ? 'শুধুমাত্র ছাত্রদের জন্য' : 'সাধারণ (ছাত্র-ছাত্রী ও অভিভাবক)';
+    const generated = `🎓 [${uniLabel} ভর্তি পরীক্ষা স্পেশাল বাস সার্ভিস]\n• রুট: ${routeOrigin} ➔ ${routeDestination || 'ক্যাম্পাস'}\n• বাস পলিসি: ${genderLabel}\n• রিপোর্টিং: ছাড়ার ৪৫ মিনিট পূর্বে কাউন্টারে উপস্থিত থাকুন।\n• ড্রপ-অফ লোকেশন: সরাসরি পরীক্ষা কেন্দ্রের প্রধান ফটক।\n• সিট পলিসি: নির্ধারিত লেআউট অনুযায়ী সিট সংরক্ষিত।\n• জরুরি যোগাযোগ: সুপারভাইজার হটলাইন টিকিট বুকিং কনফার্মেশনে প্রদর্শিত হবে।`;
+    setNotes(generated);
+    setAiFeedback({
+      message: '✨ AI যাত্রীদের নির্দেশনাবলী ও গাইডলাইন স্বয়ংক্রিয়ভাবে তৈরি করেছে!',
+      type: 'success'
+    });
+  };
+
+  // AI Function to Generate Bus Name based on selected Seating Layout, University & Exam Unit
+  const generateAiNameFromLayout = () => {
+    const selectedLayout = layouts.find(l => l.id === seatLayoutId);
+    const layoutCap = selectedLayout ? (selectedLayout.totalSeats || selectedLayout.total_seats || capacity) : capacity;
+    const layoutName = selectedLayout?.name || '';
+    
+    // 1. Identify University / Destination
+    let uniTag = '';
+    if (targetUniversity && targetUniversity !== 'ALL') {
+      const rawUni = targetUniversity.split(' (')[0].trim();
+      if (rawUni.includes('রাজশাহী') || rawUni.includes('RU')) uniTag = 'রাবি';
+      else if (rawUni.includes('ঢাকা') || rawUni.includes('DU')) uniTag = 'ঢাবি';
+      else if (rawUni.includes('চট্টগ্রাম') || rawUni.includes('CU')) uniTag = 'চবি';
+      else if (rawUni.includes('জাহাঙ্গীরনগর') || rawUni.includes('JU')) uniTag = 'জাবি';
+      else if (rawUni.includes('খুলনা') || rawUni.includes('KUET')) uniTag = 'কুয়েট';
+      else if (rawUni.includes('বুয়েট') || rawUni.includes('BUET')) uniTag = 'বুয়েট';
+      else if (rawUni.includes('কৃষি গুচ্ছ')) uniTag = 'কৃষি গুচ্ছ';
+      else if (rawUni.includes('জিএসটি')) uniTag = 'জিএসটি গুচ্ছ';
+      else uniTag = rawUni.slice(0, 10);
+    } else if (routeDestination) {
+      uniTag = routeDestination.split(' (')[0].trim().slice(0, 10);
+    } else if (layoutName) {
+      uniTag = layoutName.replace(/\(\d+\s*সিট\)/gi, '').trim().slice(0, 10);
+    } else {
+      uniTag = 'বিশ্ববিদ্যালয়';
+    }
+
+    // 2. Identify Exam Unit
+    let unitTag = '';
+    if (examUnit && examUnit !== 'General / All Units' && !examUnit.includes('সকল')) {
+      const cleanUnit = examUnit.replace(/Unit\s*/i, '').replace(/ইউনিট\s*/i, '').trim();
+      unitTag = cleanUnit ? `${cleanUnit} Unit ` : '';
+    }
+
+    // 3. Identify Bus Special Type
+    let typeTag = 'স্পেশাল';
+    if (busType === 'FEMALE') typeTag = 'ছাত্রী স্পেশাল';
+    else if (busType === 'MALE') typeTag = 'ছাত্র স্পেশাল';
+    else if (hasHotelPackage) typeTag = 'ট্যুর প্যাকেজ';
+
+    // 4. Combine cleanly: e.g. "রাবি A Unit স্পেশাল (45 সিট)"
+    let generated = `${uniTag} ${unitTag}${typeTag} (${layoutCap} সিট)`.replace(/\s+/g, ' ').trim();
+    if (generated.length > 50) {
+      generated = generated.slice(0, 50);
+    }
+
+    setIsCustomNameMode(true);
+    setCustomBusNameInput(generated);
+    setAiFeedback({
+      message: language === 'bn' 
+        ? `✨ AI নাম তৈরি সম্পন্ন: "${generated}"`
+        : `✨ AI Name Generated: "${generated}"`,
+      type: 'success'
+    });
+  };
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [createdSuccessModal, setCreatedSuccessModal] = useState<{ show: boolean; busName: string; busNumber: string } | null>(null);
 
-  // 1. Calculate existing bus numbers for activeBusName
-  const busesUnderActiveName = useMemo(() => {
+  // 1. Calculate used bus numbers scoped to the selected category / university
+  const usedBusNumbers = useMemo(() => {
+    return categorySeqInfo.usedNumbers;
+  }, [categorySeqInfo.usedNumbers]);
+
+  const busesWithSameName = useMemo(() => {
     if (!activeBusName) return [];
     return existingBuses.filter(b => 
       b.busName && b.busName.trim().toLowerCase() === activeBusName.toLowerCase()
     );
   }, [existingBuses, activeBusName]);
-
-  const usedBusNumbers = useMemo(() => {
-    return busesUnderActiveName.map(b => (b.busNumber || '').toUpperCase().trim());
-  }, [busesUnderActiveName]);
 
   // Normalize bus numbers to detect duplicates even with variations like 'বাস-১', 'BUS-1', '1', 'বাস-০১'
   const normalizeNumberTag = (str: string) => {
@@ -267,6 +701,16 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
       return;
     }
 
+    if (activeBusName.trim().length > 50) {
+      setErrorMessage(
+        language === 'bn'
+          ? '⚠️ বাসের নাম ৫০ অক্ষরের মধ্যে হতে হবে। অনুগ্রহ করে নাম সংক্ষেপ করুন যাতে কার্ডে সম্পূর্ণ দেখা যায়।'
+          : 'Bus name cannot exceed 50 characters.'
+      );
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     if (!busNumber || !busNumber.trim()) {
       setErrorMessage(language === 'bn' ? '⚠️ বাসের নম্বর / কোড আবশ্যক (Please enter bus number).' : 'Bus number is required.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -276,8 +720,8 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
     if (isDuplicate) {
       setErrorMessage(
         language === 'bn'
-          ? `⚠️ সতর্কবার্তা: '${activeBusName}' এর জন্য '${busNumber}' ইতিমধ্যে বিদ্যমান! অনুগ্রহ করে '${nextAvailableSuggestion?.bnLabel || 'পরবর্তী'}' বা অন্য নম্বর বেছে নিন।`
-          : `Duplicate Alert: Bus '${busNumber}' already exists under '${activeBusName}'!`
+          ? `⚠️ সতর্কবার্তা: '${busNumber}' ইতিমধ্যে ফ্লিটের অন্য একটি বাসের জন্য ব্যবহৃত হয়েছে! অনুগ্রহ করে '${nextAvailableSuggestion?.bnLabel || 'পরবর্তী খালি নম্বর'}' বেছে নিন।`
+          : `Duplicate Alert: Bus '${busNumber}' already exists in the fleet!`
       );
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -377,8 +821,8 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
 
     let enrichedNotes = notes.trim();
     
-    // 1. Structured Schedule Tag
-    const scheduleTag = `[📅 SCHEDULE: Departure: ${departureDate} ${departureTime} | Reporting: ${reportingTime} | Booking Opens: ${bookingStartDate} | Booking Closes: ${bookingEndDate} | Est Arrival: ${estArrivalTime}${returnJourneyDate ? ` | Return: ${returnJourneyDate}` : ''}]`;
+    // 1. Structured Schedule Tag (Includes Departure & Exact Booking Open/Close Times)
+    const scheduleTag = `[📅 SCHEDULE: Departure: ${departureDate} ${departureTime} | Reporting: ${reportingTime} | Booking Opens: ${bookingStartDate} ${bookingStartTime} | Booking Closes: ${bookingEndDate} ${bookingEndTime} | Est Arrival: ${estArrivalTime}${returnJourneyDate ? ` | Return: ${returnJourneyDate}` : ''}]`;
     
     // 2. Hotel Package Tag
     let hotelTag = '';
@@ -395,8 +839,8 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
     const routeTag = routeOrigin && routeDestination ? `[📍 ROUTE: ${routeOrigin.trim()} ➔ ${routeDestination.trim()}]` : '';
     const unitTag = examUnit ? `UNIT: ${examUnit.trim()};` : '';
     const fareTag = `[💰 FARE: ${baseFare}]`;
-
-    const tags = [uniTag, routeTag, scheduleTag, hotelTag, unitTag, fareTag, enrichedNotes].filter(Boolean);
+    const codeTag = `[🏷️ CODE: ${uniqueSystemCode || categorySeqInfo.uniqueCode}]`;
+    const tags = [codeTag, uniTag, routeTag, scheduleTag, hotelTag, unitTag, fareTag, enrichedNotes].filter(Boolean);
     enrichedNotes = tags.join(' | ');
 
     setErrorMessage('');
@@ -493,84 +937,393 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
       <Card className="shadow-lg border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden">
         <CardContent className="p-6 sm:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* 1-Click Fast Configuration Presets */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-blue-950/30 dark:via-indigo-950/30 dark:to-purple-950/30 border-2 border-blue-200 dark:border-blue-900/50 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-blue-950 dark:text-blue-200 flex items-center gap-1.5 font-mono">
-                  <Sparkles className="w-4 h-4 text-amber-500" />
-                  <span>{language === 'bn' ? '১-ক্লিক ফাস্ট কোচ প্রিসেট (1-Click Presets)' : '1-Click Coach Presets'}</span>
-                </span>
-                <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
-                  {language === 'bn' ? 'স্বয়ংক্রিয় ক্যাপাসিটি ও সিট কনফিগারেশন' : 'Auto-sets capacity & seat configuration'}
-                </span>
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* 🤖 AI COACH ASSISTANT (হালকা AI অ্যাসিস্ট্যান্ট)                     */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-violet-600/10 via-indigo-600/10 to-blue-600/10 dark:from-violet-950/40 dark:via-indigo-950/40 dark:to-blue-950/40 border-2 border-indigo-200/90 dark:border-indigo-800/70 shadow-sm space-y-3.5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-xs">
+                    <Sparkles className="w-4 h-4 animate-pulse" />
+                  </div>
+                  <div>
+                    <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5 font-mono">
+                      <span>🤖 AI বাস কনফিগারেশন অ্যাসিস্ট্যান্ট (Smart AI Quick Setup)</span>
+                      <Badge variant="primary" className="text-[10px] font-bold bg-indigo-600 text-white px-2 py-0.5">
+                        Light AI
+                      </Badge>
+                    </span>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                      {language === 'bn' 
+                        ? 'আপনার বাসের উদ্দেশ্য সংক্ষেপে লিখুন বা নিচের AI বাটনে ক্লিক করুন — স্বয়ংক্রিয়ভাবে লেআউট, রুট ও শিডিউল সেট হবে।'
+                        : 'Type your bus prompt or click an AI preset — fills layout, route, schedule & student guidelines.'}
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* AI Prompt Input Bar */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        executeAiSmartSetup(aiPrompt);
+                      }
+                    }}
+                    placeholder={language === 'bn' ? 'যেমন: "রাবি এ ইউনিট ৪৫ সিট ফিমেল স্পেশাল" বা "ঢাবি খ ইউনিট রাতের বাস"...' : 'e.g. "DU Kha Unit 40-seat AC bus with hotel"...'}
+                    className="w-full text-xs sm:text-sm pl-9 pr-4 py-2.5 rounded-2xl border-2 border-indigo-300/80 dark:border-indigo-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium shadow-xs"
+                  />
+                  <Sparkles className="w-4 h-4 text-indigo-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    setCapacity(40);
-                    const standardLayout = layouts.find(l => l.totalSeats === 40);
-                    if (standardLayout) setSeatLayoutId(standardLayout.id);
-                  }}
-                  className={`p-3 rounded-xl border-2 text-left transition-all flex flex-col justify-between ${
-                    capacity === 40
-                      ? 'border-blue-600 bg-white dark:bg-slate-800 shadow-md ring-2 ring-blue-400/40'
-                      : 'border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-850 hover:border-blue-300'
-                  }`}
+                  disabled={isAiProcessing || !aiPrompt.trim()}
+                  onClick={() => executeAiSmartSetup(aiPrompt)}
+                  className="px-4 py-2.5 rounded-2xl font-black text-xs bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-indigo-500/25 flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-900 dark:text-white">40-Seat Luxury AC</span>
-                    <Badge variant="primary" className="text-[10px] font-bold">40 Seats</Badge>
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    {language === 'bn' ? 'স্ট্যান্ডার্ড ২x২ লাক্সারি এসি কোচ (VIP ফ্রন্ট রো)' : 'Standard 2x2 AC Luxury (VIP front rows)'}
-                  </p>
+                  {isAiProcessing ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>প্রসেসিং...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-3.5 h-3.5" />
+                      <span>✨ AI তৈরি করো</span>
+                    </>
+                  )}
                 </button>
+              </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCapacity(45);
-                    const layout45 = layouts.find(l => l.totalSeats === 45);
-                    if (layout45) setSeatLayoutId(layout45.id);
-                  }}
-                  className={`p-3 rounded-xl border-2 text-left transition-all flex flex-col justify-between ${
-                    capacity === 45
-                      ? 'border-blue-600 bg-white dark:bg-slate-800 shadow-md ring-2 ring-blue-400/40'
-                      : 'border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-850 hover:border-blue-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-900 dark:text-white">45-Seat High-Deck</span>
-                    <Badge variant="purple" className="text-[10px] font-bold">45 Seats</Badge>
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    {language === 'bn' ? 'হাই-ডেক এক্সপ্রেস (২x২ + ৫-সিট রিয়ার বেঞ্চ)' : 'High-Deck Coach (2x2 + 5-seat rear bench)'}
-                  </p>
-                </button>
+              {/* AI Quick Preset Chips */}
+              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                <span className="text-[10.5px] font-bold text-slate-400 dark:text-slate-500 mr-1">
+                  {language === 'bn' ? '⚡ দ্রুত প্রম্পট:' : 'Quick Prompts:'}
+                </span>
+                {[
+                  { label: '🏛️ রাবি A Unit (৪৫ সিট)', prompt: 'রাবি এ ইউনিট ৪৫ সিট স্পেশাল কোচ' },
+                  { label: '🎓 ঢাবি B Unit (৪০ সিট)', prompt: 'ঢাকা বিশ্ববিদ্যালয় খ ইউনিট ৪০ সিট এক্সপ্রেস' },
+                  { label: '🌸 জাবি ছাত্রী স্পেশাল (হোটেল সহ)', prompt: 'জাবি ডি ইউনিট ফিমেল স্পেশাল বাস সাথে হোটেল প্যাকেজ' },
+                  { label: '🩺 মেডিকেল এক্সাম এক্সপ্রেস', prompt: 'মেডিকেল ভর্তি পরীক্ষা স্পেশাল বাস' },
+                  { label: '🌊 চবি C Unit স্পেশাল', prompt: 'চট্টগ্রাম বিশ্ববিদ্যালয় সি ইউনিট স্পেশাল কোচ' }
+                ].map((chip, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setAiPrompt(chip.prompt);
+                      executeAiSmartSetup(chip.prompt);
+                    }}
+                    className="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-white/90 dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-200/90 dark:border-indigo-800 hover:border-indigo-400 dark:hover:border-indigo-600 hover:bg-indigo-50/60 shadow-2xs transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <span>{chip.label}</span>
+                  </button>
+                ))}
+              </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCapacity(28);
-                    const layout28 = layouts.find(l => l.totalSeats === 28);
-                    if (layout28) setSeatLayoutId(layout28.id);
-                  }}
-                  className={`p-3 rounded-xl border-2 text-left transition-all flex flex-col justify-between ${
-                    capacity === 28
-                      ? 'border-blue-600 bg-white dark:bg-slate-800 shadow-md ring-2 ring-blue-400/40'
-                      : 'border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-850 hover:border-blue-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-900 dark:text-white">28-Seat Business</span>
-                    <Badge variant="success" className="text-[10px] font-bold">28 Seats</Badge>
+              {/* AI Status Feedback Toast */}
+              {aiFeedback && (
+                <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 flex items-center justify-between text-xs font-bold text-emerald-800 dark:text-emerald-300 animate-in fade-in duration-200">
+                  <span className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-600" />
+                    <span>{aiFeedback.message}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setAiFeedback(null)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs px-1.5"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* SECTION 1: SEATING & CUSTOM LAYOUT (User: Top Priority at the Start) */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-indigo-200 dark:border-indigo-900/60">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase tracking-wider font-mono">
+                    {language === 'bn' ? '১. বাস সিট লেআউট নির্বাচন ও কনফিগারেশন' : '1. Seating & Custom Layout'}
+                  </h3>
+                </div>
+                <Badge variant="primary" className="text-[11px] font-bold bg-indigo-600 text-white shadow-2xs">
+                  ⚡ লেআউট নির্বাচন করলেই তথ্য অটো-লোড হবে
+                </Badge>
+              </div>
+
+              {/* 1-Click Fast Configuration Presets with Dynamic Layout Filtering */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-blue-950/30 dark:via-indigo-950/30 dark:to-purple-950/30 border-2 border-blue-200 dark:border-blue-900/50 space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-blue-950 dark:text-blue-200 flex items-center gap-1.5 font-mono">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>{language === 'bn' ? '১-ক্লিক ফাস্ট কোচ প্রিসেট (1-Click Presets)' : '1-Click Coach Presets'}</span>
+                  </span>
+                  <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+                    {language === 'bn' ? 'ক্যাপাসিটি অনুযায়ী ফিল্টার ও সংশ্লিষ্ট সিট লেআউট প্রদর্শন' : 'Filters & displays matching seat layouts'}
+                  </span>
+                </div>
+
+                {/* Preset Capacity Buttons */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                  {[
+                    { cap: 45, name: '45-Seat High-Deck', desc: 'হাই-ডেক এক্সপ্রেস (২×২)' },
+                    { cap: 40, name: '40-Seat Luxury AC', desc: 'স্ট্যান্ডার্ড লাক্সারি এসি' },
+                    { cap: 36, name: '36-Seat Executive', desc: 'বিজনেস রিক্লাইনার' },
+                    { cap: 28, name: '28-Seat VIP Suite', desc: 'রয়েল ভিআইপি স্যুট (২×১)' },
+                    { cap: 52, name: '52-Seat Economy', desc: 'ইকোনমি লং-রুট' }
+                  ].map((preset) => {
+                    const isActive = presetCapacityFilter === preset.cap;
+                    const matchingCount = layouts.filter(l => (l.totalSeats || l.total_seats) === preset.cap).length;
+                    return (
+                      <button
+                        key={preset.cap}
+                        type="button"
+                        onClick={() => {
+                          setPresetCapacityFilter(isActive ? null : preset.cap);
+                          const matchingLay = layouts.find(l => (l.totalSeats || l.total_seats) === preset.cap);
+                          if (matchingLay) {
+                            applyLayoutDetails(matchingLay.id);
+                          } else {
+                            setCapacity(preset.cap);
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl border-2 text-left transition-all flex flex-col justify-between cursor-pointer ${
+                          isActive
+                            ? 'border-indigo-600 bg-white dark:bg-slate-800 shadow-md ring-2 ring-indigo-400/50'
+                            : 'border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-850 hover:border-indigo-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-slate-900 dark:text-white truncate">{preset.cap} সিট</span>
+                          <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ${
+                            matchingCount > 0
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300'
+                              : 'bg-slate-100 text-slate-500 dark:bg-slate-800'
+                          }`}>
+                            {matchingCount} লেআউট
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
+                          {preset.desc}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Dynamic Matching Layouts Tray for the Chosen Preset */}
+                {presetCapacityFilter !== null && (
+                  <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border-2 border-indigo-200 dark:border-indigo-800 space-y-2.5 shadow-xs animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                        <Layers className="w-4 h-4 text-indigo-600" />
+                        <span>{presetCapacityFilter} {language === 'bn' ? 'সিটের জন্য প্রস্তুতকৃত লেআউটসমূহ:' : 'Seat Layouts:'}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setPresetCapacityFilter(null)}
+                        className="text-[11px] font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                      >
+                        ✕ {language === 'bn' ? 'ফিল্টার বন্ধ' : 'Reset'}
+                      </button>
+                    </div>
+
+                    {layouts.filter(l => (l.totalSeats || l.total_seats) === presetCapacityFilter).length === 0 ? (
+                      <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-800 dark:text-amber-300">
+                        <span>⚠️ ডাটাবেজে এখনো {presetCapacityFilter} সিটের কোনো সংরক্ষিত লেআউট পাওয়া যায়নি।</span>
+                        <Link href="/buses/seat-builder" className="shrink-0 font-bold text-indigo-600 hover:underline">
+                          + সিট বিল্ডারে {presetCapacityFilter} সিটের লেআউট তৈরি করুন ➔
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                        {layouts
+                          .filter(l => (l.totalSeats || l.total_seats) === presetCapacityFilter)
+                          .map((l) => {
+                            const isSelected = seatLayoutId === l.id;
+                            const cap = l.totalSeats || l.total_seats || presetCapacityFilter;
+                            return (
+                              <button
+                                key={l.id}
+                                type="button"
+                                onClick={() => applyLayoutDetails(l.id)}
+                                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                  isSelected
+                                    ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/60 ring-2 ring-indigo-400 shadow-xs'
+                                    : 'border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 hover:border-indigo-300'
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <span className="text-xs font-black text-slate-900 dark:text-white block truncate">{l.name}</span>
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate">
+                                    {cap} সিট {l.university ? `• ${l.university.split(' (')[0]}` : ''} {l.unit ? `(${l.unit})` : ''}
+                                  </span>
+                                </div>
+                                <Badge variant={isSelected ? 'primary' : 'outline'} className="text-[10px] font-bold shrink-0">
+                                  {isSelected ? '✓ সিলেক্টেড' : 'বাছাই'}
+                                </Badge>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    )}
                   </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    {language === 'bn' ? 'রয়েল বিজনেস ক্লাস (২x১ লাক্সারি রিক্লাইনার)' : 'Royal Business Class (2x1 Luxury Recliner)'}
-                  </p>
-                </button>
+                )}
+              </div>
+
+              {/* PRIMARY SEAT LAYOUT DROPDOWN & SPECS DASHBOARD */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border-2 border-indigo-200 dark:border-indigo-800/70 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      <span>{language === 'bn' ? 'বাস সিট লেআউট নির্বাচন করুন *' : 'Select Bus Seat Layout *'}</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                      {language === 'bn'
+                        ? 'সিট ধারণক্ষমতা ও ভর্তি ইউনিট নির্বাচিত লেআউটের সাথে সরাসরি সমন্বিত থাকে।'
+                        : 'Bus seat capacity and exam units are strictly defined by the chosen layout grid.'}
+                    </p>
+                  </div>
+                  <Link
+                    href="/buses/seat-builder"
+                    className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline flex items-center gap-1 shrink-0"
+                  >
+                    ⚙️ {language === 'bn' ? 'সিট বিল্ডারে নতুন লেআউট তৈরি করুন ➔' : 'Create New Layout in Seat Builder ➔'}
+                  </Link>
+                </div>
+
+                {/* Layout Dropdown */}
+                <select
+                  value={seatLayoutId}
+                  onChange={(e) => applyLayoutDetails(e.target.value)}
+                  className="w-full text-xs sm:text-sm px-3.5 py-3 border-2 border-indigo-300 dark:border-indigo-700 rounded-xl font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 shadow-xs"
+                >
+                  <option value="">{language === 'bn' ? '-- একটি সিট লেআউট বেছে নিন --' : '-- Select a Seat Layout --'}</option>
+                  {layouts.map((l) => {
+                    const cap = l.totalSeats || l.total_seats || 45;
+                    const uni = l.university ? ` [${l.university}]` : '';
+                    const unit = l.unit ? ` (${l.unit})` : '';
+                    return (
+                      <option key={l.id} value={l.id}>
+                        {l.name} — {cap} সিট{uni}{unit}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                {/* Quick Layout Switch Buttons (Presets: 45, 40, 36, 28) */}
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">
+                    {language === 'bn' ? 'দ্রুত লেআউট পরিবর্তন (Quick Layout Change):' : 'Quick Layout Switch:'}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { cap: 45, label: '৪৫ সিট লেআউট (RU Special)' },
+                      { cap: 40, label: '৪০ সিট লেআউট (DU Express)' },
+                      { cap: 36, label: '৩৬ সিট লেআউট (Executive)' },
+                      { cap: 28, label: '২৮ সিট লেআউট (VIP Recliner)' }
+                    ].map((preset) => {
+                      const matchingLay = layouts.find(l => (l.totalSeats || l.total_seats) === preset.cap);
+                      const isMatching = seatLayoutId && matchingLay ? seatLayoutId === matchingLay.id : capacity === preset.cap;
+                      return (
+                        <button
+                          key={preset.cap}
+                          type="button"
+                          onClick={() => {
+                            setPresetCapacityFilter(preset.cap);
+                            if (matchingLay) {
+                              applyLayoutDetails(matchingLay.id);
+                            } else {
+                              setCapacity(preset.cap);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                            isMatching
+                              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30 scale-102 ring-2 ring-indigo-400'
+                              : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-300'
+                          }`}
+                        >
+                          <span className="text-xs">{isMatching ? '✓' : '＋'}</span>
+                          <span>{preset.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── AUTO-LOADED INFORMATION DASHBOARD FROM SELECTED LAYOUT ── */}
+                {seatLayoutId && (
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50/90 via-blue-50/80 to-indigo-50/90 dark:from-indigo-950/50 dark:via-slate-900 dark:to-indigo-950/50 border-2 border-indigo-200 dark:border-indigo-800 shadow-xs space-y-3 mt-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">⚡</span>
+                        <div>
+                          <span className="text-xs font-black text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                            {language === 'bn' ? 'লেআউট থেকে স্বয়ংক্রিয় প্রাপ্ত তথ্যাবলী' : 'Auto-Loaded Specs from Selected Layout'}
+                          </span>
+                          <span className="text-[10.5px] text-slate-500 dark:text-slate-400 font-medium">
+                            {language === 'bn' ? 'সিট প্ল্যান ও কনফিগারেশন থেকে এই তথ্যগুলো স্বয়ংক্রিয়ভাবে লোড ও সমন্বয় করা হয়েছে' : 'These specifications are automatically derived from the chosen layout'}
+                          </span>
+                        </div>
+                      </div>
+                      <Badge variant="primary" className="text-[10px] font-bold bg-indigo-600 text-white px-2.5 py-0.5 shadow-2xs">
+                        ✓ স্বয়ংক্রিয় সিঙ্ক সম্পন্ন
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                      {/* 1. Target University */}
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-900 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
+                          🏛️ {language === 'bn' ? 'বিশ্ববিদ্যালয়' : 'University'}
+                        </span>
+                        <span className="text-xs font-black text-slate-900 dark:text-white truncate block mt-0.5" title={targetUniversity}>
+                          {targetUniversity || 'সাধারণ বিশ্ববিদ্যালয়'}
+                        </span>
+                      </div>
+
+                      {/* 2. Exam Unit */}
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-900 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
+                          📝 {language === 'bn' ? 'ভর্তি ইউনিট' : 'Exam Unit'}
+                        </span>
+                        <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 truncate block mt-0.5" title={examUnit}>
+                          {examUnit || 'সাধারণ (সকল ইউনিট)'}
+                        </span>
+                      </div>
+
+                      {/* 3. Capacity */}
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-900 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
+                          💺 {language === 'bn' ? 'আসন সংখ্যা' : 'Capacity'}
+                        </span>
+                        <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 truncate block mt-0.5">
+                          {capacity} টি সিট (লকড)
+                        </span>
+                      </div>
+
+                      {/* 4. Destination Route */}
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-900 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
+                          📍 {language === 'bn' ? 'গন্তব্য রুট' : 'Destination'}
+                        </span>
+                        <span className="text-xs font-black text-slate-900 dark:text-white truncate block mt-0.5" title={routeDestination}>
+                          {routeDestination || 'ক্যাম্পাস'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -579,52 +1332,81 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
               <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                 <div className="flex items-center gap-2">
                   <BusIcon className="w-4 h-4 text-blue-600" />
-                  <span>{language === 'bn' ? '১. বাসের নাম ও নম্বর নির্ধারণ' : '1. Bus Fleet & Numbering'}</span>
+                  <span>{language === 'bn' ? '২. বাসের নাম ও নম্বর নির্ধারণ' : '2. Bus Fleet & Numbering'}</span>
                 </div>
-                {busesUnderActiveName.length > 0 && (
+                {busesWithSameName.length > 0 && (
                   <Badge variant="primary" className="text-[11px] font-bold">
-                    {language === 'bn' ? `এই রুটে চালু আছে: ${busesUnderActiveName.length} টি বাস` : `Active on route: ${busesUnderActiveName.length} buses`}
+                    {language === 'bn' ? `এই রুটে চালু আছে: ${busesWithSameName.length} টি বাস` : `Active on route: ${busesWithSameName.length} buses`}
                   </Badge>
                 )}
               </h3>
 
               {/* Bus Name Dropdown or Custom Entry */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    {language === 'bn' ? 'বাসের নাম / ফ্লিট (Bus Name Dropdown) *' : 'Bus Name / Fleet Title *'}
-                  </label>
-                  
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCustomNameMode(!isCustomNameMode);
-                      if (!isCustomNameMode) setCustomBusNameInput('');
-                    }}
-                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                  >
-                    {isCustomNameMode ? (
-                      <span>{language === 'bn' ? '← ড্রপডাউন থেকে নির্বাচন করুন' : '← Pick from dropdown'}</span>
-                    ) : (
-                      <span>{language === 'bn' ? '✨ + নতুন বাসের নাম এন্ট্রি করুন' : '✨ + Enter Custom Name'}</span>
-                    )}
-                  </button>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      {language === 'bn' ? 'বাসের নাম / ফ্লিট টাইটেল *' : 'Bus Name / Fleet Title *'}
+                    </label>
+                    <span className={`text-[10.5px] font-mono font-bold px-2 py-0.5 rounded-md ${
+                      activeBusName.length >= 45 
+                        ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700' 
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    }`}>
+                      {activeBusName.length}/50 অক্ষর
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* ✨ AI Name Generator Button from Selected Layout */}
+                    <button
+                      type="button"
+                      onClick={generateAiNameFromLayout}
+                      className="px-2.5 py-1 rounded-xl text-xs font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 hover:from-indigo-700 hover:to-purple-800 text-white shadow-xs flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                      title={language === 'bn' ? 'লেআউট অনুযায়ী স্বয়ংক্রিয় নাম তৈরি করুন' : 'Generate name from layout'}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                      <span>{language === 'bn' ? '✨ AI নাম তৈরি' : '✨ AI Generate Name'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomNameMode(!isCustomNameMode);
+                        if (!isCustomNameMode) setCustomBusNameInput(activeBusName || '');
+                      }}
+                      className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      {isCustomNameMode ? (
+                        <span>{language === 'bn' ? '← ড্রপডাউন' : '← Pick from dropdown'}</span>
+                      ) : (
+                        <span>{language === 'bn' ? '✨ + নতুন বাসের নাম' : '✨ + Custom Name'}</span>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 {isCustomNameMode ? (
                   <div className="space-y-1.5 animate-in fade-in">
-                    <Input
-                      value={customBusNameInput}
-                      onChange={(e) => setCustomBusNameInput(e.target.value)}
-                      placeholder="e.g. রাবি স্পেশাল নাইট কোচ (RU Night Express)"
-                      required
-                      className="border-2 border-blue-500 font-bold text-sm bg-blue-50/40 dark:bg-blue-950/20"
-                    />
-                    <p className="text-[11px] text-slate-500">
-                      {language === 'bn'
-                        ? 'নতুন বাসের নাম টাইপ করুন। এটি ভবিষ্যতে ড্রপডাউনে সংরক্ষিত থাকবে।'
-                        : 'Type a new custom bus name. It will be added to your fleet roster.'}
-                    </p>
+                    <div className="relative">
+                      <Input
+                        value={customBusNameInput}
+                        onChange={(e) => setCustomBusNameInput(e.target.value.slice(0, 50))}
+                        maxLength={50}
+                        placeholder="e.g. রাবি A Unit স্পেশাল (45 সিট)"
+                        required
+                        className="border-2 border-indigo-500 font-bold text-sm bg-indigo-50/40 dark:bg-indigo-950/20 pr-16"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-mono font-bold text-slate-400 pointer-events-none">
+                        {customBusNameInput.length}/50
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                      <span>{language === 'bn' ? 'সর্বোচ্চ ৫০ অক্ষরের মধ্যে সংক্ষেপিত যাতে সব কার্ডে সুন্দরভাবে দেখায়।' : 'Max 50 characters so it fits on all cards.'}</span>
+                      {customBusNameInput.length >= 50 && (
+                        <span className="text-amber-600 font-bold">{language === 'bn' ? 'সর্বোচ্চ সীমা পৌঁছেছে' : 'Max limit reached'}</span>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <select
@@ -677,20 +1459,42 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
                       </div>
                     </div>
 
+                    {/* System Unique Code Badge & Scoped Category Indicator */}
+                    <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                      <span className="text-slate-600 dark:text-slate-300 font-bold">
+                        {targetUniversity ? `📍 ${targetUniversity.split(' (')[0]} ক্যাটাগরি` : '📍 ফ্লিট ক্রমিক'}
+                      </span>
+                      <span className="font-mono font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-lg border border-indigo-200 dark:border-indigo-800 shadow-2xs" title="হিসাব ও অডিটের জন্য অনন্য সিস্টেম কোড">
+                        🏷️ ইউনিক কোড: {uniqueSystemCode}
+                      </span>
+                    </div>
+
                     {/* Conflict Warning or Success Validation Message */}
                     {isDuplicate ? (
-                      <div className="mt-2 text-xs font-bold text-rose-600 dark:text-rose-400 flex items-start gap-1.5 animate-in fade-in">
-                        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                        <span>
-                          {language === 'bn'
-                            ? `সতর্কতা: "${activeBusName}" এর অধীনে "${busNumber}" ইতিমধ্যে খোলা আছে! একই বাসে দুইবার একই নম্বর দেওয়া যাবে না। নিচে থেকে পরবর্তী নম্বর সিলেক্ট করুন।`
-                            : `Duplicate Warning: Bus "${busNumber}" is already in use under this fleet name! Pick another number below.`}
-                        </span>
+                      <div className="mt-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs font-bold text-rose-700 dark:text-rose-300 space-y-2 animate-in fade-in">
+                        <div className="flex items-start gap-1.5">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                          <span>
+                            {language === 'bn'
+                              ? `সতর্কতা: "${targetUniversity ? targetUniversity.split(' (')[0] : activeBusName}" এর অধীনে "${busNumber}" ইতিমধ্যে ব্যবহৃত হয়েছে! পরবর্তী খালি নম্বরটি বেছে নিন:`
+                              : `Duplicate Warning: Bus "${busNumber}" is already in use under this category!`}
+                          </span>
+                        </div>
+                        {nextAvailableSuggestion && (
+                          <button
+                            type="button"
+                            onClick={() => setBusNumber(nextAvailableSuggestion.bnLabel)}
+                            className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-black shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                            <span>{language === 'bn' ? `পরবর্তী খালি নম্বরটি গ্রহণ করুন: ${nextAvailableSuggestion.bnLabel}` : `Use next free: ${nextAvailableSuggestion.bnLabel}`}</span>
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <div className="mt-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                         <Check className="w-3.5 h-3.5" />
-                        <span>{language === 'bn' ? 'এই বাস নম্বরটি ব্যবহারের জন্য উপযুক্ত (Available)' : 'This bus number is available.'}</span>
+                        <span>{language === 'bn' ? `এই ক্যাটাগরিতে এই বাস নম্বরটি খালি আছে (${busNumber})` : `This bus number is available (${busNumber})`}</span>
                       </div>
                     )}
                   </div>
@@ -794,14 +1598,24 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
 
             {/* Section 2: Trip Schedule, Departure Date & Timings, Booking Window */}
             <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-blue-600" />
-                  <span>{language === 'bn' ? '২. যাত্রার সময়সূচী, ছাড়ার সময় ও বুকিং উইন্ডো' : '2. Trip Schedule & Booking Window'}</span>
+                  <span>{language === 'bn' ? '৩. যাত্রার সময়সূচী, ছাড়ার সময় ও বুকিং উইন্ডো' : '3. Trip Schedule & Booking Window'}</span>
                 </div>
-                <Badge variant="primary" className="text-[11px] font-bold font-mono">
-                  📅 {departureDate} • {departureTime}
-                </Badge>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleAiScheduleOptimize}
+                    className="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>{language === 'bn' ? '✨ AI শিডিউল অপ্টিমাইজ' : 'AI Optimize'}</span>
+                  </button>
+                  <Badge variant="primary" className="text-[11px] font-bold font-mono">
+                    📅 {departureDate} • {departureTime}
+                  </Badge>
+                </div>
               </h3>
 
               <div className="p-4 sm:p-5 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border-2 border-blue-200 dark:border-blue-900 space-y-4">
@@ -873,39 +1687,84 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-blue-200/80 dark:border-blue-900/80">
-                  {/* Booking Window Start */}
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                      {language === 'bn' ? '🎟️ বুকিং শুরু (Booking Opens) *' : 'Booking Opens *'}
+                {/* Booking Window with Exact Start and End Times */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-blue-200/80 dark:border-blue-900/80">
+                  {/* Booking Window Start: Date + Exact Time */}
+                  <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 space-y-2">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-emerald-500">🟢</span>
+                        <span>{language === 'bn' ? 'বুকিং শুরুর তারিখ ও সময় *' : 'Booking Opens At *'}</span>
+                      </span>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-bold">
+                        {bookingStartDate} • {bookingStartTime}
+                      </span>
                     </label>
-                    <input
-                      type="date"
-                      value={bookingStartDate}
-                      onChange={(e) => setBookingStartDate(e.target.value)}
-                      required
-                      className="w-full text-xs font-bold font-mono px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
-                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 block mb-0.5">{language === 'bn' ? 'তারিখ:' : 'Date:'}</span>
+                        <input
+                          type="date"
+                          value={bookingStartDate}
+                          onChange={(e) => setBookingStartDate(e.target.value)}
+                          required
+                          className="w-full text-xs font-bold font-mono px-2.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 block mb-0.5">{language === 'bn' ? 'সময় (কখন শুরু):' : 'Time:'}</span>
+                        <input
+                          type="time"
+                          value={bookingStartTime}
+                          onChange={(e) => setBookingStartTime(e.target.value)}
+                          required
+                          className="w-full text-xs font-bold font-mono px-2.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Booking Window End / Cutoff */}
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                      {language === 'bn' ? '🛑 বুকিং শেষ / কাট-অফ (Booking Closes) *' : 'Booking Closes *'}
+                  {/* Booking Window End / Cutoff: Date + Exact Time */}
+                  <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900 space-y-2">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-rose-500">🔴</span>
+                        <span>{language === 'bn' ? 'বুকিং শেষের তারিখ ও কাট-অফ সময় *' : 'Booking Closes At *'}</span>
+                      </span>
+                      <span className="text-[10px] text-rose-600 dark:text-rose-400 font-mono font-bold">
+                        {bookingEndDate} • {bookingEndTime}
+                      </span>
                     </label>
-                    <input
-                      type="date"
-                      value={bookingEndDate}
-                      onChange={(e) => setBookingEndDate(e.target.value)}
-                      required
-                      className="w-full text-xs font-bold font-mono px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
-                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 block mb-0.5">{language === 'bn' ? 'তারিখ:' : 'Date:'}</span>
+                        <input
+                          type="date"
+                          value={bookingEndDate}
+                          onChange={(e) => setBookingEndDate(e.target.value)}
+                          required
+                          className="w-full text-xs font-bold font-mono px-2.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 block mb-0.5">{language === 'bn' ? 'সময় (কখন শেষ):' : 'Time:'}</span>
+                        <input
+                          type="time"
+                          value={bookingEndTime}
+                          onChange={(e) => setBookingEndTime(e.target.value)}
+                          required
+                          className="w-full text-xs font-bold font-mono px-2.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500"
+                        />
+                      </div>
+                    </div>
                   </div>
+                </div>
 
-                  {/* Estimated Arrival Time & Return Date */}
+                {/* Estimated Arrival & Return Date */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                      {language === 'bn' ? 'গন্তব্যে পৌঁছানোর সময় (Est Arrival)' : 'Est Arrival'}
+                      {language === 'bn' ? '🏁 গন্তব্যে পৌঁছানোর আনুমানিক সময় (Est Arrival)' : 'Est Arrival'}
                     </label>
                     <input
                       type="text"
@@ -913,6 +1772,18 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
                       onChange={(e) => setEstArrivalTime(e.target.value)}
                       placeholder="e.g. সকাল ০৬:০০ / 06:00 AM"
                       className="w-full text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      {language === 'bn' ? '🔄 ফিরতি যাত্রার তারিখ (Return Journey Date)' : 'Return Journey Date'}
+                    </label>
+                    <input
+                      type="date"
+                      value={returnJourneyDate}
+                      onChange={(e) => setReturnJourneyDate(e.target.value)}
+                      className="w-full text-xs font-bold font-mono px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
                     />
                   </div>
                 </div>
@@ -924,7 +1795,7 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
               <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <BusIcon className="w-4 h-4 text-emerald-600" />
-                  <span>{language === 'bn' ? '৩. পরিবহন কোম্পানি / বাস অপারেটর' : '3. Transport Company / Vendor'}</span>
+                  <span>{language === 'bn' ? '৪. পরিবহন কোম্পানি / বাস অপারেটর' : '4. Transport Company / Vendor'}</span>
                 </div>
                 {isCompanyPending ? (
                   <Badge variant="warning" className="text-[11px] font-bold">
@@ -996,7 +1867,7 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
               <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <GraduationCap className="w-4 h-4 text-purple-600" />
-                  <span>{language === 'bn' ? '৪. হোটেল ও আবাসন প্যাকেজ (ট্যুর প্যাকেজ)' : '4. Hotel & Accommodation Tour Package'}</span>
+                  <span>{language === 'bn' ? '৫. হোটেল ও আবাসন প্যাকেজ (ট্যুর প্যাকেজ)' : '5. Hotel & Accommodation Tour Package'}</span>
                 </div>
                 {hasHotelPackage ? (
                   <Badge variant="purple" className="text-[11px] font-bold">
@@ -1153,7 +2024,7 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-indigo-600" />
-                  <span>{language === 'bn' ? '৫. রুট ও টার্গেট বিশ্ববিদ্যালয়' : '5. Route & Target University'}</span>
+                  <span>{language === 'bn' ? '৬. রুট ও টার্গেট বিশ্ববিদ্যালয়' : '6. Route & Target University'}</span>
                 </h3>
 
                 <button
@@ -1227,42 +2098,69 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
                   />
                 </div>
 
-                <div className="mt-4">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    {language === 'bn' ? 'ভর্তি পরীক্ষার ইউনিট (Exam Unit)' : 'Exam Unit'}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      list="exam-units"
-                      value={examUnit}
-                      onChange={(e) => setExamUnit(e.target.value)}
-                      placeholder={language === 'bn' ? 'যেমন: A Unit, Kha Unit, বা Engineering' : 'e.g. A Unit, Kha Unit, or Engineering'}
-                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 rounded-xl shadow-2xs focus:ring-2 focus:ring-blue-500"
-                    />
-                    <datalist id="exam-units">
-                      <option value="A Unit (Science)" />
-                      <option value="B Unit (Arts)" />
-                      <option value="C Unit (Commerce)" />
-                      <option value="D Unit (Combined)" />
-                      <option value="Kha Unit" />
-                      <option value="Engineering" />
-                    </datalist>
+                {/* ── AUTO-LOADED EXAM UNIT FROM SELECTED LAYOUT (User: No manual input needed during bus creation) ── */}
+                {seatLayoutId && examUnit ? (
+                  <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-indigo-50/90 via-blue-50/80 to-indigo-50/90 dark:from-indigo-950/50 dark:via-slate-900 dark:to-indigo-950/50 border-2 border-indigo-200 dark:border-indigo-800 shadow-xs flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <GraduationCap className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="text-[10.5px] font-black text-slate-500 dark:text-slate-400 block uppercase tracking-wider">
+                          {language === 'bn' ? 'ভর্তি পরীক্ষার ইউনিট (লেআউট থেকে স্বয়ংক্রিয়ভাবে প্রাপ্ত):' : 'Admission Exam Unit (Auto-Loaded from Layout):'}
+                        </span>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="text-sm sm:text-base font-black text-indigo-950 dark:text-indigo-200 font-mono">
+                            {examUnit}
+                          </span>
+                          <Badge variant="outline" className="text-[10px] font-bold bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 border-emerald-300">
+                            ✓ লেআউট থেকে সক্রিয়
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                      {language === 'bn'
+                        ? 'লেআউট তৈরির সময় ইউনিট নির্ধারিত থাকায় এখানে আলাদা করে লেখার প্রয়োজন নেই।'
+                        : 'Unit is automatically assigned from the selected seat layout.'}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="mt-4 p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-900/60 border-2 border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center shrink-0">
+                        <GraduationCap className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="text-[10.5px] font-black text-slate-400 block uppercase tracking-wider">
+                          {language === 'bn' ? 'ভর্তি পরীক্ষার ইউনিট' : 'Admission Exam Unit'}
+                        </span>
+                        <span className="text-xs font-bold text-slate-500 dark:text-slate-400 italic">
+                          {language === 'bn' ? 'কোনো লেআউট নির্বাচন করা নেই (লেআউট বেছে নিলে ইউনিট স্বয়ংক্রিয়ভাবে লোড হবে)' : 'No layout selected yet (Unit will auto-load upon selecting a layout)'}
+                        </span>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] font-bold text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/40">
+                      লেআউট অপেক্ষমাণ
+                    </Badge>
+                  </div>
+                )}
 
-                <div className="mt-4">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    {language === 'bn' ? 'টিকিটের মূল্য (Ticket Fare / Price)' : 'Ticket Fare'} <span className="text-rose-500">*</span>
-                  </label>
-                  <Input
-                    type="number"
-                    value={baseFare}
-                    onChange={(e) => setBaseFare(Number(e.target.value))}
-                    min={0}
-                    placeholder="e.g. 550"
-                    required
-                  />
+                {/* Ticket Fare Policy: Loaded dynamically from Layout Plan */}
+                <div className="mt-4 p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-black text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                      <span>🎟️ সিটের ভাড়া পলিসি (Seat Fare from Layout):</span>
+                    </span>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium mt-0.5">
+                      {language === 'bn'
+                        ? 'সিট প্ল্যানের লেআউট অনুযায়ী প্রতিটি সিটের নিজস্ব ভাড়া (যেমন: ফ্রন্ট রো ৳৬০০, স্ট্যান্ডার্ড ৳৫৫০) স্বয়ংক্রিয়ভাবে কার্যকর হবে।'
+                        : 'Individual seat fares defined in the seat layout are automatically applied.'}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-bold bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 border-indigo-300 shrink-0 self-start sm:self-auto">
+                    মাল্টিপল ভাড়া সক্রিয় ✅
+                  </Badge>
                 </div>
 
                 {/* Quick Select Badges from Dynamic University List */}
@@ -1301,46 +2199,16 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
               </div>
             </div>
 
-            {/* Section 6: Capacity, Gender & Seating Matrix */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* SECTION 7: GENDER POLICY, OPERATIONAL STATUS & NOTES              */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
             <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono flex items-center gap-2">
                 <Layers className="w-4 h-4 text-purple-600" />
-                <span>{language === 'bn' ? '৬. সিট সংখ্যা ও লেআউট নির্ধারণ' : '6. Seating & Custom Layout'}</span>
+                <span>{language === 'bn' ? '৭. নীতিমালা, স্ট্যাটাস ও অভ্যন্তরীণ নোট' : '7. Policy, Status & Notes'}</span>
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    {language === 'bn' ? 'সিট ধারণক্ষমতা (Capacity Dropdown) *' : 'Seat Capacity *'}
-                  </label>
-                  <div className="space-y-1.5">
-                    <select
-                      value={[45, 40, 36, 32, 28].includes(capacity) ? String(capacity) : 'CUSTOM'}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val !== 'CUSTOM') {
-                          setCapacity(Number(val));
-                        }
-                      }}
-                      className="w-full text-xs font-bold px-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs cursor-pointer font-mono"
-                    >
-                      <option value="45">45 সিট (Standard Coach / 2+2)</option>
-                      <option value="40">40 সিট (Semi-Chair / Comfort)</option>
-                      <option value="36">36 সিট (Executive / Business)</option>
-                      <option value="32">32 সিট (Sleeper / Royal)</option>
-                      <option value="28">28 সিট (VIP / Premium Suite)</option>
-                      <option value="CUSTOM">✍️ কাস্টম সিট সংখ্যা লিখুন...</option>
-                    </select>
-                    <Input
-                      type="number"
-                      value={capacity}
-                      onChange={(e) => setCapacity(Number(e.target.value))}
-                      placeholder="কাস্টম ধারণক্ষমতা (সিট)"
-                      required
-                      className="text-xs font-bold font-mono"
-                    />
-                  </div>
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                 <div>
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
@@ -1349,7 +2217,7 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
                   <select
                     value={busType}
                     onChange={(e) => setBusType(e.target.value as any)}
-                    className="w-full text-xs px-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl font-medium bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    className="w-full text-xs px-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl font-medium bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-2xs"
                   >
                     <option value="MIXED">{t.mixedBus}</option>
                     <option value="FEMALE">{t.femaleBus}</option>
@@ -1364,7 +2232,7 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value as any)}
-                    className="w-full text-xs px-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl font-medium bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    className="w-full text-xs px-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl font-medium bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-2xs"
                   >
                     <option value="ACTIVE">Active (Ready for trips)</option>
                     <option value="INACTIVE">Inactive</option>
@@ -1373,78 +2241,40 @@ export function BusCreateForm({ layouts, existingBuses = [] }: BusCreateFormProp
                 </div>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    {language === 'bn' ? 'বাস সিট লেআউট নির্বাচন করুন *' : 'Select Seat Layout *'}
-                  </label>
-                  <Link href="/buses/seat-builder" className="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline flex items-center gap-1">
-                    ⚙️ {language === 'bn' ? 'ভাড়া ও লেআউট ম্যানেজার' : 'Manage Layouts & Fares'}
-                  </Link>
-                </div>
-                <select
-                  value={seatLayoutId}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSeatLayoutId(val);
-
-                    // Check server layouts
-                    const selectedLay = layouts.find(l => l.id === val);
-                    if (selectedLay) {
-                      const layCap = selectedLay.totalSeats || selectedLay.total_seats;
-                      if (layCap) setCapacity(layCap);
-                      if (selectedLay.university) {
-                        setTargetUniversity(selectedLay.university);
-                      }
-                    }
-                  }}
-                  className="w-full text-xs px-3.5 py-3 border border-slate-300 dark:border-slate-700 rounded-xl font-bold bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
-                >
-                  {layouts.length === 0 ? (
-                    <option value="">{language === 'bn' ? '-- কোনো সংরক্ষিত লেআউট পাওয়া যায়নি --' : '-- No Saved Layouts Found --'}</option>
-                  ) : (
-                    layouts.map((l) => {
-                      const cap = l.totalSeats || l.total_seats || 45;
-                      const uni = l.university ? ` [${l.university}]` : '';
-                      const unit = l.unit ? ` (${l.unit})` : '';
-                      return (
-                        <option key={l.id} value={l.id}>
-                          {l.name} — {cap} সিট{uni}{unit}
-                        </option>
-                      );
-                    })
-                  )}
-                </select>
-
-                {layouts.length === 0 ? (
-                  <div className="mt-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3 text-xs text-amber-800 dark:text-amber-300">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span>{language === 'bn' ? 'কোনো সংরক্ষিত লেআউট নেই। আগে লেআউট ম্যানেজারে একটি লেআউট সেভ করুন।' : 'No saved layouts found. Please create and save a layout in Layout Manager.'}</span>
-                    </div>
-                    <Link href="/buses/seat-builder">
-                      <Button size="sm" variant="outline" className="text-xs h-7 px-2.5 font-bold border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/50">
-                        + {language === 'bn' ? 'লেআউট তৈরি' : 'Create Layout'}
-                      </Button>
-                    </Link>
-                  </div>
-                ) : (
-                  <span className="text-[11px] text-slate-400 mt-1 block">
-                    {language === 'bn' 
-                      ? `সংরক্ষিত লেআউট সিলেক্ট করলে বাসের সিট সংখ্যা (${capacity} Seats) ও বিশ্ববিদ্যালয় স্বয়ংক্রিয়ভাবে আপডেট হয়ে যাবে।` 
-                      : `Selecting a saved layout auto-updates seat capacity (${capacity} Seats) and university info.`}
+              {/* ── 3. Extra Seats Booking Guidance Banner ── */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 flex items-start gap-3">
+                <span className="text-base mt-0.5 shrink-0">💡</span>
+                <div className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed font-medium">
+                  <span className="font-black block text-amber-950 dark:text-amber-100 mb-0.5">
+                    {language === 'bn' ? 'সিট পলিসি ও অতিরিক্ত সিট (Extra Seat) তথ্য:' : 'Seat Policy & Extra Seat Notice:'}
                   </span>
-                )}
+                  <span>
+                    {language === 'bn'
+                      ? 'বাসের স্থায়ী লেআউট ঠিক রাখতে সিট সংখ্যা লেআউট থেকেই সরাসরি লক থাকে। টিকিট বুকিংয়ের সময় যদি কোনো বাসে অতিরিক্ত সিট (যেমন: করিডোরে বা কেবিনে এক্সট্রা সিট) প্রয়োজন হয়, তবে টিকিট বুকিং স্ক্রিনে সরাসরি "+ অতিরিক্ত সিট (Extra Seat)" অপশন থেকে তা যুক্ত করা যাবে।'
+                      : 'Seat capacity is locked to match the layout grid. During ticket booking, dynamic extra seats can be added per trip without breaking the main layout template.'}
+                  </span>
+                </div>
               </div>
 
+
               <div>
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                  {language === 'bn' ? 'অভ্যন্তরীণ নোট / মন্তব্য' : 'Internal Notes'}
-                </label>
+                <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    {language === 'bn' ? 'অভ্যন্তরীণ নোট / যাত্রীদের নির্দেশনা' : 'Internal Notes & Passenger Guidelines'}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAiNoticeGenerate}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>{language === 'bn' ? '✨ AI দিয়ে গাইডলাইন তৈরি' : 'AI Generate Guidelines'}</span>
+                  </button>
+                </div>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
+                  rows={3}
                   placeholder={language === 'bn' ? 'যেমন: হাই-স্পিড এসি, ড্রাইভার ফোন নম্বর...' : 'e.g. Equipped with AC, emergency GPS...'}
                   className="w-full text-xs p-3 border border-slate-300 dark:border-slate-700 rounded-xl font-medium bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />

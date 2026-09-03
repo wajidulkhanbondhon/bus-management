@@ -22,6 +22,43 @@ def rate_limit(requests_per_minute: int, key_prefix: str = "rl"):
         now = int(time.time())
         window_start = now - 60
 
+        async def log_and_maybe_block() -> None:
+            """Records a RATE_LIMIT_EXCEEDED event and auto-blocks repeat offenders."""
+            from app.db.session import AsyncSessionLocal
+            from app.db.async_wrapper import WrappedAsyncSession
+            from app.models.security import SecurityEvent, BlockedIP
+            try:
+                async with AsyncSessionLocal() as session:
+                    db = WrappedAsyncSession(session)
+                    db.add(SecurityEvent(
+                        event_type="RATE_LIMIT_EXCEEDED",
+                        ip_address=client_ip,
+                        details=f"Path: {path}"
+                    ))
+                    await db.commit()
+
+                    # Brute force protection: count recent violations for this IP
+                    from datetime import datetime as dt
+                    window_start_dt = dt.fromtimestamp(window_start)
+                    recent_violations = await db.query(SecurityEvent).filter(
+                        SecurityEvent.ip_address == client_ip,
+                        SecurityEvent.event_type == "RATE_LIMIT_EXCEEDED",
+                        SecurityEvent.created_at >= window_start_dt
+                    ).count()
+
+                    if recent_violations >= 3:
+                        existing = await db.query(BlockedIP).filter(BlockedIP.ip_address == client_ip).first()
+                        if not existing:
+                            db.add(BlockedIP(
+                                ip_address=client_ip,
+                                reason="Repeated rate limit violations",
+                                blocked_by="SECURITY_AI"
+                            ))
+                            await db.commit()
+            except Exception:
+                # Rate-limit enforcement must never crash the request path
+                pass
+
         if is_redis_available and redis_client:
             pipe = redis_client.pipeline()
             # Remove hits older than 60 seconds
@@ -37,32 +74,7 @@ def rate_limit(requests_per_minute: int, key_prefix: str = "rl"):
             current_count = results[1]
             if current_count >= requests_per_minute:
                 retry_after = 60 - (now - window_start)
-                # Log security event
-                from app.db.session import AsyncSessionLocal
-                from app.models.security import SecurityEvent, BlockedIP
-                try:
-                    db = AsyncSessionLocal()
-                    event = SecurityEvent(event_type="RATE_LIMIT_EXCEEDED", ip_address=client_ip, details=f"Path: {path}")
-                    db.add(event)
-                    
-                    # Brute force protection: check recent violations
-                    window_start_dt = datetime.fromtimestamp(window_start)
-                    recent_violations = db.query(SecurityEvent).filter(
-                        SecurityEvent.ip_address == client_ip,
-                        SecurityEvent.event_type == "RATE_LIMIT_EXCEEDED",
-                        SecurityEvent.created_at >= window_start_dt
-                    ).count()
-                    
-                    if recent_violations >= 3:
-                        # Block the IP permanently
-                        if not db.query(BlockedIP).filter(BlockedIP.ip_address == client_ip).first():
-                            blocked = BlockedIP(ip_address=client_ip, reason="Repeated rate limit violations", blocked_by="SECURITY_AI")
-                            db.add(blocked)
-                            
-                    db.commit()
-                    db.close()
-                except Exception as e:
-                    print(f"Error logging security event: {e}")
+                await log_and_maybe_block()
 
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -78,28 +90,7 @@ def rate_limit(requests_per_minute: int, key_prefix: str = "rl"):
             hits = _rate_limit_store.get(key, [])
             hits = [h for h in hits if h > window_start]
             if len(hits) >= requests_per_minute:
-                # Basic in-memory brute force simulation (logging only)
-                from app.db.session import AsyncSessionLocal
-                from app.models.security import SecurityEvent, BlockedIP
-                try:
-                    db = AsyncSessionLocal()
-                    event = SecurityEvent(event_type="RATE_LIMIT_EXCEEDED", ip_address=client_ip, details=f"Path: {path}")
-                    db.add(event)
-                    
-                    recent_violations = db.query(SecurityEvent).filter(
-                        SecurityEvent.ip_address == client_ip,
-                        SecurityEvent.event_type == "RATE_LIMIT_EXCEEDED"
-                    ).count()
-                    
-                    if recent_violations >= 3:
-                        if not db.query(BlockedIP).filter(BlockedIP.ip_address == client_ip).first():
-                            blocked = BlockedIP(ip_address=client_ip, reason="Repeated rate limit violations", blocked_by="SECURITY_AI")
-                            db.add(blocked)
-                            
-                    db.commit()
-                    db.close()
-                except Exception:
-                    pass
+                await log_and_maybe_block()
 
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,

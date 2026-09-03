@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Bus, Armchair, Palette, PlusCircle, ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { Bus, Armchair, Palette, PlusCircle, ArrowLeft, ArrowRight, Check, Sparkles } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -484,14 +484,66 @@ export function SeatSelectionStep({
 
       {/* Extra seats strip */}
       {extraSeats.length > 0 && (
-        <div className="p-3.5 bg-purple-50/60 dark:bg-purple-950/30 rounded-2xl border border-purple-200 dark:border-purple-800/60 flex items-center flex-wrap gap-2">
-          <span className="text-xs font-black text-purple-800 dark:text-purple-300">{language === 'bn' ? 'অতিরিক্ত সিট:' : 'Extra Seats:'}</span>
-          {extraSeats.map((s) => (
-            <span key={s.seatId} className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-700 font-mono font-black text-xs text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
-              {s.seatNumber}
-              <button type="button" onClick={() => onRemoveExtraSeat(s.seatId)} className="text-rose-500 hover:text-rose-700 font-black cursor-pointer">✕</button>
+        <div className="p-4 bg-purple-50/80 dark:bg-purple-950/40 rounded-3xl border-2 border-purple-200 dark:border-purple-800/60 space-y-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span>{language === 'bn' ? 'অতিরিক্ত আসনসমূহ (Extra Seats - বুকিংয়ের জন্য ক্লিক করুন):' : 'Extra Seats (Click to toggle for booking):'}</span>
             </span>
-          ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onAddExtraSeat}
+              className="text-xs font-bold h-7 rounded-xl border-purple-300 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 cursor-pointer"
+            >
+              + {language === 'bn' ? 'আরেকটি অতিরিক্ত সিট' : 'Add Another'}
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap gap-2.5">
+            {extraSeats.map((s) => {
+              const isSelected = selectedSeatIds.includes(s.seatId);
+              return (
+                <div
+                  key={s.seatId}
+                  className={`flex items-center gap-1.5 p-1.5 pl-3 rounded-2xl border transition-all duration-200 ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-purple-400 shadow-md shadow-purple-500/30'
+                      : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:border-purple-400'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onToggleSeat(s.seatId, s.status || 'AVAILABLE')}
+                    className="flex items-center gap-2 cursor-pointer text-xs font-black font-mono"
+                  >
+                    <span>{isSelected ? '✓' : '○'}</span>
+                    <span className="font-bold">{s.seatNumber}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${
+                      isSelected ? 'bg-white/20 text-white' : 'bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-300'
+                    }`}>
+                      ৳{s.fare || 450}
+                    </span>
+                    <span className="text-[10px] font-sans font-bold">
+                      {isSelected ? (language === 'bn' ? '(নির্বাচিত)' : '(Selected)') : (language === 'bn' ? '(সিলেক্ট করুন)' : '(Select)')}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onRemoveExtraSeat(s.seatId)}
+                    className={`w-6 h-6 rounded-xl flex items-center justify-center text-xs font-black hover:bg-rose-500 hover:text-white transition-colors cursor-pointer ${
+                      isSelected ? 'text-white/80 hover:text-white' : 'text-slate-400 hover:text-rose-500'
+                    }`}
+                    title={language === 'bn' ? 'মুছে ফেলুন' : 'Remove Extra Seat'}
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

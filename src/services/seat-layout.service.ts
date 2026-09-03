@@ -1,4 +1,5 @@
 import { FASTAPI_BASE } from '@/lib/config';
+import { fastApiClient } from '@/lib/api-client';
 
 export interface LayoutGridCell {
   type: 'SEAT' | 'AISLE' | 'DOOR' | 'DRIVER' | 'EMPTY' | 'STAIRS';
@@ -27,17 +28,38 @@ const localCustomLayouts: any[] = [];
 
 export async function getAllLayouts() {
   try {
-    const res = await fetch(`${FASTAPI_BASE}/buses/seat-layouts`, { cache: 'no-store' }).catch(() => null);
+    const res = await fastApiClient.getSeatLayouts();
     let apiLayouts: any[] = [];
-    if (res && res.ok) {
-      apiLayouts = await res.json();
+    if (res && res.success && Array.isArray(res.data)) {
+      apiLayouts = res.data;
     }
-    const merged = [...localCustomLayouts];
+
+    // Primary source of truth: PostgreSQL Database via FastAPI
+    const seenIds = new Set<string>();
+    const seenNames = new Set<string>();
+    const merged: any[] = [];
+
     for (const l of apiLayouts) {
-      if (!merged.some(item => item.id === l.id)) {
+      if (!l || !l.id) continue;
+      const normName = (l.name || '').trim().toLowerCase();
+      if (!seenIds.has(l.id) && (!normName || !seenNames.has(normName))) {
+        seenIds.add(l.id);
+        if (normName) seenNames.add(normName);
         merged.push(l);
       }
     }
+
+    // Only include local layouts if not already in database
+    for (const l of localCustomLayouts) {
+      if (!l || !l.id) continue;
+      const normName = (l.name || '').trim().toLowerCase();
+      if (!seenIds.has(l.id) && (!normName || !seenNames.has(normName))) {
+        seenIds.add(l.id);
+        if (normName) seenNames.add(normName);
+        merged.push(l);
+      }
+    }
+
     return merged;
   } catch {
     return localCustomLayouts;
@@ -69,27 +91,82 @@ export async function deleteFareZone(id: string, _userId?: string) {
   return { success: true, id };
 }
 
-export async function deleteLayout(id: string, _userId?: string) {
-  const idx = localCustomLayouts.findIndex(l => l.id === id);
-  if (idx !== -1) {
-    localCustomLayouts.splice(idx, 1);
+export async function deleteLayout(id: string, _userId?: string, toRecycleBin: boolean = true) {
+  const target = localCustomLayouts.find(l => l.id === id);
+  const targetName = target?.name?.trim().toLowerCase();
+  for (let i = localCustomLayouts.length - 1; i >= 0; i--) {
+    if (localCustomLayouts[i].id === id || (targetName && localCustomLayouts[i].name?.trim().toLowerCase() === targetName)) {
+      localCustomLayouts.splice(i, 1);
+    }
   }
   try {
-    await fetch(`${FASTAPI_BASE}/buses/seat-layouts/${id}`, { method: 'DELETE', cache: 'no-store' }).catch(() => null);
-  } catch {}
-  return { success: true, id };
+    const res = await fastApiClient.deleteSeatLayout(id, toRecycleBin);
+    if (!res.success && res.status !== 404) {
+      console.warn('Backend delete layout response:', res.error);
+    }
+  } catch (e) {
+    console.error('Failed to delete layout from backend:', e);
+  }
+  return { success: true, id, toRecycleBin };
 }
 
-export async function deleteSeatLayout(id: string, userId?: string) {
-  return deleteLayout(id, userId);
+export async function deleteSeatLayout(id: string, userId?: string, toRecycleBin: boolean = true) {
+  return deleteLayout(id, userId, toRecycleBin);
 }
 
 export async function saveCustomLayout(input: CustomLayoutInput, _userId?: string): Promise<any> {
   const seatCount = (input.layoutGrid?.flat().filter(c => c && c.type === 'SEAT').length || 0) + (input.extraSeats?.length || 0);
+  const layoutJson = JSON.stringify({
+    layoutGrid: input.layoutGrid,
+    extraSeats: input.extraSeats || [],
+    university: input.university || '',
+    unit: input.unit || '',
+    examName: input.examName || ''
+  });
+
+  try {
+    const res = await fastApiClient.createSeatLayout({
+      name: input.name.trim(),
+      description: input.description || '',
+      total_rows: input.totalRows,
+      total_cols: input.totalCols,
+      total_seats: seatCount,
+      layout_json: layoutJson
+    });
+
+    if (res.success && res.data) {
+      const data = res.data;
+      const layoutObj = {
+        ...data,
+        university: input.university || '',
+        unit: input.unit || '',
+        examName: input.examName || '',
+        layoutGrid: input.layoutGrid,
+        extraSeats: input.extraSeats || [],
+        layout_json: layoutJson
+      };
+
+      const normName = input.name.trim().toLowerCase();
+      const existingIdx = localCustomLayouts.findIndex(
+        l => l.id === data.id || (input.id && l.id === input.id) || (l.name || '').trim().toLowerCase() === normName
+      );
+      if (existingIdx !== -1) {
+        localCustomLayouts[existingIdx] = layoutObj;
+      } else {
+        localCustomLayouts.unshift(layoutObj);
+      }
+
+      return layoutObj;
+    }
+  } catch (e) {
+    console.warn('Backend createSeatLayout failed, falling back to local memory store:', e);
+  }
+
+  // Fallback if backend API is offline
   const layoutId = input.id || `LAYOUT-${Date.now()}`;
   const layoutObj = {
     id: layoutId,
-    name: input.name,
+    name: input.name.trim(),
     description: input.description || '',
     university: input.university || '',
     unit: input.unit || '',
@@ -102,43 +179,19 @@ export async function saveCustomLayout(input: CustomLayoutInput, _userId?: strin
     total_seats: seatCount,
     layoutGrid: input.layoutGrid,
     extraSeats: input.extraSeats || [],
-    layout_json: JSON.stringify({
-      layoutGrid: input.layoutGrid,
-      extraSeats: input.extraSeats || [],
-      university: input.university || '',
-      unit: input.unit || '',
-      examName: input.examName || ''
-    }),
+    layout_json: layoutJson,
     createdAt: new Date().toISOString()
   };
 
-  const existingIdx = localCustomLayouts.findIndex(l => l.id === layoutId);
+  const normName = input.name.trim().toLowerCase();
+  const existingIdx = localCustomLayouts.findIndex(
+    l => l.id === layoutId || (l.name || '').trim().toLowerCase() === normName
+  );
   if (existingIdx !== -1) {
     localCustomLayouts[existingIdx] = layoutObj;
   } else {
     localCustomLayouts.unshift(layoutObj);
   }
-
-  try {
-    const res = await fetch(`${FASTAPI_BASE}/buses/seat-layouts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: input.name,
-        description: input.description || '',
-        total_rows: input.totalRows,
-        total_cols: input.totalCols,
-        total_seats: seatCount,
-        layout_json: layoutObj.layout_json
-      }),
-      cache: 'no-store'
-    }).catch(() => null);
-
-    if (res && res.ok) {
-      const data = await res.json();
-      return { ...layoutObj, id: data.id || layoutObj.id };
-    }
-  } catch {}
 
   return layoutObj;
 }

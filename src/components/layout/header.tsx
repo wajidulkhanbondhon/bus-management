@@ -26,7 +26,8 @@ import {
   CalendarPlus,
   SlidersHorizontal,
   ChevronRight,
-  Menu
+  Menu,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -231,6 +232,15 @@ export function Header({ currentUser, onMobileMenuToggle }: HeaderProps) {
             <Moon className="w-4 h-4 text-slate-700 transition-transform hover:-rotate-12" />
           )}
         </button>
+
+        {/* Recycle Bin Top Bar Quick Access */}
+        <Link
+          href="/recycle-bin"
+          className="p-2 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl transition-colors border border-slate-200 dark:border-slate-700/80 relative group"
+          title={language === 'bn' ? 'রিসাইকেল বিন ও ডেটা রিস্টোর হাব' : 'Recycle Bin & Data Restore Hub'}
+        >
+          <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform text-slate-600 dark:text-slate-300 group-hover:text-rose-600" />
+        </Link>
 
         {/* Quick Actions Dropdown */}
         <div className="relative">

@@ -65,18 +65,27 @@ class WrappedAsyncSession:
         
     def add(self, instance):
         self.async_session.add(instance)
-        
+
+    async def add_all(self, instances):
+        self.async_session.add_all(instances)
+
     async def delete(self, instance):
         return await self.async_session.delete(instance)
-        
+
     async def flush(self):
         await self.async_session.flush()
-        
+
     async def commit(self):
         await self.async_session.commit()
-        
+
+    async def rollback(self):
+        await self.async_session.rollback()
+
+    async def close(self):
+        await self.async_session.close()
+
     async def refresh(self, instance):
         await self.async_session.refresh(instance)
-        
+
     async def execute(self, stmt):
         return await self.async_session.execute(stmt)

@@ -29,24 +29,39 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Users,
   SlidersHorizontal,
   ChevronDown,
   Ticket,
   RotateCcw,
-  Armchair
+  Armchair,
+  Copy,
+  Lock
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
-import { updateBusAction, deleteBusAction } from '@/actions/bus.actions';
+import { createBusAction, updateBusAction, deleteBusAction, purgeBusAction } from '@/actions/bus.actions';
+import { getFleetNextBusNumber, getCategoryScopedNextBusNumber } from './bus-create-form';
+import { extractUniqueCode } from '@/services/bus.service';
+import { UniversalDeleteModal } from '@/components/common/universal-delete-modal';
+import { BusSeatMapModal } from './bus-seat-map-modal';
 import { useApp } from '@/lib/context';
 import { DEFAULT_COMPANIES, getStoredCompanies } from '@/lib/company-storage';
 import { CompanyManagerModal } from './company-manager-modal';
 import { UniversityItem, DEFAULT_UNIVERSITIES, getStoredUniversities } from '@/lib/university-storage';
 import { UniversityManagerModal } from './university-manager-modal';
+
+// Clean any accidental company prefixes from bus title
+export function cleanBusTitle(name?: string): string {
+  if (!name) return '';
+  return name
+    .replace(/^(?:দেশ\s*ট্রাভেলস(?:\s*\([^)]*\))?|শ্যামলী(?:\s*এন\.?আর)?(?:\s*ট্রাভেলস)?(?:\s*\([^)]*\))?|হানিফ(?:\s*এন্টারপ্রাইজ)?(?:\s*\([^)]*\))?|গ্রিন\s*লাইন(?:\s*পরিবহন)?(?:\s*\([^)]*\))?|একতা(?:\s*পরিবহন)?(?:\s*\([^)]*\))?|সেন্টমার্টিন(?:\s*ট্রাভেলস)?(?:\s*\([^)]*\))?|রিল্যাক্স(?:\s*পরিবহন)?(?:\s*\([^)]*\))?|বাবলু(?:\s*এন্টারপ্রাইজ)?(?:\s*\([^)]*\))?|Central\s*Transport(?:\s*Office)?|Desh\s*Travels|Shyamoli|Hanif|Green\s*Line)\s*[-:—–|/]\s*/i, '')
+    .trim() || name;
+}
 
 interface BusListViewProps {
   buses: any[];
@@ -57,6 +72,7 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t, language } = useApp();
+  const [mounted, setMounted] = useState(false);
   const [buses, setBuses] = useState(initialBuses);
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL'); // ALL, ACTIVE, MAINTENANCE, INACTIVE
@@ -65,6 +81,7 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
   const [selectedUniversity, setSelectedUniversity] = useState<string>('ALL');
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<string>('ALL');
   const [selectedCapacityFilter, setSelectedCapacityFilter] = useState<string>('ALL');
+  const [selectedUnitFilter, setSelectedUnitFilter] = useState<string>('ALL');
   const [dateFilterType, setDateFilterType] = useState<'JOURNEY' | 'BOOKING_START' | 'BOOKING_END'>('JOURNEY');
   const [selectedDateValue, setSelectedDateValue] = useState<string>('ALL'); // ALL or YYYY-MM-DD
   const [uniMatrixViewMode, setUniMatrixViewMode] = useState<'ACTIVE' | 'ALL'>('ACTIVE');
@@ -73,6 +90,8 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
   const [isUniExpanded, setIsUniExpanded] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(12);
+  const [viewMode, setViewMode] = useState<'CARD' | 'TABLE'>('CARD');
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(false);
 
   // Dynamic Universities State
   const [uniList, setUniList] = useState<UniversityItem[]>(DEFAULT_UNIVERSITIES);
@@ -83,13 +102,14 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
   const [isCompanyManagerOpen, setIsCompanyManagerOpen] = useState(false);
 
   useEffect(() => {
-    setBuses(initialBuses);
-  }, [initialBuses]);
-
-  useEffect(() => {
+    setMounted(true);
     setCompanyList(getStoredCompanies());
     setUniList(getStoredUniversities());
   }, []);
+
+  useEffect(() => {
+    setBuses(initialBuses);
+  }, [initialBuses]);
 
   // Creation Notification State via URL Params
   const [createdNotification, setCreatedNotification] = useState<{ busName: string; busNumber: string } | null>(null);
@@ -116,12 +136,52 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
   const [customVendorInput, setCustomVendorInput] = useState('');
   const [isAssigningCompany, setIsAssigningCompany] = useState(false);
 
+  // Seat Map Modal State
+  const [viewingSeatMapBus, setViewingSeatMapBus] = useState<any | null>(null);
+
   // Delete Modal & Notification State
   const [deletingBus, setDeletingBus] = useState<any | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteNotification, setDeleteNotification] = useState<{ busName: string; busNumber: string } | null>(null);
+  const [deleteNotification, setDeleteNotification] = useState<{ busName: string; busNumber: string; isPermanent?: boolean } | null>(null);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
   const [actionErrorMsg, setActionErrorMsg] = useState<string | null>(null);
+  const [isTogglingStatus, setIsTogglingStatus] = useState<string | null>(null);
+
+  // 1-Click Status Toggle Handler (ACTIVE <-> INACTIVE)
+  const handleToggleStatus = async (bus: any) => {
+    const currentStatus = (bus.status || 'ACTIVE').toUpperCase();
+    const nextStatus = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    setIsTogglingStatus(bus.id);
+
+    // Optimistic UI state update
+    setBuses((prev: any[]) => prev.map(b => b.id === bus.id ? { ...b, status: nextStatus } : b));
+
+    try {
+      const res = await updateBusAction(bus.id, {
+        status: nextStatus as any
+      });
+      if (res.success) {
+        setActionSuccessMsg(
+          language === 'bn'
+            ? `বাস '${bus.busNumber || bus.busName}' এর স্ট্যাটাস '${nextStatus === 'ACTIVE' ? 'সক্রিয় (Active)' : 'স্থগিত / নিষ্ক্রিয় (Inactive)'}' করা হয়েছে!`
+            : `Bus '${bus.busNumber || bus.busName}' status updated to ${nextStatus}!`
+        );
+        setTimeout(() => setActionSuccessMsg(null), 3500);
+      } else {
+        // Rollback on failure
+        setBuses((prev: any[]) => prev.map(b => b.id === bus.id ? { ...b, status: currentStatus } : b));
+        setActionErrorMsg(res.error || 'Failed to update status');
+        setTimeout(() => setActionErrorMsg(null), 3500);
+      }
+    } catch (err: any) {
+      // Rollback on error
+      setBuses((prev: any[]) => prev.map(b => b.id === bus.id ? { ...b, status: currentStatus } : b));
+      setActionErrorMsg(err.message || 'Error updating status');
+      setTimeout(() => setActionErrorMsg(null), 3500);
+    } finally {
+      setIsTogglingStatus(null);
+    }
+  };
 
   const POPULAR_COMPANIES = [
     'দেশ ট্রাভেলস (Desh Travels)',
@@ -167,18 +227,52 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
   };
 
   // Helper to extract structured route info
-  const getRouteInfo = (notes?: string) => {
-    if (!notes || !notes.includes('ROUTE:')) return null;
-    const match = notes.match(/\[📍 ROUTE:\s*([^\]]+)\]/);
-    if (match) {
-      const parts = match[1].split('➔').map(s => s.trim());
-      return {
-        origin: parts[0] || '',
-        destination: parts[1] || '',
-        raw: match[1]
-      };
+  const getRouteInfo = (notes?: string, bus?: any) => {
+    if (notes && notes.includes('ROUTE:')) {
+      const match = notes.match(/\[📍 ROUTE:\s*([^\]]+)\]/);
+      if (match) {
+        const parts = match[1].split('➔').map(s => s.trim());
+        return {
+          origin: parts[0] || 'ঢাকা (উৎস)',
+          destination: parts[1] || bus?.targetUniversity || 'বিশ্ববিদ্যালয় ক্যাম্পাস',
+          raw: match[1]
+        };
+      }
     }
-    return null;
+    const origin = bus?.routeOrigin || bus?.route_origin || 'ঢাকা (উৎস)';
+    const destination = bus?.routeDestination || bus?.route_destination || bus?.targetUniversity || bus?.target_university || 'বিশ্ববিদ্যালয় ক্যাম্পাস';
+    return {
+      origin,
+      destination,
+      raw: `${origin} ➔ ${destination}`
+    };
+  };
+
+  // Helper to calculate current booking window status (hydration-safe)
+  const getBookingWindowStatus = (bookingOpens?: string, bookingCloses?: string) => {
+    if (!bookingOpens || !bookingCloses) {
+      return { status: 'OPEN', labelBn: 'বুকিং সক্রিয়', labelEn: 'Booking Open', variant: 'success' };
+    }
+    // During SSR or initial hydration before mount, return consistent static state
+    if (!mounted) {
+      return { status: 'OPEN', labelBn: 'বুকিং চলছে', labelEn: 'Booking Open', variant: 'success' };
+    }
+    try {
+      const now = new Date();
+      const openDate = new Date(bookingOpens.split(' ')[0]);
+      const closeDate = new Date(bookingCloses.split(' ')[0]);
+      closeDate.setHours(23, 59, 59, 999);
+
+      if (now < openDate) {
+        return { status: 'UPCOMING', labelBn: 'শীঘ্রই শুরু', labelEn: 'Upcoming', variant: 'warning' };
+      }
+      if (now > closeDate) {
+        return { status: 'CLOSED', labelBn: 'বুকিং সমাপ্ত', labelEn: 'Closed', variant: 'default' };
+      }
+      return { status: 'OPEN', labelBn: 'বুকিং চলছে', labelEn: 'Booking Open', variant: 'success' };
+    } catch {
+      return { status: 'OPEN', labelBn: 'বুকিং চলছে', labelEn: 'Booking Open', variant: 'success' };
+    }
   };
 
   // Helper to extract pricing info
@@ -187,6 +281,72 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
     const match = notes.match(/\[💰 FARE:\s*([^\]]+)\]/);
     if (match) return match[1];
     return null;
+  };
+
+  // Helper to extract multi-tier pricing info from layout grid or structured notes
+  const getBusFareDetails = (bus: any) => {
+    const distinctFares = new Set<number>();
+
+    // 1. Check assigned seat layout
+    const layout = layouts.find((l: any) => l.id === (bus.seatLayoutId || bus.seat_layout_id));
+    if (layout) {
+      let grid: any[][] = [];
+      if (layout.layoutGrid && Array.isArray(layout.layoutGrid)) {
+        grid = layout.layoutGrid;
+      } else if (layout.layout_json) {
+        try {
+          const parsed = typeof layout.layout_json === 'string' ? JSON.parse(layout.layout_json) : layout.layout_json;
+          if (parsed && parsed.layoutGrid) grid = parsed.layoutGrid;
+        } catch {}
+      }
+
+      if (Array.isArray(grid)) {
+        grid.forEach(row => {
+          if (Array.isArray(row)) {
+            row.forEach(cell => {
+              if (cell && (cell.type === 'SEAT' || cell.seatType) && cell.baseFare && Number(cell.baseFare) > 0) {
+                distinctFares.add(Number(cell.baseFare));
+              }
+            });
+          }
+        });
+      }
+    }
+
+    // 2. Check notes for [💰 FARE: ...] tag
+    if (bus?.notes) {
+      const match = bus.notes.match(/\[💰 FARE:\s*([^\]]+)\]/);
+      if (match) {
+        const nums = match[1].match(/\d+/g);
+        if (nums) {
+          nums.forEach((n: string) => distinctFares.add(Number(n)));
+        }
+      }
+    }
+
+    if (distinctFares.size === 0) {
+      distinctFares.add(550);
+    }
+
+    const sortedFares = Array.from(distinctFares).sort((a, b) => a - b);
+    const minFare = sortedFares[0];
+    const maxFare = sortedFares[sortedFares.length - 1];
+    const isMultiple = sortedFares.length > 1;
+
+    const bnMin = `${minFare}`.replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[Number(d)]);
+    const bnMax = `${maxFare}`.replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[Number(d)]);
+
+    const displayBn = isMultiple ? `৳${bnMin} - ৳${bnMax} (মাল্টিপল ভাড়া)` : `৳${bnMin} (সিট প্রতি)`;
+    const displayEn = isMultiple ? `৳${minFare} - ৳${maxFare} (Multiple Fares)` : `৳${minFare}/seat`;
+
+    return {
+      minFare,
+      maxFare,
+      isMultiple,
+      distinctFares: sortedFares,
+      displayBn,
+      displayEn
+    };
   };
 
   // Helper to extract structured trip schedule details with guaranteed date & timing fallback
@@ -299,6 +459,45 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
     if (fullText.includes('rokeya') || fullText.includes('রোকেয়া')) return uniList.find(u => u.id === 'BRUR') || null;
 
     return null;
+  };
+
+  // Helper to extract admission exam unit info
+  const getExamUnitInfo = (bus?: any) => {
+    if (!bus) return '';
+    if (bus.examUnit || bus.exam_unit || bus.unit) {
+      return String(bus.examUnit || bus.exam_unit || bus.unit).trim();
+    }
+    const notes = bus.notes || '';
+    const match = notes.match(/UNIT:\s*([^;|\]]+)/i);
+    if (match && match[1]) return match[1].trim();
+
+    // Check attached layout from database
+    const layoutId = bus.seatLayoutId || bus.seat_layout_id;
+    if (layoutId && layouts && Array.isArray(layouts)) {
+      const lay = layouts.find(l => l.id === layoutId);
+      if (lay) {
+        if (lay.unit) return String(lay.unit).trim();
+        if (lay.examUnit) return String(lay.examUnit).trim();
+        if (lay.layout_json) {
+          try {
+            const parsed = JSON.parse(lay.layout_json);
+            if (parsed.unit) return String(parsed.unit).trim();
+            if (parsed.examUnit) return String(parsed.examUnit).trim();
+          } catch {}
+        }
+        const layMatch = (lay.name || '').match(/\[([A-Za-z0-9\s,()+-]+Unit[A-Za-z0-9\s,()+-]*)\]/i);
+        if (layMatch) return layMatch[1].trim();
+      }
+    }
+
+    // Check bus name or notes for unit patterns like "(Unit C)", "Unit-A", "ক ইউনিট", "Unit 01"
+    const name = bus.busName || bus.bus_name || '';
+    const nameMatch = name.match(/(?:Unit|ইউনিট)\s*[-:]?\s*([A-Za-z0-9ক-হ]+)/i) 
+      || name.match(/\b([A-Za-z])\s*[-:]?\s*(?:Unit|ইউনিট)\b/i);
+    if (nameMatch) {
+      return `Unit ${nameMatch[1].toUpperCase()}`;
+    }
+    return '';
   };
 
   // Computed Fleet Governance Top Metrics (Active, Inactive, Capacity & University Allocations)
@@ -465,6 +664,18 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
       .sort((a, b) => b.capacity - a.capacity);
   }, [buses]);
 
+  // Extract all unique exam units dynamically from fleet
+  const distinctUnits = useMemo(() => {
+    const unitMap: Record<string, number> = {};
+    buses.forEach((b: any) => {
+      const u = getExamUnitInfo(b) || 'সাধারণ (All Units)';
+      unitMap[u] = (unitMap[u] || 0) + 1;
+    });
+    return Object.entries(unitMap)
+      .map(([unit, count]) => ({ unit, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [buses]);
+
   // Filter buses
   const filteredBuses = useMemo(() => {
     return buses.filter((bus: any) => {
@@ -473,11 +684,17 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
       const operator = bus.operator || '';
       const regNumber = bus.regNumber || bus.reg_number || '';
       const notes = bus.notes || '';
-      const q = (searchFilter || '').toLowerCase();
+      const uniqueCode = (bus.uniqueCode || extractUniqueCode(notes, busNumber, bus.id) || '').toLowerCase();
+      const uni = getBusUniversity(bus);
+      const uniName = uni ? `${uni.nameBn} ${uni.nameEn}`.toLowerCase() : '';
+      const q = (searchFilter || '').toLowerCase().trim();
 
       const matchesSearch =
+        !q ||
         busName.toLowerCase().includes(q) ||
         busNumber.toLowerCase().includes(q) ||
+        uniqueCode.includes(q) ||
+        uniName.includes(q) ||
         operator.toLowerCase().includes(q) ||
         regNumber.toLowerCase().includes(q) ||
         notes.toLowerCase().includes(q);
@@ -532,14 +749,60 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
         selectedCapacityFilter === 'ALL' ||
         String(bus.capacity || 40) === selectedCapacityFilter;
 
-      return matchesSearch && matchesStatus && matchesGender && matchesUniversity && matchesDate && matchesHotel && matchesCompany && matchesCapacity;
+      // Unit filter (User Requested)
+      let matchesUnit = true;
+      if (selectedUnitFilter !== 'ALL') {
+        const detectedUnit = getExamUnitInfo(bus) || 'সাধারণ (All Units)';
+        matchesUnit = detectedUnit.toLowerCase() === selectedUnitFilter.toLowerCase();
+      }
+
+      return matchesSearch && matchesStatus && matchesGender && matchesUniversity && matchesDate && matchesHotel && matchesCompany && matchesCapacity && matchesUnit;
     });
-  }, [buses, searchFilter, selectedStatus, selectedGender, selectedHotelFilter, selectedUniversity, selectedCompanyFilter, selectedCapacityFilter, selectedDateValue, dateFilterType, uniList]);
+  }, [buses, searchFilter, selectedStatus, selectedGender, selectedHotelFilter, selectedUniversity, selectedCompanyFilter, selectedCapacityFilter, selectedUnitFilter, selectedDateValue, dateFilterType, uniList]);
+
+  // Active Filter Counter
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (searchFilter.trim()) count++;
+    if (selectedStatus !== 'ALL') count++;
+    if (selectedGender !== 'ALL') count++;
+    if (selectedHotelFilter !== 'ALL') count++;
+    if (selectedUniversity !== 'ALL') count++;
+    if (selectedCompanyFilter !== 'ALL') count++;
+    if (selectedCapacityFilter !== 'ALL') count++;
+    if (selectedUnitFilter !== 'ALL') count++;
+    if (selectedDateValue !== 'ALL') count++;
+    return count;
+  }, [
+    searchFilter,
+    selectedStatus,
+    selectedGender,
+    selectedHotelFilter,
+    selectedUniversity,
+    selectedCompanyFilter,
+    selectedCapacityFilter,
+    selectedUnitFilter,
+    selectedDateValue
+  ]);
+
+  const handleResetFilters = () => {
+    setSearchFilter('');
+    setSelectedStatus('ALL');
+    setSelectedGender('ALL');
+    setSelectedHotelFilter('ALL');
+    setSelectedUniversity('ALL');
+    setSelectedCompanyFilter('ALL');
+    setSelectedCapacityFilter('ALL');
+    setSelectedUnitFilter('ALL');
+    setSelectedDateValue('ALL');
+    setSelectedCluster('ALL');
+    setUniSearchQuery('');
+  };
 
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchFilter, selectedStatus, selectedGender, selectedHotelFilter, selectedUniversity, selectedCompanyFilter, selectedCapacityFilter, selectedDateValue, dateFilterType, pageSize]);
+  }, [searchFilter, selectedStatus, selectedGender, selectedHotelFilter, selectedUniversity, selectedCompanyFilter, selectedCapacityFilter, selectedUnitFilter, selectedDateValue, dateFilterType, pageSize]);
 
   // Scalable Pagination
   const totalPages = Math.ceil(filteredBuses.length / pageSize) || 1;
@@ -560,13 +823,24 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
       busType: bus.busType,
       status: bus.status,
       seatLayoutId: bus.seatLayoutId || '',
-      notes: bus.notes || ''
+      notes: bus.notes || '',
+      examUnit: getExamUnitInfo(bus) || ''
     });
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingBus) return;
+
+    const examUnit = (editingBus.examUnit || '').trim();
+    let updatedNotes = editingBus.notes || '';
+    if (examUnit) {
+      if (updatedNotes.includes('UNIT:')) {
+        updatedNotes = updatedNotes.replace(/UNIT:\s*[^;|\]]+/i, `UNIT: ${examUnit}`);
+      } else {
+        updatedNotes = `${updatedNotes} [📝 UNIT: ${examUnit}]`.trim();
+      }
+    }
 
     setIsUpdating(true);
     setActionErrorMsg(null);
@@ -580,11 +854,12 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
         busType: editingBus.busType,
         status: editingBus.status,
         seatLayoutId: editingBus.seatLayoutId || undefined,
-        notes: editingBus.notes
+        notes: updatedNotes,
+        examUnit: examUnit
       });
 
       if (res.success) {
-        setBuses(buses.map((b) => (b.id === editingBus.id ? { ...b, ...editingBus } : b)));
+        setBuses(buses.map((b) => (b.id === editingBus.id ? { ...b, ...editingBus, notes: updatedNotes, examUnit } : b)));
         const name = editingBus.busName;
         const num = editingBus.busNumber;
         setEditingBus(null);
@@ -663,7 +938,8 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
         setDeletingBus(null);
         setDeleteNotification({
           busName: deletedName,
-          busNumber: deletedNumber
+          busNumber: deletedNumber,
+          isPermanent: false
         });
         setTimeout(() => {
           setDeleteNotification(null);
@@ -676,6 +952,144 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
       setActionErrorMsg(err.message || (language === 'bn' ? 'বাস মুছে ফেলতে সমস্যা হয়েছে।' : 'Failed to delete bus'));
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handlePermanentDelete = async () => {
+    if (!deletingBus) return;
+
+    const targetBus = { ...deletingBus };
+    setIsDeleting(true);
+    setActionErrorMsg(null);
+    try {
+      const purgeRes = await purgeBusAction(targetBus.id);
+      if (purgeRes.success) {
+        setBuses((prev) => prev.filter((b) => b.id !== targetBus.id));
+        const deletedName = targetBus.busName || targetBus.bus_name || 'বাস';
+        const deletedNumber = targetBus.busNumber || targetBus.bus_number || '';
+        setDeletingBus(null);
+        setDeleteNotification({
+          busName: deletedName,
+          busNumber: deletedNumber,
+          isPermanent: true
+        });
+        setTimeout(() => {
+          setDeleteNotification(null);
+        }, 6000);
+        router.refresh();
+      } else {
+        setActionErrorMsg(purgeRes.error || (language === 'bn' ? 'স্থায়ীভাবে মুছতে সমস্যা হয়েছে।' : 'Failed to permanently purge bus'));
+      }
+    } catch (err: any) {
+      setActionErrorMsg(err.message || (language === 'bn' ? 'স্থায়ীভাবে মুছতে সমস্যা হয়েছে।' : 'Failed to permanently purge bus'));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Bus Duplication State & Handlers
+  const [duplicatingBus, setDuplicatingBus] = useState<any | null>(null);
+  const [duplicateBusNumber, setDuplicateBusNumber] = useState('');
+  const [duplicateBusName, setDuplicateBusName] = useState('');
+  const [duplicateUniqueCode, setDuplicateUniqueCode] = useState('');
+  const [duplicateBookingStartDate, setDuplicateBookingStartDate] = useState('');
+  const [duplicateBookingStartTime, setDuplicateBookingStartTime] = useState('10:00 AM');
+  const [duplicateBookingEndDate, setDuplicateBookingEndDate] = useState('');
+  const [duplicateBookingEndTime, setDuplicateBookingEndTime] = useState('11:59 PM');
+  const [isDuplicating, setIsDuplicating] = useState(false);
+
+  const handleOpenDuplicate = (bus: any) => {
+    const uni = getBusUniversity(bus);
+    const uniName = uni ? (uni.nameBn || uni.nameEn) : (bus.targetUniversity || '');
+    const seq = getCategoryScopedNextBusNumber(buses, uniName, bus.busName || bus.bus_name);
+    const sch = getScheduleInfo(bus.notes, bus);
+
+    // Parse booking window dates and times
+    const openRaw = (sch.bookingOpens || '').trim();
+    const openParts = openRaw.split(' ');
+    const openDate = openParts[0] || new Date().toISOString().split('T')[0];
+    const openTime = openParts.slice(1).join(' ') || '10:00 AM';
+
+    const closeRaw = (sch.bookingCloses || '').trim();
+    const closeParts = closeRaw.split(' ');
+    const closeDate = closeParts[0] || sch.departureDate || new Date().toISOString().split('T')[0];
+    const closeTime = closeParts.slice(1).join(' ') || '11:59 PM';
+
+    setDuplicatingBus(bus);
+    setDuplicateBusNumber(seq.nextBnLabel);
+    setDuplicateBusName(cleanBusTitle(bus.busName || bus.bus_name || ''));
+    setDuplicateUniqueCode(seq.uniqueCode);
+    setDuplicateBookingStartDate(openDate);
+    setDuplicateBookingStartTime(openTime);
+    setDuplicateBookingEndDate(closeDate);
+    setDuplicateBookingEndTime(closeTime);
+  };
+
+  const handleConfirmDuplicate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!duplicatingBus) return;
+    if (!duplicateBusNumber.trim()) {
+      setActionErrorMsg(language === 'bn' ? '⚠️ বাসের নম্বর আবশ্যক।' : 'Bus number is required.');
+      return;
+    }
+    if (!duplicateBookingStartDate || !duplicateBookingEndDate) {
+      setActionErrorMsg(language === 'bn' ? '⚠️ টিকিট বুকিং শুরুর ও শেষের তারিখ আবশ্যক।' : 'Booking start and end dates are required.');
+      return;
+    }
+    if (duplicateBookingStartDate > duplicateBookingEndDate) {
+      setActionErrorMsg(language === 'bn' ? '⚠️ বুকিং শুরুর তারিখ বুকিং শেষের তারিখের চেয়ে পরে হতে পারে না।' : 'Booking start date cannot be after end date.');
+      return;
+    }
+
+    setIsDuplicating(true);
+    setActionErrorMsg(null);
+    try {
+      const sch = getScheduleInfo(duplicatingBus.notes, duplicatingBus);
+      let updatedNotes = duplicatingBus.notes || '';
+
+      // Update schedule tag with the newly customized Booking Window!
+      const newScheduleTag = `[📅 SCHEDULE: Departure: ${sch.departureDate} ${sch.departureTime} | Reporting: ${sch.reportingTime} | Booking Opens: ${duplicateBookingStartDate} ${duplicateBookingStartTime} | Booking Closes: ${duplicateBookingEndDate} ${duplicateBookingEndTime} | Est Arrival: ${sch.estArrival}${sch.returnJourney ? ` | Return: ${sch.returnJourney}` : ''}]`;
+      if (updatedNotes.includes('[📅 SCHEDULE:')) {
+        updatedNotes = updatedNotes.replace(/\[📅 SCHEDULE:[^\]]+\]/, newScheduleTag);
+      } else {
+        updatedNotes = `${newScheduleTag} | ${updatedNotes}`;
+      }
+
+      // Update unique system code tag in notes
+      const newCodeTag = `[🏷️ CODE: ${duplicateUniqueCode}]`;
+      if (updatedNotes.includes('[🏷️ CODE:')) {
+        updatedNotes = updatedNotes.replace(/\[🏷️\s*CODE:[^\]]+\]/, newCodeTag);
+      } else {
+        updatedNotes = `${newCodeTag} | ${updatedNotes}`;
+      }
+
+      const res = await createBusAction({
+        busName: duplicateBusName.trim() || cleanBusTitle(duplicatingBus.busName || duplicatingBus.bus_name || 'ভর্তি কোচ'),
+        busNumber: duplicateBusNumber.trim(),
+        operator: duplicatingBus.operator,
+        capacity: Number(duplicatingBus.capacity) || 40,
+        busType: duplicatingBus.busType || duplicatingBus.bus_type || 'MIXED',
+        status: 'ACTIVE',
+        notes: updatedNotes,
+        seatLayoutId: duplicatingBus.seatLayoutId || duplicatingBus.seat_layout_id || undefined,
+        regNumber: `DHAKA-METRO-BA-${Math.floor(1000 + Math.random() * 9000)}`
+      });
+
+      if (res.success) {
+        setActionSuccessMsg(
+          language === 'bn'
+            ? `🎉 নতুন বাস (${duplicateBusNumber} • ${duplicateUniqueCode}) সফলভাবে ক্লোন/ডুপ্লিকেট করা হয়েছে!`
+            : `Bus successfully duplicated as ${duplicateBusNumber} (${duplicateUniqueCode})!`
+        );
+        setDuplicatingBus(null);
+        router.refresh();
+      } else {
+        setActionErrorMsg(res.error || 'Failed to duplicate bus');
+      }
+    } catch (err: any) {
+      setActionErrorMsg(err.message || 'Error duplicating bus');
+    } finally {
+      setIsDuplicating(false);
     }
   };
 
@@ -715,33 +1129,55 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
 
       {/* Delete SMS / Toast Notification Banner */}
       {deleteNotification && (
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-rose-500 text-white shadow-xl shadow-rose-500/25 border-2 border-rose-400 animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className={`flex items-center justify-between p-4 rounded-2xl text-white shadow-xl duration-300 border-2 animate-in fade-in slide-in-from-top-4 ${
+          deleteNotification.isPermanent
+            ? 'bg-rose-600 shadow-rose-600/25 border-rose-400'
+            : 'bg-amber-600 shadow-amber-600/25 border-amber-400'
+        }`}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
               <Trash2 className="w-5 h-5 text-white animate-bounce" />
             </div>
             <div>
               <div className="font-black text-sm sm:text-base flex items-center gap-2">
-                <span>{language === 'bn' ? '🗑️ বাসটি সফলভাবে মুছে ফেলা হয়েছে!' : '🗑️ Bus Deleted Successfully!'}</span>
+                <span>
+                  {deleteNotification.isPermanent
+                    ? (language === 'bn' ? '🗑️ বাসটি স্থায়ীভাবে মুছে ফেলা হয়েছে!' : '🗑️ Bus Permanently Purged!')
+                    : (language === 'bn' ? '♻️ বাসটি রিসাইকেল বিনে পাঠানো হয়েছে!' : '♻️ Bus Moved to Recycle Bin!')}
+                </span>
                 <Badge variant="default" className="bg-white/25 text-white font-mono text-xs uppercase">
                   {deleteNotification.busNumber}
                 </Badge>
               </div>
-              <p className="text-xs sm:text-sm text-white/90 font-medium mt-0.5">
-                {language === 'bn'
-                  ? `'${deleteNotification.busName}' বাসটি ফ্লিট রোস্টার ও তালিকা থেকে স্থায়ীভাবে রিমুভ করা হয়েছে।`
-                  : `'${deleteNotification.busName}' has been removed from the fleet roster.`}
+              <p className="text-xs sm:text-sm text-white/95 font-medium mt-0.5">
+                {deleteNotification.isPermanent
+                  ? (language === 'bn'
+                    ? `'${deleteNotification.busName}' বাসটি ডাটাবেস হতে চিরতরে মুছে ফেলা হয়েছে।`
+                    : `'${deleteNotification.busName}' has been permanently purged from the database.`)
+                  : (language === 'bn'
+                    ? `'${deleteNotification.busName}' বাসটি রিসাইকেল বিনে পাঠানো হয়েছে। প্রয়োজনে রিসাইকেল বিন পেজ থেকে এটি রিস্টোর করতে পারবেন।`
+                    : `'${deleteNotification.busName}' has been moved to the Recycle Bin. You can restore it anytime.`)}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setDeleteNotification(null)}
-            className="p-2 rounded-xl hover:bg-white/20 transition-colors text-white"
-            title="Dismiss"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {!deleteNotification.isPermanent && (
+              <Link
+                href="/recycle-bin"
+                className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs transition-colors"
+              >
+                {language === 'bn' ? 'রিসাইকেল বিন খুলুন' : 'Open Recycle Bin'}
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={() => setDeleteNotification(null)}
+              className="p-2 rounded-xl hover:bg-white/20 transition-colors text-white cursor-pointer"
+              title="Dismiss"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -979,995 +1415,1184 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
               🔴 {language === 'bn' ? 'সাময়িক স্থগিত' : 'Temporarily Paused'}
             </div>
           </div>
-
-          {/* Female Special */}
-          <div
-            onClick={() => setSelectedGender(selectedGender === 'FEMALE' ? 'ALL' : 'FEMALE')}
-            className={`p-5 rounded-3xl border-2 transition-all cursor-pointer space-y-2 ${
-              selectedGender === 'FEMALE'
-                ? 'bg-pink-50 dark:bg-pink-950/60 border-pink-500 dark:border-pink-500 ring-4 ring-pink-400/20 shadow-md'
-                : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:bg-pink-50/50 dark:hover:bg-pink-950/30 hover:scale-[1.02]'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm text-pink-800 dark:text-pink-300 font-black block">
-                👩 {language === 'bn' ? 'ছাত্রী স্পেশাল বাস' : 'Female Special'}
-              </span>
-            </div>
-            <div className="text-3xl sm:text-4xl font-black text-pink-600 dark:text-pink-400 font-mono flex items-baseline justify-between pt-1">
-              <span>{fleetMetrics.femaleCount}</span>
-              <span className="text-sm font-bold text-pink-700/70 dark:text-pink-300 font-sans">{language === 'bn' ? 'টি সংরক্ষিত' : 'Reserved'}</span>
-            </div>
-            <div className="pt-2 border-t border-pink-200/60 dark:border-pink-800/50 text-xs font-bold text-pink-700 dark:text-pink-300">
-              🌸 {language === 'bn' ? 'শুধু নারী শিক্ষার্থী' : 'Female Only Seats'}
-            </div>
-          </div>
-
-          {/* Hotel Tour Package */}
-          <div
-            onClick={() => setSelectedHotelFilter(selectedHotelFilter === 'HOTEL_ONLY' ? 'ALL' : 'HOTEL_ONLY')}
-            className={`p-5 rounded-3xl border-2 transition-all cursor-pointer space-y-2 ${
-              selectedHotelFilter === 'HOTEL_ONLY'
-                ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-500 dark:border-purple-500 ring-4 ring-purple-400/20 shadow-md'
-                : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:bg-purple-50/50 dark:hover:bg-purple-950/30 hover:scale-[1.02]'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm text-purple-800 dark:text-purple-300 font-black flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                <span>{language === 'bn' ? 'হোটেল প্যাকেজ' : 'Hotel Packages'}</span>
-              </span>
-            </div>
-            <div className="text-3xl sm:text-4xl font-black text-purple-600 dark:text-purple-400 font-mono flex items-baseline justify-between pt-1">
-              <span>{fleetMetrics.hotelCount}</span>
-              <span className="text-sm font-bold text-purple-700/70 dark:text-purple-300 font-sans">{language === 'bn' ? 'টি বাস' : 'Buses'}</span>
-            </div>
-            <div className="pt-2 border-t border-purple-200/60 dark:border-purple-800/50 text-xs font-bold text-purple-700 dark:text-purple-300">
-              🏨 {language === 'bn' ? 'আবাসন সহ ট্যুর' : 'Stay Included'}
-            </div>
-          </div>
-        </div>
-
-        {/* 2. Smart University Fleet Allocation Matrix - Large, Spacious Cards */}
-        <div className="pt-5 border-t border-slate-200 dark:border-slate-800 space-y-4">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-blue-100 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 shadow-sm">
-                <GraduationCap className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                    {language === 'bn' ? '🎓 বিশ্ববিদ্যালয় ও ভর্তি কেন্দ্রভিত্তিক বাস বরাদ্দ' : '🎓 University Fleet Allocation Matrix'}
-                  </h4>
-                  <span className="text-xs font-mono font-black px-2.5 py-1 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                    {fleetMetrics.activeAllocations.length} {language === 'bn' ? 'টি কেন্দ্রে বাস বরাদ্দ' : 'Universities Assigned'}
-                  </span>
-                </div>
-                <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                  {language === 'bn'
-                    ? 'কোন বিশ্ববিদ্যালয়ের জন্য কয়টি বাস তৈরি করা হয়েছে তা দেখুন এবং যে কোনো কার্ডে ক্লিক করে সরাসরি ফিল্টার করুন।'
-                    : 'Real-time breakdown of buses created per university. Click any card to filter immediately.'}
-                </p>
-              </div>
-            </div>
-
-            {/* View Mode Switcher & Add University Button */}
-            <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap self-start lg:self-auto">
-              <div className="bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 shadow-2xs">
-                <button
-                  type="button"
-                  onClick={() => setUniMatrixViewMode('ACTIVE')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                    uniMatrixViewMode === 'ACTIVE'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  {language === 'bn' ? `🟢 বরাদ্দকৃত কেন্দ্র (${fleetMetrics.activeAllocations.length})` : `🟢 Assigned (${fleetMetrics.activeAllocations.length})`}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUniMatrixViewMode('ALL')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                    uniMatrixViewMode === 'ALL'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  {language === 'bn' ? `🌐 সকল বিশ্ববিদ্যালয় (${uniList.length})` : `🌐 All Centers (${uniList.length})`}
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsUniManagerOpen(true)}
-                className="px-4 py-2 text-xs sm:text-sm font-bold rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 flex items-center gap-2 transition-all shadow-2xs cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>{language === 'bn' ? 'নতুন বিশ্ববিদ্যালয়' : 'Add University'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Search and Cluster Filters for Matrix when viewing all */}
-          {uniMatrixViewMode === 'ALL' && (
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
-              <div className="relative flex-1 max-w-md">
-                <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
-                <input
-                  type="text"
-                  value={uniSearchQuery}
-                  onChange={(e) => setUniSearchQuery(e.target.value)}
-                  placeholder={language === 'bn' ? 'বিশ্ববিদ্যালয়ের নাম বা কোড (RU, DU, KUET...) দিয়ে খুঁজুন...' : 'Search university by name or code...'}
-                  className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-blue-500 font-medium"
-                />
-              </div>
-
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-                {[
-                  { id: 'ALL', labelBn: 'সকল গুচ্ছ', labelEn: 'All Clusters' },
-                  { id: 'GENERAL', labelBn: '🏛️ সাধারণ', labelEn: '🏛️ General' },
-                  { id: 'ENGG', labelBn: '⚙️ ইঞ্জিনিয়ারিং', labelEn: '⚙️ Engineering' },
-                  { id: 'AGRI', labelBn: '🌾 কৃষি গুচ্ছ', labelEn: '🌾 Agriculture' },
-                  { id: 'MED', labelBn: '🩺 মেডিকেল', labelEn: '🩺 Medical' },
-                  { id: 'SPECIAL', labelBn: '✨ বিশেষ', labelEn: '✨ Special' }
-                ].map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setSelectedCluster(c.id)}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all cursor-pointer ${
-                      selectedCluster === c.id
-                        ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-2xs'
-                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    {language === 'bn' ? c.labelBn : c.labelEn}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Proportional University Allocation Progress Bar */}
-          {buses.length > 0 && fleetMetrics.activeAllocations.length > 0 && (
-            <div className="space-y-1.5 pt-1">
-              <div className="h-4 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex shadow-inner border border-slate-200/60 dark:border-slate-700/60">
-                {fleetMetrics.activeAllocations.map((alloc, idx) => {
-                  const pct = Math.max(4, Math.round((alloc.count / buses.length) * 100));
-                  const colors = [
-                    'bg-blue-600',
-                    'bg-emerald-500',
-                    'bg-indigo-600',
-                    'bg-purple-600',
-                    'bg-pink-500',
-                    'bg-amber-500',
-                    'bg-teal-500',
-                    'bg-cyan-500'
-                  ];
-                  const col = colors[idx % colors.length];
-                  return (
-                    <div
-                      key={alloc.id}
-                      style={{ width: `${pct}%` }}
-                      className={`${col} h-full transition-all cursor-pointer hover:opacity-85`}
-                      title={`${alloc.label}: ${alloc.count}টি বাস (${Math.round((alloc.count / buses.length) * 100)}%)`}
-                      onClick={() => setSelectedUniversity(selectedUniversity === alloc.id ? 'ALL' : alloc.id)}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Active Filter Notification Banner if a University is Selected */}
-          {selectedUniversity !== 'ALL' && (
-            <div className="p-4 rounded-2xl bg-blue-500/10 dark:bg-blue-950/70 border-2 border-blue-400 dark:border-blue-700 flex items-center justify-between gap-3 shadow-sm">
-              <div className="flex items-center gap-2.5 text-sm font-bold text-blue-900 dark:text-blue-200">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping"></span>
-                <span>
-                  {language === 'bn' ? 'বিশ্ববিদ্যালয় ফিল্টার সক্রিয়:' : 'Active University Filter:'}{' '}
-                  <span className="font-black text-base underline text-blue-700 dark:text-blue-300">
-                    {uniList.find(u => u.id === selectedUniversity)?.nameBn || selectedUniversity}
-                  </span>{' '}
-                  ({fleetMetrics.uniMap[selectedUniversity]?.count || 0} {language === 'bn' ? 'টি বাস বরাদ্দকৃত' : 'Buses Allocated'})
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedUniversity('ALL')}
-                className="px-3.5 py-1.5 text-xs sm:text-sm font-bold rounded-xl bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
-              >
-                <X className="w-4 h-4" />
-                <span>{language === 'bn' ? 'সকল বাস দেখুন' : 'View All Buses'}</span>
-              </button>
-            </div>
-          )}
-
-          {/* Dynamic University Allocation Cards Grid (Spacious, Large & Clear) */}
-          {(() => {
-            const listToRender = uniMatrixViewMode === 'ACTIVE'
-              ? fleetMetrics.activeAllocations
-              : uniList
-                  .filter(u => {
-                    const matchesCluster = selectedCluster === 'ALL' || u.cluster === selectedCluster;
-                    const matchesQuery = !uniSearchQuery || u.nameBn.toLowerCase().includes(uniSearchQuery.toLowerCase()) || u.id.toLowerCase().includes(uniSearchQuery.toLowerCase()) || (u.nameEn && u.nameEn.toLowerCase().includes(uniSearchQuery.toLowerCase()));
-                    return matchesCluster && matchesQuery;
-                  })
-                  .map(u => {
-                    const info = fleetMetrics.uniMap[u.id] || { count: 0, active: 0, maintenance: 0, seats: 0 };
-                    return {
-                      id: u.id,
-                      label: u.nameBn,
-                      count: info.count,
-                      active: info.active,
-                      maintenance: info.maintenance,
-                      seats: info.seats,
-                      cluster: u.cluster,
-                      isCustom: u.isCustom
-                    };
-                  });
-
-            if (listToRender.length === 0) {
-              return (
-                <div className="p-8 rounded-3xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 text-center space-y-3">
-                  <p className="text-sm font-bold text-slate-500">
-                    {language === 'bn' ? 'কোনো বিশ্ববিদ্যালয় পাওয়া যায়নি।' : 'No universities match your search.'}
-                  </p>
-                  <Button variant="primary" size="md" onClick={() => { setUniSearchQuery(''); setSelectedCluster('ALL'); }}>
-                    {language === 'bn' ? 'সার্চ রিসেট করুন' : 'Reset Search'}
-                  </Button>
-                </div>
-              );
-            }
-
-            return (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-3 pt-1">
-                {listToRender.map((alloc) => {
-                  const isSelected = selectedUniversity === alloc.id;
-                  const hasBuses = alloc.count > 0;
-                  const pct = buses.length > 0 ? Math.round((alloc.count / buses.length) * 100) : 0;
-                  return (
-                    <div
-                      key={alloc.id}
-                      onClick={() => setSelectedUniversity(isSelected ? 'ALL' : alloc.id)}
-                      className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer space-y-2 relative overflow-hidden group hover:scale-[1.01] ${
-                        isSelected
-                          ? 'bg-blue-50/90 dark:bg-blue-950/70 border-blue-500 ring-2 ring-blue-400/30 shadow-md'
-                          : hasBuses
-                          ? 'bg-slate-50/80 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700/80 hover:bg-blue-50/40 dark:hover:bg-blue-950/30 hover:border-blue-300 shadow-2xs'
-                          : 'bg-slate-50/40 dark:bg-slate-800/20 border-slate-200/50 dark:border-slate-800/60 opacity-80 hover:opacity-100 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-1.5">
-                        <div className="min-w-0 flex-1 truncate">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className={`font-mono text-[10.5px] font-black uppercase px-2 py-0.5 rounded-md shadow-2xs ${
-                              hasBuses ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                            }`}>
-                              {alloc.id}
-                            </span>
-                            <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate">
-                              {alloc.label.split(' (')[0]}
-                            </span>
-                            {alloc.isCustom && <span className="text-amber-500 text-[10px]" title="Custom">⭐</span>}
-                          </div>
-                        </div>
-                        {hasBuses && (
-                          <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 shrink-0">
-                            {pct}%
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-baseline justify-between pt-0.5">
-                        <div className="flex items-baseline gap-1">
-                          <span className={`text-2xl sm:text-3xl font-black font-mono ${hasBuses ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`}>
-                            {alloc.count}
-                          </span>
-                          <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                            {language === 'bn' ? 'টি বাস' : 'Buses'}
-                          </span>
-                        </div>
-                        <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
-                          {alloc.seats} {language === 'bn' ? 'সিট' : 'Seats'}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between text-[10.5px] font-semibold pt-1.5 border-t border-slate-200/70 dark:border-slate-700/70 text-slate-500 dark:text-slate-400">
-                        {hasBuses ? (
-                          <>
-                            <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-bold">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                              <span>{alloc.active} {language === 'bn' ? 'সক্রিয়' : 'Ready'}</span>
-                            </span>
-                            {alloc.maintenance > 0 && (
-                              <span className="text-amber-600 dark:text-amber-400 font-bold">
-                                {alloc.maintenance} {language === 'bn' ? 'গ্যারেজ' : 'Garage'}
-                              </span>
-                            )}
-                            <span className="text-blue-600 dark:text-blue-400 font-bold group-hover:underline">
-                              {isSelected ? (language === 'bn' ? '✓ ফিল্টার' : '✓ Active') : (language === 'bn' ? 'ফিল্টার ➔' : 'Filter ➔')}
-                            </span>
-                          </>
-                        ) : (
-                          <div className="flex items-center justify-between w-full text-slate-400 text-[10px]">
-                            <span>{language === 'bn' ? 'বাস তৈরি নেই' : 'No Buses'}</span>
-                            <Link href="/buses/create" className="text-blue-600 hover:underline font-bold" onClick={(e) => e.stopPropagation()}>
-                              {language === 'bn' ? '+ বাস তৈরি' : '+ Create'}
-                            </Link>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
         </div>
       </div>
 
-      {/* 4. Comprehensive Filters (Search + Date Filter + Status + Gender) */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3.5">
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+      {/* 2. Compact Search & Filter Control Bar (Minimal Height, Zero Screen Clutter) */}
+      <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           {/* Main Search Input */}
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
             <input
               type="text"
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               placeholder={language === 'bn' ? 'বাসের নাম, নম্বর (বাস-০১), কোম্পানি, রুট বা নোট দিয়ে খুঁজুন...' : 'Filter buses by name, number, company, route or notes...'}
-              className="w-full pl-9 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+              className="w-full pl-10 pr-9 py-2.5 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl border border-slate-200 dark:border-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
             />
-          </div>
-
-          <div className="flex items-center gap-2 w-full lg:w-auto">
-            <GraduationCap className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-            <select
-              value={selectedUniversity}
-              onChange={(e) => setSelectedUniversity(e.target.value)}
-              className="w-full lg:w-64 text-xs font-bold px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs"
-            >
-              {universityList.map((uni) => (
-                <option key={uni.id} value={uni.id}>
-                  {language === 'bn' ? uni.labelBn : uni.labelEn}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Page Size Selector */}
-          <div className="flex items-center gap-1.5 self-end lg:self-auto text-xs font-bold text-slate-600 dark:text-slate-300">
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">{language === 'bn' ? 'প্রতি পেজে:' : 'Per Page:'}</span>
-            <select
-              value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
-              className="px-2.5 py-2 text-xs font-bold rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500"
-            >
-              <option value={12}>১২ {language === 'bn' ? 'টি' : ''}</option>
-              <option value={24}>২৪ {language === 'bn' ? 'টি' : ''}</option>
-              <option value={48}>৪৮ {language === 'bn' ? 'টি' : ''}</option>
-              <option value={9999}>{language === 'bn' ? 'সবগুলো' : 'All'}</option>
-            </select>
-          </div>
-        </div>
-
-        {/* 📅 PROMINENT 3-WAY DATE FILTER (যাত্রার তারিখ | বুকিং শুরু | বুকিং সমাপ্তি) */}
-        <div className="p-3.5 bg-blue-50/80 dark:bg-blue-950/50 rounded-2xl border border-blue-200 dark:border-blue-900/70 space-y-2.5 text-xs">
-          {/* Top Row: Date Mode Selector Tabs & Custom Input */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 pb-2 border-b border-blue-100 dark:border-blue-900/50">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-black text-blue-950 dark:text-blue-200 flex items-center gap-1.5 shrink-0 mr-1">
-                <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <span>{language === 'bn' ? 'তারিখ ফিল্টার টাইপ:' : 'Date Filter Type:'}</span>
-              </span>
-
-              {/* 3 Date Filter Type Mode Buttons */}
-              {[
-                { id: 'JOURNEY', labelBn: '🚀 যাত্রার তারিখ (Journey Date)', labelEn: '🚀 Journey Date' },
-                { id: 'BOOKING_START', labelBn: '🟢 বুকিং শুরু (Booking Start)', labelEn: '🟢 Booking Opens' },
-                { id: 'BOOKING_END', labelBn: '🔴 বুকিং সমাপ্তি (Booking End)', labelEn: '🔴 Booking Closes' }
-              ].map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => {
-                    setDateFilterType(m.id as any);
-                    setSelectedDateValue('ALL');
-                  }}
-                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
-                    dateFilterType === m.id
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30 ring-2 ring-blue-400/40'
-                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-blue-950/40'
-                  }`}
-                >
-                  {language === 'bn' ? m.labelBn : m.labelEn}
-                </button>
-              ))}
-            </div>
-
-            {/* Custom Date Input Picker */}
-            <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
-              <span className="text-[11px] text-slate-600 dark:text-slate-400 font-bold hidden sm:inline">
-                {language === 'bn' ? 'কাস্টম তারিখ:' : 'Custom Date:'}
-              </span>
-              <input
-                type="date"
-                value={selectedDateValue === 'ALL' ? '' : selectedDateValue}
-                onChange={(e) => setSelectedDateValue(e.target.value || 'ALL')}
-                className="px-3 py-1.5 text-xs font-bold rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs"
-              />
-              {selectedDateValue !== 'ALL' && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedDateValue('ALL')}
-                  className="p-1.5 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-600 hover:bg-rose-200 transition-colors"
-                  title={language === 'bn' ? 'তারিখ ফিল্টার রিসেট করুন' : 'Clear Date Filter'}
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Bottom Row: Dynamic Date Pills based on selected Type */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-            {/* All Dates Pill */}
-            <button
-              type="button"
-              onClick={() => setSelectedDateValue('ALL')}
-              className={`px-3 py-1 rounded-lg font-bold text-[11px] whitespace-nowrap transition-all cursor-pointer shrink-0 ${
-                selectedDateValue === 'ALL'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              {language === 'bn' ? `সকল তারিখ (${buses.length}টি বাস)` : `All Dates (${buses.length} Buses)`}
-            </button>
-
-            {/* Dynamic Dates Pills */}
-            {availableDatesForType.map(({ date, count }) => {
-              const isSelected = selectedDateValue === date;
-              return (
-                <button
-                  key={date}
-                  type="button"
-                  onClick={() => setSelectedDateValue(isSelected ? 'ALL' : date)}
-                  className={`px-3 py-1 rounded-lg font-bold text-[11px] whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                    isSelected
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
-                      : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-blue-200 dark:border-blue-900/60 hover:border-blue-400'
-                  }`}
-                >
-                  <span>📅 {date}</span>
-                  <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] font-bold ${
-                    isSelected ? 'bg-white/30 text-white' : 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                  }`}>
-                    {count} {language === 'bn' ? 'টি' : ''}
-                  </span>
-                </button>
-              );
-            })}
-
-            {availableDatesForType.length === 0 && (
-              <span className="text-slate-500 italic text-[11px]">
-                {language === 'bn' ? 'এই ক্যাটাগরিতে কোনো নির্ধারিত তারিখ পাওয়া যায়নি' : 'No schedules found for this category'}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Quick Filter Pill Tabs (Hotel Package, Status, Gender, Company & Capacity) */}
-        <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
-          {/* Row 1: Hotel & Tour Package + Status & Gender */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            {/* 1. Hotel Tour Package Filter Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
-              <span className="text-xs font-black text-purple-700 dark:text-purple-300 mr-1 flex items-center gap-1 shrink-0">
-                <Sparkles className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
-                <span>{language === 'bn' ? 'আবাসন / প্যাকেজ:' : 'Tour Package:'}</span>
-              </span>
-              {[
-                { id: 'ALL', label: language === 'bn' ? 'সকল প্যাকেজ' : 'All Packages', count: buses.length },
-                { id: 'HOTEL_ONLY', label: language === 'bn' ? '🏨 হোটেল সহ বাস' : '🏨 Hotel Included', count: fleetMetrics.hotelCount },
-                { id: 'BUS_ONLY', label: language === 'bn' ? '🚌 শুধু বাস সার্ভিস' : '🚌 Bus Only', count: fleetMetrics.busOnlyCount }
-              ].map((hp) => {
-                const isSelected = selectedHotelFilter === hp.id;
-                return (
-                  <button
-                    key={hp.id}
-                    type="button"
-                    onClick={() => setSelectedHotelFilter(hp.id as any)}
-                    className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                      isSelected
-                        ? 'bg-purple-700 text-white shadow-md shadow-purple-500/25 ring-2 ring-purple-400/40'
-                        : 'bg-purple-50 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 border border-purple-200 dark:border-purple-800/60 hover:bg-purple-100'
-                    }`}
-                  >
-                    <span>{hp.label}</span>
-                    <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10.5px] font-bold ${
-                      isSelected ? 'bg-white/30 text-white' : 'bg-purple-200/80 dark:bg-purple-900 text-purple-800 dark:text-purple-300'
-                    }`}>
-                      {hp.count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              {/* 2. Operational Status Filter Tabs */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 mr-0.5">{language === 'bn' ? 'স্ট্যাটাস:' : 'Status:'}</span>
-                {[
-                  { id: 'ALL', label: language === 'bn' ? 'সকল' : 'All' },
-                  { id: 'ACTIVE', label: language === 'bn' ? '🟢 সক্রিয়' : '🟢 Active' },
-                  { id: 'MAINTENANCE', label: language === 'bn' ? '🟡 সার্ভিসিং' : '🟡 Maintenance' },
-                  { id: 'INACTIVE', label: language === 'bn' ? '🔴 স্থগিত' : '🔴 Inactive' }
-                ].map((st) => (
-                  <button
-                    key={st.id}
-                    type="button"
-                    onClick={() => setSelectedStatus(st.id)}
-                    className={`px-2.5 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer text-xs ${
-                      selectedStatus === st.id
-                        ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-2xs'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    {st.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* 3. Gender Policy Filter Tabs */}
-              <div className="flex items-center gap-1.5 overflow-x-auto">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 mr-0.5">{language === 'bn' ? 'জেন্ডার:' : 'Gender:'}</span>
-                {['ALL', 'FEMALE', 'MALE', 'MIXED'].map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setSelectedGender(type)}
-                    className={`px-2.5 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer text-xs ${
-                      selectedGender === type
-                        ? type === 'FEMALE' ? 'bg-pink-600 text-white shadow-2xs' : type === 'MALE' ? 'bg-blue-600 text-white shadow-2xs' : 'bg-emerald-600 text-white shadow-2xs'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    {type === 'ALL'
-                      ? language === 'bn' ? 'সকল' : 'All'
-                      : type === 'FEMALE'
-                      ? language === 'bn' ? '👩 ছাত্রী' : 'Female'
-                      : type === 'MALE'
-                      ? language === 'bn' ? '👨 ছাত্র' : 'Male'
-                      : language === 'bn' ? '👥 মিক্সড' : 'Mixed'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Row 2: Transport Company & Seat Capacity Dropdowns (User Requested) */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80">
-            <div className="flex items-center gap-3 flex-wrap">
-              {/* 1. 🏢 Transport Company Dropdown */}
-              <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 min-w-[220px]">
-                <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <label className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider block leading-none">
-                    {language === 'bn' ? 'পরিবহন কোম্পানি (অপারেটর)' : 'Company / Operator'}
-                  </label>
-                  <select
-                    value={selectedCompanyFilter}
-                    onChange={(e) => setSelectedCompanyFilter(e.target.value)}
-                    className="w-full bg-transparent text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none cursor-pointer truncate mt-0.5"
-                  >
-                    <option value="ALL">🏢 {language === 'bn' ? `সকল কোম্পানি (${buses.length}টি বাস)` : `All Companies (${buses.length})`}</option>
-                    {distinctCompanies.map(({ name, count }) => (
-                      <option key={name} value={name}>
-                        {name} {count > 0 ? `(${count}টি বাস)` : '(০টি বাস)'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* 2. 💺 Seat Capacity Dropdown */}
-              <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 min-w-[180px]">
-                <Armchair className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <label className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider block leading-none">
-                    {language === 'bn' ? 'সিট ধারণক্ষমতা' : 'Seat Capacity'}
-                  </label>
-                  <select
-                    value={selectedCapacityFilter}
-                    onChange={(e) => setSelectedCapacityFilter(e.target.value)}
-                    className="w-full bg-transparent text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none cursor-pointer truncate mt-0.5 font-mono"
-                  >
-                    <option value="ALL">💺 {language === 'bn' ? `সকল ধারণক্ষমতা (${buses.length}টি)` : `All Capacities (${buses.length})`}</option>
-                    {distinctCapacities.map(({ capacity, count }) => (
-                      <option key={capacity} value={String(capacity)}>
-                        {capacity} সিট {count > 0 ? `(${count}টি বাস)` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Reset All Filters Button */}
-            {(searchFilter || selectedStatus !== 'ALL' || selectedGender !== 'ALL' || selectedHotelFilter !== 'ALL' || selectedUniversity !== 'ALL' || selectedCompanyFilter !== 'ALL' || selectedCapacityFilter !== 'ALL' || selectedDateValue !== 'ALL') && (
+            {searchFilter && (
               <button
                 type="button"
-                onClick={() => {
-                  setSearchFilter('');
-                  setSelectedStatus('ALL');
-                  setSelectedGender('ALL');
-                  setSelectedHotelFilter('ALL');
-                  setSelectedUniversity('ALL');
-                  setSelectedCompanyFilter('ALL');
-                  setSelectedCapacityFilter('ALL');
-                  setSelectedDateValue('ALL');
-                }}
-                className="px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-100 flex items-center gap-1 font-bold text-xs shrink-0 cursor-pointer transition-all shadow-2xs"
+                onClick={() => setSearchFilter('')}
+                className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>{language === 'bn' ? 'ফিল্টার রিসেট' : 'Reset'}</span>
+                <X className="w-4 h-4" />
               </button>
             )}
           </div>
+
+          {/* Actions: Filter Toggle Button + Reset + View Mode */}
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-between md:justify-end">
+            {/* Primary Filter Toggle Button (User Requested: minimizes by default, opens on click) */}
+            <button
+              type="button"
+              onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+              className={`px-4 py-2.5 rounded-2xl font-bold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer border shadow-2xs ${
+                isFilterPanelOpen || activeFilterCount > 0
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/20'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              <span>{language === 'bn' ? 'ফিল্টার অপশন' : 'Filters'}</span>
+              {activeFilterCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-900 text-[11px] font-black">
+                  {activeFilterCount}
+                </span>
+              )}
+              {isFilterPanelOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+
+            {/* Reset All Filters Button (visible when filters active) */}
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="px-3 py-2.5 rounded-2xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-100 flex items-center gap-1.5 font-bold text-xs shrink-0 cursor-pointer transition-all shadow-2xs"
+                title={language === 'bn' ? 'সকল ফিল্টার রিসেট করুন' : 'Reset All Filters'}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{language === 'bn' ? 'রিসেট' : 'Reset'}</span>
+              </button>
+            )}
+
+            {/* View Switcher: Card View vs Table View */}
+            <div className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('CARD')}
+                className={`p-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === 'CARD'
+                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title={language === 'bn' ? 'কার্ড ভিউ' : 'Card View'}
+              >
+                <Grid3X3 className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('TABLE')}
+                className={`p-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === 'TABLE'
+                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title={language === 'bn' ? 'টেবিল ভিউ' : 'Table View'}
+              >
+                <SlidersHorizontal className="w-4 h-4 rotate-90" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Results Summary Sub-Bar */}
+        <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span>
+              {language === 'bn'
+                ? `মোট ${buses.length} টি বাসের মধ্যে ${filteredBuses.length} টি পাওয়া গেছে (দেখানো হচ্ছে ${paginatedBuses.length} টি)`
+                : `Showing ${paginatedBuses.length} of ${filteredBuses.length} buses (Total: ${buses.length})`}
+            </span>
+            {activeFilterCount > 0 && (
+              <span className="text-blue-600 dark:text-blue-400 font-bold">
+                • {language === 'bn' ? `${activeFilterCount}টি ফিল্টার সক্রিয়` : `${activeFilterCount} filters active`}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+            className="text-blue-600 dark:text-blue-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+          >
+            {isFilterPanelOpen ? (
+              <>
+                <span>{language === 'bn' ? 'ফিল্টার লুকান' : 'Hide Filters'}</span>
+                <ChevronUp className="w-3.5 h-3.5" />
+              </>
+            ) : (
+              <>
+                <span>{language === 'bn' ? 'ফিল্টার অপশন দেখুন' : 'Show Filter Options'}</span>
+                <ChevronDown className="w-3.5 h-3.5" />
+              </>
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Showing Results Count Indicator */}
-      <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
-        <span>
-          {language === 'bn'
-            ? `ফিল্টারকৃত ফলাফল: মোট ${filteredBuses.length} টি বাসের মধ্যে ${paginatedBuses.length} টি দেখানো হচ্ছে`
-            : `Showing ${paginatedBuses.length} of ${filteredBuses.length} matching buses`}
-        </span>
-        {filteredBuses.length === 0 && (
-          <span className="text-rose-600 dark:text-rose-400 font-bold">
-            {language === 'bn' ? 'কোনো বাস পাওয়া যায়নি! ফিল্টার পরিবর্তন করুন।' : 'No buses match your filter criteria.'}
-          </span>
-        )}
-      </div>
-
-      {/* 4. Bus Fleet Cards Grid with Scalable Pagination */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
-        {paginatedBuses.map((bus) => {
-          const hotelInfo = getHotelInfo(bus.notes);
-          const scheduleInfo = getScheduleInfo(bus.notes, bus);
-          const routeInfo = getRouteInfo(bus.notes);
-          const fareInfo = getFareInfo(bus.notes);
-          const busUni = getBusUniversity(bus);
-          const isPendingCompany = !bus.operator || bus.operator.includes('Pending') || bus.operator.includes('পরে নির্ধারণ');
-          const busStatus = (bus.status || 'ACTIVE').toUpperCase();
-          const isFemale = bus.busType === 'FEMALE';
-          const isMale = bus.busType === 'MALE';
-
-          return (
-            <Card
-              key={bus.id}
-              className={`h-full hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 flex flex-col justify-between group rounded-3xl overflow-hidden border-2 ${
-                hotelInfo
-                  ? 'border-purple-400 dark:border-purple-600 bg-gradient-to-b from-purple-50/70 via-white to-purple-50/30 dark:from-purple-950/40 dark:via-slate-900 dark:to-purple-950/30 shadow-lg shadow-purple-500/15 hover:border-purple-500 ring-2 ring-purple-300/40 dark:ring-purple-700/40'
-                  : isFemale
-                  ? 'border-pink-300 dark:border-pink-800/80 bg-gradient-to-b from-pink-50/40 via-white to-pink-50/20 dark:from-pink-950/30 dark:via-slate-900 dark:to-pink-950/10 shadow-sm shadow-pink-500/10 hover:border-pink-500'
-                  : isMale
-                  ? 'border-blue-300 dark:border-blue-800/80 bg-gradient-to-b from-blue-50/40 via-white to-blue-50/20 dark:from-blue-950/30 dark:via-slate-900 dark:to-blue-950/10 shadow-sm shadow-blue-500/10 hover:border-blue-500'
-                  : 'border-emerald-300 dark:border-emerald-800/80 bg-white dark:bg-slate-900 shadow-sm shadow-emerald-500/10 hover:border-emerald-500'
-              }`}
-            >
-              {/* Card Container Header */}
-              <div className={`p-5 pb-3.5 border-b space-y-3 ${
-                hotelInfo
-                  ? 'border-purple-200 dark:border-purple-800/60'
-                  : 'border-slate-100 dark:border-slate-800/80'
-              }`}>
-                {/* Top Row: Bus Code, Prominent Journey Date, Hotel Tag, Status */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`font-mono text-sm font-black px-3 py-1 rounded-xl border shadow-2xs ${
-                      hotelInfo
-                        ? 'text-purple-950 dark:text-purple-200 bg-purple-100 dark:bg-purple-950/90 border-purple-300 dark:border-purple-700'
-                        : isFemale
-                        ? 'text-pink-700 dark:text-pink-300 bg-pink-100 dark:bg-pink-950/80 border-pink-200 dark:border-pink-800'
-                        : isMale
-                        ? 'text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-950/80 border-blue-200 dark:border-blue-800'
-                        : 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800'
-                    }`}>
-                      🚌 {bus.busNumber}
-                    </span>
-
-                    {/* PROMINENT JOURNEY DATE BADGE */}
-                    <span className={`font-mono text-sm font-black px-3 py-1 rounded-xl border flex items-center gap-1.5 shadow-2xs ${
-                      hotelInfo
-                        ? 'text-purple-950 dark:text-purple-100 bg-purple-50/80 dark:bg-purple-950/60 border-purple-200 dark:border-purple-800'
-                        : isFemale
-                        ? 'text-pink-950 dark:text-pink-100 bg-pink-50 dark:bg-pink-950/60 border-pink-200 dark:border-pink-800'
-                        : isMale
-                        ? 'text-blue-950 dark:text-blue-100 bg-blue-50 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800'
-                        : 'text-emerald-950 dark:text-emerald-100 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800'
-                    }`}>
-                      <Calendar className={`w-4 h-4 ${hotelInfo ? 'text-purple-600 dark:text-purple-400' : isFemale ? 'text-pink-600' : isMale ? 'text-blue-600' : 'text-emerald-600'}`} />
-                      <span>{scheduleInfo.departureDate}</span>
-                    </span>
-
-                    {/* Prominent VIP Hotel Indicator Pill */}
-                    {hotelInfo && (
-                      <span className="text-xs font-black bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800 text-white border border-purple-400/60 px-3 py-1 rounded-xl flex items-center gap-1.5 shadow-md shadow-purple-500/25 ring-1 ring-purple-300/40 animate-pulse">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                        <span>{language === 'bn' ? '🏨 হোটেল স্পেশাল প্যাকেজ' : 'Hotel Special'}</span>
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Status Badge */}
-                  <Badge
-                    variant={busStatus === 'ACTIVE' ? 'success' : busStatus === 'MAINTENANCE' ? 'warning' : 'default'}
-                    className="text-xs px-3 py-1 font-bold flex items-center gap-1.5 shrink-0"
+      {/* 3. Collapsible Filter Drawer (User requested: only shows when filter button is clicked) */}
+      {isFilterPanelOpen && (
+        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+          {/* Detailed Filters Box */}
+          <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-3xl border-2 border-blue-200/80 dark:border-blue-900/60 shadow-lg shadow-blue-500/5 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                  {language === 'bn' ? '🎯 ফ্লিট ফিল্টারিং ও স্পেসিফিকেশন প্যানেল' : '🎯 Fleet Filtering & Specification Panel'}
+                </h4>
+              </div>
+              <div className="flex items-center gap-2">
+                {activeFilterCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <span className={`w-2 h-2 rounded-full ${
-                      busStatus === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' : busStatus === 'MAINTENANCE' ? 'bg-amber-500' : 'bg-slate-400'
-                    }`} />
-                    <span>
-                      {busStatus === 'ACTIVE'
-                        ? (language === 'bn' ? 'সক্রিয়' : 'ACTIVE')
-                        : busStatus === 'MAINTENANCE'
-                        ? (language === 'bn' ? 'সার্ভিসিং' : 'MAINTENANCE')
-                        : (language === 'bn' ? 'স্থগিত' : 'INACTIVE')}
-                    </span>
-                  </Badge>
-                </div>
+                    <RotateCcw className="w-3 h-3" />
+                    <span>{language === 'bn' ? 'সব মুছুন' : 'Clear All'}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsFilterPanelOpen(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  title={language === 'bn' ? 'লুকান' : 'Close'}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
 
-                {/* Title & Gender Badge */}
-                <div className="flex items-start justify-between gap-2 min-h-[40px]">
-                  <h3 className={`text-lg sm:text-xl font-black text-slate-900 dark:text-white transition-colors leading-snug line-clamp-2 ${
-                    hotelInfo
-                      ? 'group-hover:text-purple-600 dark:group-hover:text-purple-400'
-                      : isFemale
-                      ? 'group-hover:text-pink-600'
-                      : isMale
-                      ? 'group-hover:text-blue-600'
-                      : 'group-hover:text-emerald-600'
-                  }`}>
-                    {bus.busName}
-                  </h3>
-                  <span className={`text-xs font-black px-3 py-1 rounded-xl shadow-2xs whitespace-nowrap shrink-0 text-white ${
-                    isFemale
-                      ? 'bg-pink-600 shadow-pink-500/20'
-                      : isMale
-                      ? 'bg-blue-600 shadow-blue-500/20'
-                      : 'bg-emerald-600 shadow-emerald-500/20'
-                  }`}>
-                    {isFemale
-                      ? (language === 'bn' ? '👩 শুধু ছাত্রী' : 'Female Only')
-                      : isMale
-                      ? (language === 'bn' ? '👨 শুধু ছাত্র' : 'Male Only')
-                      : (language === 'bn' ? '👥 মিক্সড বাস' : 'Mixed')}
+            {/* Date Filter Strip */}
+            <div className="space-y-2 bg-slate-50/80 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                    {language === 'bn' ? 'তারিখ ভিত্তিক ফিল্টার:' : 'Date Filter:'}
                   </span>
                 </div>
-
-                {/* University & Route Strip */}
-                <div className={`p-3 rounded-2xl border space-y-1.5 ${
-                  hotelInfo
-                    ? 'bg-purple-100/70 dark:bg-purple-950/60 border-purple-200/90 dark:border-purple-800/80'
-                    : isFemale
-                    ? 'bg-pink-50/70 dark:bg-pink-950/40 border-pink-200/80 dark:border-pink-900/50'
-                    : isMale
-                    ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-200/80 dark:border-blue-900/50'
-                    : 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-200/80 dark:border-emerald-900/50'
-                }`}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className={`font-black flex items-center gap-2 truncate ${
-                      hotelInfo
-                        ? 'text-purple-950 dark:text-purple-100'
-                        : isFemale
-                        ? 'text-pink-950 dark:text-pink-100'
-                        : isMale
-                        ? 'text-blue-950 dark:text-blue-100'
-                        : 'text-emerald-950 dark:text-emerald-100'
-                    }`}>
-                      <GraduationCap className={`w-4 h-4 shrink-0 ${hotelInfo ? 'text-purple-600 dark:text-purple-400' : isFemale ? 'text-pink-600' : isMale ? 'text-blue-600' : 'text-emerald-600'}`} />
-                      <span className="truncate">{busUni?.nameBn || bus.targetUniversity || 'বিশ্ববিদ্যালয় ভর্তি কোচ'}</span>
-                    </span>
-                    {busUni?.isCustom && (
-                      <span className="text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 px-2 py-0.5 rounded-md shrink-0">
-                        কাস্টম
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 font-bold truncate">
-                    <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                    <span className="truncate">
-                      {routeInfo
-                        ? `${routeInfo.origin} ➔ ${routeInfo.destination}`
-                        : bus.routeDestination || 'ঢাকা ➔ বিশ্ববিদ্যালয় কেন্দ্র'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 2. Body Details (Timings, Specs, Hotel/Route notes) */}
-              <div className="p-5 pt-3.5 space-y-3.5 flex-1 flex flex-col justify-between text-sm">
-                <div className="space-y-3">
-                  {/* Clean Timings & Schedule Box */}
-                  <div className={`p-3.5 rounded-2xl border space-y-2.5 ${
-                    hotelInfo
-                      ? 'bg-purple-50/50 dark:bg-purple-950/40 border-purple-100 dark:border-purple-800/60'
-                      : 'bg-slate-50 dark:bg-slate-800/80 border-slate-100 dark:border-slate-700/60'
-                  }`}>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-slate-500 dark:text-slate-400 block font-semibold mb-0.5">{language === 'bn' ? '🚀 ছাড়ার সময়:' : 'Departure:'}</span>
-                        <span className="font-black text-slate-900 dark:text-white font-mono text-sm sm:text-base">{scheduleInfo.departureTime}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 dark:text-slate-400 block font-semibold mb-0.5">{language === 'bn' ? '⏱️ রিপোর্টিং:' : 'Reporting:'}</span>
-                        <span className="font-bold text-slate-800 dark:text-slate-200 font-mono text-sm">{scheduleInfo.reportingTime}</span>
-                      </div>
-                    </div>
-
-                    {/* Booking Window & Arrival */}
-                    <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/50 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs text-slate-600 dark:text-slate-300 font-medium">
-                      <span>🎟️ বুকিং: {scheduleInfo.bookingOpens} হতে {scheduleInfo.bookingCloses}</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">🏁 {scheduleInfo.estArrival}</span>
-                    </div>
-                  </div>
-
-                  {/* 1. Dedicated Transport Company / Vendor Strip */}
-                  <div className={`p-3 rounded-2xl border flex items-center justify-between gap-2 text-xs ${
-                    isPendingCompany
-                      ? 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200'
-                      : 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60 text-emerald-950 dark:text-emerald-100'
-                  }`}>
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className={`p-2 rounded-xl shrink-0 ${
-                        isPendingCompany ? 'bg-amber-100 dark:bg-amber-900/60' : 'bg-emerald-100 dark:bg-emerald-900/60'
-                      }`}>
-                        <Building2 className={`w-4 h-4 ${
-                          isPendingCompany ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
-                        }`} />
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block leading-tight">
-                          {language === 'bn' ? 'পরিবহন কোম্পানি:' : 'Bus Operator Company:'}
-                        </span>
-                        <span className={`font-black text-xs sm:text-sm block truncate mt-0.5 ${
-                          isPendingCompany ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-white'
-                        }`}>
-                          {bus.operator || bus.operator_name || bus.company || 'পরে নির্ধারণ করা হবে'}
-                        </span>
-                      </div>
-                    </div>
+                <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[11px] font-bold self-start sm:self-auto">
+                  {[
+                    { type: 'JOURNEY', labelBn: '🚌 যাত্রার তারিখ', labelEn: '🚌 Trip Date' },
+                    { type: 'BOOKING_START', labelBn: '🟢 বুকিং শুরু', labelEn: '🟢 Booking Open' },
+                    { type: 'BOOKING_END', labelBn: '🔴 বুকিং শেষ', labelEn: '🔴 Booking Close' }
+                  ].map((t) => (
                     <button
+                      key={t.type}
                       type="button"
-                      onClick={() => handleOpenAssignCompany(bus)}
-                      className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 text-xs font-bold shrink-0 flex items-center gap-1 shadow-2xs cursor-pointer hover:scale-105 transition-all"
-                      title={language === 'bn' ? 'কোম্পানি পরিবর্তন / নির্ধারণ করুন' : 'Assign / Change Company'}
+                      onClick={() => { setDateFilterType(t.type as any); setSelectedDateValue('ALL'); }}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        dateFilterType === t.type
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
                     >
-                      <Edit2 className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-                      <span>{isPendingCompany ? (language === 'bn' ? 'নির্ধারণ' : 'Assign') : (language === 'bn' ? 'পরিবর্তন' : 'Change')}</span>
+                      {language === 'bn' ? t.labelBn : t.labelEn}
                     </button>
-                  </div>
+                  ))}
+                </div>
+              </div>
 
-                  {/* 2. Specs Row (Capacity, Fare) */}
-                  <div className="grid grid-cols-2 gap-2 text-center text-xs">
-                    {/* Seats */}
-                    <div className={`p-2.5 rounded-2xl border flex flex-col justify-between ${
-                      hotelInfo
-                        ? 'bg-purple-50/60 dark:bg-purple-950/40 border-purple-100 dark:border-purple-800/60'
-                        : 'bg-slate-50 dark:bg-slate-800/80 border-slate-100 dark:border-slate-700/60'
-                    }`}>
-                      <span className="text-xs text-slate-500 font-bold block">{language === 'bn' ? 'সিট সংখ্যা' : 'Seats'}</span>
-                      <span className={`font-mono font-black text-sm sm:text-base block mt-0.5 ${
-                        hotelInfo
-                          ? 'text-purple-700 dark:text-purple-300'
-                          : isFemale
-                          ? 'text-pink-600 dark:text-pink-400'
-                          : isMale
-                          ? 'text-blue-600 dark:text-blue-400'
-                          : 'text-emerald-600 dark:text-emerald-400'
+              {/* Horizontal Date Picker Buttons */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDateValue('ALL')}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all cursor-pointer ${
+                    selectedDateValue === 'ALL'
+                      ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-2xs'
+                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  {language === 'bn' ? 'সকল তারিখ' : 'All Dates'}
+                </button>
+                {availableDatesForType.map(({ date, count }) => {
+                  const isSelected = selectedDateValue === date;
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      onClick={() => setSelectedDateValue(isSelected ? 'ALL' : date)}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-blue-50/60 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <span>📅 {date}</span>
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                        isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
                       }`}>
-                        {bus.capacity} টি
+                        {count}
                       </span>
-                    </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-                    {/* Fare */}
-                    <div className={`p-2.5 rounded-2xl border flex flex-col justify-between ${
-                      hotelInfo
-                        ? 'bg-purple-50/60 dark:bg-purple-950/40 border-purple-100 dark:border-purple-800/60'
-                        : 'bg-slate-50 dark:bg-slate-800/80 border-slate-100 dark:border-slate-700/60'
-                    }`}>
-                      <span className="text-xs text-slate-500 font-bold block">{language === 'bn' ? 'ভাড়া / প্যাকেজ' : 'Fare'}</span>
-                      <span className={`font-black text-xs sm:text-sm truncate block mt-0.5 ${
-                        hotelInfo ? 'text-purple-700 dark:text-purple-300' : 'text-emerald-600 dark:text-emerald-400'
-                      }`}>
-                        {fareInfo || (hotelInfo ? 'প্যাকেজ' : 'স্ট্যান্ডার্ড')}
-                      </span>
-                    </div>
+            {/* Quick Status, Policy & Hotel Filter Chips */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Status Chips */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block uppercase tracking-wider">
+                  {language === 'bn' ? 'বাসের স্ট্যাটাস' : 'Bus Status'}
+                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[
+                    { id: 'ALL', labelBn: 'সব', labelEn: 'All' },
+                    { id: 'ACTIVE', labelBn: 'সক্রিয়', labelEn: 'Active' },
+                    { id: 'MAINTENANCE', labelBn: 'সার্ভিসিং', labelEn: 'Maintenance' },
+                    { id: 'INACTIVE', labelBn: 'স্থগিত', labelEn: 'Inactive' }
+                  ].map((st) => (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() => setSelectedStatus(st.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        selectedStatus === st.id
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {language === 'bn' ? st.labelBn : st.labelEn}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Gender / Policy Chips */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block uppercase tracking-wider">
+                  {language === 'bn' ? 'যাত্রী পলিসি / জেন্ডার' : 'Passenger Policy'}
+                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[
+                    { id: 'ALL', labelBn: 'সব', labelEn: 'All' },
+                    { id: 'MIXED', labelBn: '👥 মিক্সড', labelEn: 'Mixed' },
+                    { id: 'FEMALE', labelBn: '👩 ছাত্রী', labelEn: 'Female' },
+                    { id: 'MALE', labelBn: '👨 ছাত্র', labelEn: 'Male' }
+                  ].map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => setSelectedGender(g.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        selectedGender === g.id
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {language === 'bn' ? g.labelBn : g.labelEn}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Hotel Tour Package Filter Chips */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block uppercase tracking-wider">
+                  {language === 'bn' ? 'হোটেল ট্যুর প্যাকেজ' : 'Hotel Tour Package'}
+                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[
+                    { id: 'ALL', labelBn: 'সব', labelEn: 'All' },
+                    { id: 'HOTEL_ONLY', labelBn: '🏨 হোটেল সহ', labelEn: 'Hotel Only' },
+                    { id: 'BUS_ONLY', labelBn: '🚌 শুধু বাস', labelEn: 'Bus Only' }
+                  ].map((hp) => (
+                    <button
+                      key={hp.id}
+                      type="button"
+                      onClick={() => setSelectedHotelFilter(hp.id as any)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        selectedHotelFilter === hp.id
+                          ? 'bg-purple-600 text-white shadow-2xs'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {language === 'bn' ? hp.labelBn : hp.labelEn}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Dropdowns Row: University, Company, Admission Unit, Capacity */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1 border-t border-slate-200/80 dark:border-slate-800">
+              {/* Target University Dropdown */}
+              <div className="space-y-1">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">
+                  🏛️ {language === 'bn' ? 'টার্গেট বিশ্ববিদ্যালয়:' : 'Target University:'}
+                </span>
+                <select
+                  value={selectedUniversity}
+                  onChange={(e) => setSelectedUniversity(e.target.value)}
+                  className="w-full text-xs font-bold px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs truncate"
+                >
+                  {universityList.map((uni) => (
+                    <option key={uni.id} value={uni.id}>
+                      {language === 'bn' ? uni.labelBn : uni.labelEn}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Vendor / Operator Dropdown */}
+              <div className="space-y-1">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">
+                  🏢 {language === 'bn' ? 'কোম্পানি / অপারেটর:' : 'Company / Operator:'}
+                </span>
+                <select
+                  value={selectedCompanyFilter}
+                  onChange={(e) => setSelectedCompanyFilter(e.target.value)}
+                  className="w-full text-xs font-bold px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs truncate"
+                >
+                  <option value="ALL">🏢 {language === 'bn' ? 'সকল কোম্পানি' : 'All Companies'}</option>
+                  <option value="PENDING">⏳ {language === 'bn' ? 'অপেক্ষমাণ (কোম্পানি ছাড়া)' : 'Pending Vendor'}</option>
+                  {companyList.map((comp) => (
+                    <option key={comp} value={comp}>
+                      {comp}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Admission Exam Unit Dropdown */}
+              <div className="space-y-1">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">
+                  🎯 {language === 'bn' ? 'ভর্তি পরীক্ষার ইউনিট:' : 'Exam Unit:'}
+                </span>
+                <select
+                  value={selectedUnitFilter}
+                  onChange={(e) => setSelectedUnitFilter(e.target.value)}
+                  className="w-full text-xs font-bold px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs truncate"
+                >
+                  <option value="ALL">📝 {language === 'bn' ? `সকল ইউনিট (${buses.length}টি বাস)` : `All Units (${buses.length})`}</option>
+                  {distinctUnits.map(({ unit, count }) => (
+                    <option key={unit} value={unit}>
+                      {unit} ({count}টি বাস)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Seat Capacity Dropdown */}
+              <div className="space-y-1">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">
+                  💺 {language === 'bn' ? 'সিট ক্যাপাসিটি:' : 'Seat Capacity:'}
+                </span>
+                <select
+                  value={selectedCapacityFilter}
+                  onChange={(e) => setSelectedCapacityFilter(e.target.value)}
+                  className="w-full text-xs font-bold px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="ALL">💺 {language === 'bn' ? 'সকল ক্যাপাসিটি' : 'All Capacities'}</option>
+                  {distinctCapacities.map(({ capacity, count }) => (
+                    <option key={capacity} value={String(capacity)}>
+                      {capacity} {language === 'bn' ? 'সিট' : 'Seats'} ({count}টি বাস)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* University Fleet Allocation Matrix Box */}
+          <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 shadow-2xs">
+                  <GraduationCap className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                    {language === 'bn' ? '🎓 বিশ্ববিদ্যালয় কেন্দ্রভিত্তিক বাস বরাদ্দ ও ম্যাট্রিক্স' : '🎓 University Allocation Matrix'}
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {language === 'bn' ? 'যে কোনো বিশ্ববিদ্যালয়ে ক্লিক করে ওই কেন্দ্রের বাসের তালিকা ফিল্টার করুন।' : 'Click any university to filter buses for that exam center.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setUniMatrixViewMode('ACTIVE')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                      uniMatrixViewMode === 'ACTIVE'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {language === 'bn' ? `🟢 বরাদ্দকৃত (${fleetMetrics.activeAllocations.length})` : `🟢 Assigned (${fleetMetrics.activeAllocations.length})`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUniMatrixViewMode('ALL')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                      uniMatrixViewMode === 'ALL'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {language === 'bn' ? `🌐 সকল (${uniList.length})` : `🌐 All (${uniList.length})`}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsUniManagerOpen(true)}
+                  className="px-3 py-1.5 text-xs font-bold rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{language === 'bn' ? 'নতুন বিশ্ববিদ্যালয়' : 'Add'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* University Cards Grid */}
+            {(() => {
+              const listToRender = (uniMatrixViewMode === 'ACTIVE'
+                ? fleetMetrics.activeAllocations.map((a: any) => ({
+                    id: a.id,
+                    nameBn: a.label,
+                    shortCode: a.id,
+                    count: a.count,
+                    seats: a.seats,
+                    active: a.active,
+                    maintenance: a.maintenance
+                  }))
+                : uniList
+                    .filter((u: any) => {
+                      const matchesSearch = !uniSearchQuery.trim() || 
+                        u.nameBn.toLowerCase().includes(uniSearchQuery.toLowerCase()) || 
+                        u.id.toLowerCase().includes(uniSearchQuery.toLowerCase());
+                      const matchesCluster = selectedCluster === 'ALL' || u.cluster === selectedCluster;
+                      return matchesSearch && matchesCluster;
+                    })
+                    .map((u: any) => {
+                      const info = fleetMetrics.uniMap[u.id] || { count: 0, seats: 0, active: 0, maintenance: 0 };
+                      return {
+                        id: u.id,
+                        nameBn: u.nameBn,
+                        shortCode: u.id,
+                        count: info.count,
+                        seats: info.seats,
+                        active: info.active,
+                        maintenance: info.maintenance
+                      };
+                    })
+              );
+
+              if (listToRender.length === 0) {
+                return (
+                  <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 text-center space-y-1">
+                    <p className="text-xs font-bold text-slate-500">
+                      {language === 'bn' ? 'কোনো বিশ্ববিদ্যালয় পাওয়া যায়নি।' : 'No universities match your search.'}
+                    </p>
                   </div>
+                );
+              }
 
-                  {/* Feature Tag: Hotel info if hotel package, or Direct Journey for standard */}
-                  <div className="p-2.5 rounded-2xl text-xs min-h-[46px] flex items-center">
-                    {hotelInfo ? (
-                      <div className="w-full bg-gradient-to-r from-purple-100/90 via-indigo-50 to-purple-100/90 dark:from-purple-950/80 dark:via-indigo-950/60 dark:to-purple-950/80 p-3 rounded-2xl border-2 border-purple-300 dark:border-purple-700 text-purple-950 dark:text-purple-100 shadow-xs">
-                        <span className="font-black text-xs mb-0.5 flex items-center gap-1.5 text-purple-900 dark:text-purple-200">
-                          <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                          <span>🏨 অন্তর্ভুক্ত হোটেল ও আবাসন সুবিধা:</span>
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 pt-1 max-h-64 overflow-y-auto pr-1">
+                  {listToRender.map((alloc) => {
+                    const isSelected = selectedUniversity === alloc.id;
+                    const hasBuses = alloc.count > 0;
+                    return (
+                      <div
+                        key={alloc.id}
+                        onClick={() => setSelectedUniversity(isSelected ? 'ALL' : alloc.id)}
+                        className={`p-3 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between group ${
+                          isSelected
+                            ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-600 dark:border-blue-500 ring-2 ring-blue-400/20 shadow-sm'
+                            : hasBuses
+                            ? 'bg-slate-50/90 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 hover:border-blue-400 hover:bg-blue-50/40'
+                            : 'bg-white dark:bg-slate-900 border-slate-200/60 dark:border-slate-800 opacity-60 hover:opacity-100'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <span className="font-mono text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                            {alloc.shortCode}
+                          </span>
+                          <span className="text-xs font-black font-mono text-slate-900 dark:text-white">
+                            {alloc.count} {language === 'bn' ? 'বাস' : 'Buses'}
+                          </span>
+                        </div>
+                        <h5 className="font-bold text-xs text-slate-900 dark:text-white truncate" title={alloc.nameBn}>
+                          {alloc.nameBn}
+                        </h5>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-1 mt-1 border-t border-slate-200 dark:border-slate-800 font-semibold">
+                          <span>{alloc.seats} সিট</span>
+                          <span className="text-blue-600 dark:text-blue-400 font-bold">
+                            {isSelected ? '✓ সক্রিয়' : 'ফিল্টার ➔'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* Bottom Drawer Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-rose-600 flex items-center gap-1 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>{language === 'bn' ? 'সকল ফিল্টার মুছুন' : 'Reset All Filters'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsFilterPanelOpen(false)}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+              >
+                <ChevronUp className="w-4 h-4" />
+                <span>{language === 'bn' ? 'ফিল্টার সংকুচিত করুন' : 'Minimize Filters'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Bus Fleet Display: Card Grid OR Table View */}
+      {viewMode === 'CARD' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
+          {paginatedBuses.map((bus) => {
+            const hotelInfo = getHotelInfo(bus.notes);
+            const scheduleInfo = getScheduleInfo(bus.notes, bus);
+            const routeInfo = getRouteInfo(bus.notes, bus);
+            const fareInfo = getFareInfo(bus.notes);
+            const fareDetails = getBusFareDetails(bus);
+            const busUni = getBusUniversity(bus);
+            const examUnitInfo = getExamUnitInfo(bus);
+            const rawOp = bus.operator || '';
+            const isPendingCompany = !rawOp || rawOp === 'Central Transport Office' || rawOp.includes('Pending') || rawOp.includes('পরে নির্ধারণ');
+            const busStatus = (bus.status || 'ACTIVE').toUpperCase();
+            const isFemale = bus.busType === 'FEMALE';
+            const isMale = bus.busType === 'MALE';
+            const bookingWindow = getBookingWindowStatus(scheduleInfo.bookingOpens, scheduleInfo.bookingCloses);
+
+            return (
+              <Card
+                key={bus.id}
+                className={`h-full hover:shadow-xl hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between group rounded-3xl overflow-hidden border-2 bg-white dark:bg-slate-900 shadow-sm ${
+                  hotelInfo
+                    ? 'border-purple-200 dark:border-purple-800/70 shadow-purple-500/5'
+                    : isFemale
+                    ? 'border-pink-200 dark:border-pink-800/70 shadow-pink-500/5'
+                    : isMale
+                    ? 'border-blue-200 dark:border-blue-800/70 shadow-blue-500/5'
+                    : 'border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                {/* ═══════════════════════════════════════════════════════ */}
+                {/* 1. TOP HERO BANNER: TARGET UNIVERSITY & ADMISSION UNIT */}
+                {/* ═══════════════════════════════════════════════════════ */}
+                <div className={`p-4 sm:p-5 pb-4 border-b transition-colors ${
+                  hotelInfo
+                    ? 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800/60'
+                    : isFemale
+                    ? 'bg-pink-50/70 dark:bg-pink-950/40 border-pink-200 dark:border-pink-800/60'
+                    : isMale
+                    ? 'bg-sky-50/70 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800/60'
+                    : 'bg-slate-50/90 dark:bg-slate-800/70 border-slate-200 dark:border-slate-800'
+                }`}>
+                  {/* Top row: University Name & Badges */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="text-[10.5px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1">
+                          <GraduationCap className="w-3.5 h-3.5" />
+                          <span>{language === 'bn' ? 'টার্গেট বিশ্ববিদ্যালয়:' : 'Target University:'}</span>
                         </span>
-                        <p className="line-clamp-2 text-xs leading-snug font-bold text-purple-950 dark:text-purple-100">{hotelInfo}</p>
+                        {busUni?.isCustom && (
+                          <span className="text-[9.5px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-700">
+                            কাস্টম
+                          </span>
+                        )}
                       </div>
-                    ) : (
-                      <div className="w-full bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/40 text-slate-600 dark:text-slate-300">
-                        <span className="font-black block text-xs mb-0.5">🚌 বাস সার্ভিস:</span>
-                        <p className="line-clamp-1 text-xs leading-tight font-medium">{bus.notes || 'সরাসরি বিশ্ববিদ্যালয়ের জন্য ডেডিকেটেড এক্সক্লুসিভ কোচ'}</p>
+                      <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-snug break-words" title={busUni?.nameBn || bus.targetUniversity || 'বিশ্ববিদ্যালয় ভর্তি কোচ'}>
+                        {busUni?.nameBn || bus.targetUniversity || 'বিশ্ববিদ্যালয় ভর্তি কোচ'}
+                      </h3>
+                    </div>
+
+                    {/* Status & Gender Badges */}
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <Badge
+                        suppressHydrationWarning
+                        variant={busStatus === 'ACTIVE' ? 'success' : busStatus === 'MAINTENANCE' ? 'warning' : 'default'}
+                        className="text-[11px] px-2.5 py-0.5 font-bold flex items-center gap-1.5 shadow-xs"
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          busStatus === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' : busStatus === 'MAINTENANCE' ? 'bg-amber-500' : 'bg-slate-400'
+                        }`} />
+                        <span>
+                          {busStatus === 'ACTIVE'
+                            ? (language === 'bn' ? 'সক্রিয়' : 'ACTIVE')
+                            : busStatus === 'MAINTENANCE'
+                            ? (language === 'bn' ? 'সার্ভিসিং' : 'MAINTENANCE')
+                            : (language === 'bn' ? 'স্থগিত' : 'INACTIVE')}
+                        </span>
+                      </Badge>
+
+                      <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-2xs whitespace-nowrap">
+                        {isFemale
+                          ? (language === 'bn' ? '👩 শুধু ছাত্রী' : 'Female')
+                          : isMale
+                          ? (language === 'bn' ? '👨 শুধু ছাত্র' : 'Male')
+                          : (language === 'bn' ? '👥 মিক্সড' : 'Mixed')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* High-Contrast Admission Exam Unit Badge */}
+                  <div className="mt-3 p-2.5 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-2 shadow-2xs">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="text-lg shrink-0">🎯</span>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block uppercase tracking-wider">
+                          {language === 'bn' ? 'ভর্তি পরীক্ষার ইউনিট' : 'Admission Exam Unit'}
+                        </span>
+                        <span className="font-mono text-xs sm:text-sm font-black text-blue-700 dark:text-blue-400 break-words block leading-snug">
+                          {examUnitInfo || (language === 'bn' ? 'সাধারণ (সকল ইউনিট)' : 'General (All Units)')}
+                        </span>
                       </div>
+                    </div>
+                    {hotelInfo && (
+                      <span className="text-[10px] font-black bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 px-2 py-1 rounded-xl border border-purple-200 dark:border-purple-800 shrink-0 flex items-center gap-1 shadow-2xs">
+                        <Sparkles className="w-3 h-3 text-purple-600 dark:text-amber-300" />
+                        <span>হোটেল সহ</span>
+                      </span>
                     )}
                   </div>
                 </div>
 
-                {/* 3. Action Buttons - WITH DIRECT ONE-CLICK TICKET ISSUE CTA */}
-                <div className="pt-3.5 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
-                  {/* Primary Direct Issue Ticket Button */}
-                  <Link
-                    href={`/bookings/new?tripId=${bus.id}`}
-                    className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-xs sm:text-sm shadow-md shadow-blue-500/25 flex items-center justify-center gap-2 transition-all transform active:scale-98 cursor-pointer"
-                  >
-                    <Ticket className="w-4 h-4 text-white" />
-                    <span>{language === 'bn' ? '🎟️ সরাসরি টিকিট ইস্যু করুন (ধাপ ১-৫)' : '🎟️ Direct Issue Ticket'}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </Link>
-
-                  {/* Secondary Actions Bar */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenAssignCompany(bus)}
-                        className="px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 border border-emerald-300 dark:border-emerald-800 transition-colors flex items-center gap-1 text-[11px] font-bold cursor-pointer"
-                        title={language === 'bn' ? 'কোম্পানি নির্ধারণ' : 'Assign Vendor'}
-                      >
-                        <Building2 className="w-3.5 h-3.5" />
-                        <span>{language === 'bn' ? 'কোম্পানি' : 'Vendor'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEdit(bus)}
-                        className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
-                        title={t.editBus}
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeletingBus(bus)}
-                        className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
-                        title={t.deleteBus}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                {/* ═══════════════════════════════════════════════════════ */}
+                {/* 2. BUS IDENTITY & ROUTE FLOW STRIP                      */}
+                {/* ═══════════════════════════════════════════════════════ */}
+                <div className="p-4 sm:p-5 py-3.5 bg-slate-50/60 dark:bg-slate-800/40 border-b border-slate-200/80 dark:border-slate-800 space-y-2.5">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono text-xs sm:text-sm font-black px-2.5 py-1 rounded-xl bg-blue-600 text-white shadow-2xs">
+                          🚌 {bus.busNumber}
+                        </span>
+                        <span className="font-mono text-[10.5px] font-black px-2 py-0.5 rounded-lg bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 shadow-2xs" title={language === 'bn' ? 'অ্যাকাউন্টিং ও অডিট ইউনিক কোড' : 'Unique Audit Code'}>
+                          🏷️ {bus.uniqueCode || extractUniqueCode(bus.notes, bus.busNumber, bus.id)}
+                        </span>
+                      </div>
+                      {bus.regNumber && (
+                        <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-2xs">
+                          {bus.regNumber}
+                        </span>
+                      )}
                     </div>
+                    <h4 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white leading-snug break-words w-full" title={cleanBusTitle(bus.busName)}>
+                      {cleanBusTitle(bus.busName)}
+                    </h4>
+                  </div>
 
-                    {/* View Seats Link */}
-                    <Link
-                      href={`/buses/${bus.id}`}
-                      className="text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1 hover:underline"
-                    >
-                      <Armchair className="w-3.5 h-3.5" />
-                      <span>{language === 'bn' ? 'সিট ম্যাপ' : 'Seat Map'}</span>
-                    </Link>
+                  {/* Route Flow (উৎস ➔ গন্তব্য) */}
+                  <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                    <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                    <span className="break-words flex-1 text-slate-700 dark:text-slate-300 leading-snug">
+                      <strong className="text-slate-900 dark:text-white">{routeInfo.origin}</strong>
+                      <span className="mx-1.5 text-blue-600 dark:text-blue-400">➔</span>
+                      <strong className="text-blue-700 dark:text-blue-300">{routeInfo.destination}</strong>
+                    </span>
                   </div>
                 </div>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+
+                {/* ═══════════════════════════════════════════════════════ */}
+                {/* 3. TRIP SCHEDULE & BOOKING WINDOW                       */}
+                {/* ═══════════════════════════════════════════════════════ */}
+                <div className="p-4 sm:p-5 py-3.5 space-y-3 flex-1 flex flex-col justify-between text-xs">
+                  <div className="space-y-3">
+                    {/* Booking Window Box */}
+                    <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 space-y-2">
+                      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-1.5">
+                        <span className="font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>{language === 'bn' ? 'টিকিট বুকিং উইন্ডো:' : 'Booking Window:'}</span>
+                        </span>
+                        <Badge
+                          variant={bookingWindow.variant as any}
+                          className="text-[10px] font-black px-2 py-0.5"
+                        >
+                          {language === 'bn' ? bookingWindow.labelBn : bookingWindow.labelEn}
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-0.5">
+                        <div>
+                          <span className="text-[10.5px] text-slate-500 dark:text-slate-400 block font-semibold">
+                            🟢 {language === 'bn' ? 'বুকিং শুরু:' : 'Booking Opens:'}
+                          </span>
+                          <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                            {scheduleInfo.bookingOpens || '০১ সেপ্টেম্বর ২০২৬'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10.5px] text-slate-500 dark:text-slate-400 block font-semibold">
+                            🔴 {language === 'bn' ? 'বুকিং শেষ:' : 'Booking Closes:'}
+                          </span>
+                          <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                            {scheduleInfo.bookingCloses || '০৯ সেপ্টেম্বর ২০২৬'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Departure & Journey Schedule */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900">
+                        <span className="text-[10.5px] text-blue-800 dark:text-blue-300 font-bold block mb-0.5">
+                          🚀 {language === 'bn' ? 'মূল যাত্রা (তারিখ):' : 'Journey Date:'}
+                        </span>
+                        <span className="font-mono font-black text-slate-900 dark:text-white text-xs sm:text-sm">
+                          {scheduleInfo.departureDate}
+                        </span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900">
+                        <span className="text-[10.5px] text-blue-800 dark:text-blue-300 font-bold block mb-0.5">
+                          ⏰ {language === 'bn' ? 'ছাড়ার সময়:' : 'Departure Time:'}
+                        </span>
+                        <span className="font-mono font-black text-slate-900 dark:text-white text-xs sm:text-sm">
+                          {scheduleInfo.departureTime}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Specs & Transport Company */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10.5px] text-slate-500 dark:text-slate-400 font-semibold block">{language === 'bn' ? 'সিট সংখ্যা' : 'Seats'}</span>
+                          <span className="font-mono font-black text-sm text-slate-900 dark:text-white">{bus.capacity} টি</span>
+                        </div>
+                        <Armchair className="w-4 h-4 text-slate-400" />
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold block">
+                            {language === 'bn' ? 'সিট ভাড়া' : 'Fare'} {fareDetails.isMultiple ? `(${fareDetails.distinctFares.length} রেট)` : ''}
+                          </span>
+                          <span className="font-extrabold text-xs text-emerald-600 dark:text-emerald-400 truncate block" title={fareDetails.displayBn}>
+                            {language === 'bn' ? fareDetails.displayBn : fareDetails.displayEn}
+                          </span>
+                        </div>
+                        <span className="text-emerald-600 font-bold ml-1">৳</span>
+                      </div>
+                    </div>
+
+                    {/* Operator / Company Section (User: Don't show dummy Central Transport Office!) */}
+                    <div className="p-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs">
+                      {isPendingCompany ? (
+                        <div className="w-full flex items-center justify-between gap-2 bg-amber-50 dark:bg-amber-950/40 p-2 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 font-medium">
+                          <span className="flex items-center gap-1.5 font-bold">
+                            <Building2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span className="truncate">{language === 'bn' ? 'কোম্পানি: পরে বরাদ্দ হবে (অপেক্ষমাণ)' : 'Vendor: Pending Allocation'}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAssignCompany(bus)}
+                            className="text-[10.5px] font-black bg-amber-200 hover:bg-amber-300 dark:bg-amber-800 dark:hover:bg-amber-700 text-amber-900 dark:text-amber-100 px-2 py-0.5 rounded-md transition-colors cursor-pointer shrink-0"
+                          >
+                            + {language === 'bn' ? 'বরাদ্দ করুন' : 'Assign'}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="w-full flex items-center justify-between gap-2 bg-emerald-50 dark:bg-emerald-950/40 p-2 rounded-lg border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200">
+                          <span className="flex items-center gap-1.5 font-bold truncate">
+                            <Building2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="truncate">{bus.operator}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAssignCompany(bus)}
+                            className="text-[10px] text-emerald-700 dark:text-emerald-300 hover:underline shrink-0 cursor-pointer font-bold"
+                          >
+                            {language === 'bn' ? 'পরিবর্তন' : 'Change'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ═══════════════════════════════════════════════════════ */}
+                  {/* 4. ACTIONS & 1-CLICK INACTIVE/ACTIVE TOGGLE BUTTON      */}
+                  {/* ═══════════════════════════════════════════════════════ */}
+                  <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                    {/* Primary Direct Issue Ticket CTA */}
+                    <Link
+                      href={`/bookings/new?tripId=${bus.id}`}
+                      className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-xs sm:text-sm shadow-md shadow-blue-500/25 flex items-center justify-center gap-2 transition-all transform active:scale-98 cursor-pointer"
+                    >
+                      <Ticket className="w-4 h-4 text-white" />
+                      <span>{language === 'bn' ? '🎟️ সরাসরি টিকিট ইস্যু করুন' : '🎟️ Direct Issue Ticket'}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </Link>
+
+                    {/* Secondary Actions Bar with Inactive/Active Toggle Button */}
+                    <div className="flex items-center justify-between gap-1.5 pt-0.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {/* 1-CLICK ACTIVE / INACTIVE TOGGLE BUTTON (User specifically requested!) */}
+                        <button
+                          type="button"
+                          disabled={isTogglingStatus === bus.id}
+                          onClick={() => handleToggleStatus(bus)}
+                          className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-black flex items-center gap-1 transition-all cursor-pointer ${
+                            busStatus === 'ACTIVE'
+                              ? 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                              : 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                          }`}
+                          title={busStatus === 'ACTIVE' ? (language === 'bn' ? 'বাসটি নিষ্ক্রিয় / স্থগিত করুন' : 'Deactivate bus') : (language === 'bn' ? 'বাসটি সক্রিয় করুন' : 'Activate bus')}
+                        >
+                          {isTogglingStatus === bus.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : busStatus === 'ACTIVE' ? (
+                            <>
+                              <span>⏸️</span>
+                              <span>{language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive'}</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>▶️</span>
+                              <span>{language === 'bn' ? 'সক্রিয় করুন' : 'Activate'}</span>
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDuplicate(bus)}
+                          className="p-1.5 px-2 rounded-xl text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/70 dark:hover:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 transition-colors flex items-center gap-1 text-xs font-black cursor-pointer shadow-2xs"
+                          title={language === 'bn' ? 'বাসটি ক্লোন / ডুপ্লিকেট করুন' : 'Duplicate Bus'}
+                        >
+                          <Copy className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                          <span className="text-[10px] hidden sm:inline">{language === 'bn' ? 'ক্লোন' : 'Clone'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(bus)}
+                          className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
+                          title={t.editBus}
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setDeletingBus(bus)}
+                          className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
+                          title={t.deleteBus}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* View Seats Modal Button */}
+                      <button
+                        type="button"
+                        onClick={() => setViewingSeatMapBus(bus)}
+                        className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer hover:scale-105 active:scale-95 transition-all"
+                        title={language === 'bn' ? 'সিট প্ল্যান দেখুন' : 'Seat Map'}
+                      >
+                        <Armchair className="w-3.5 h-3.5 text-white" />
+                        <span>{language === 'bn' ? 'সিট ম্যাপ' : 'Seat Map'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        /* TABLE VIEW (User Requested) */
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-[11.5px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                  <th className="py-4 px-4">{language === 'bn' ? 'বাস কোড ও নাম' : 'Bus Code & Name'}</th>
+                  <th className="py-4 px-4">{language === 'bn' ? 'বিশ্ববিদ্যালয় ও ইউনিট' : 'University & Unit'}</th>
+                  <th className="py-4 px-4">{language === 'bn' ? 'যাত্রার তারিখ ও সময়' : 'Departure & Schedule'}</th>
+                  <th className="py-4 px-4">{language === 'bn' ? 'রুট (উৎস ➔ গন্তব্য)' : 'Route'}</th>
+                  <th className="py-4 px-4">{language === 'bn' ? 'সিট ও ধরন' : 'Seats & Policy'}</th>
+                  <th className="py-4 px-4">{language === 'bn' ? 'স্ট্যাটাস' : 'Status'}</th>
+                  <th className="py-4 px-4 text-right">{language === 'bn' ? 'অ্যাকশন' : 'Actions'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
+                {paginatedBuses.map((bus) => {
+                  const hotelInfo = getHotelInfo(bus.notes);
+                  const scheduleInfo = getScheduleInfo(bus.notes, bus);
+                  const routeInfo = getRouteInfo(bus.notes, bus);
+                  const fareInfo = getFareInfo(bus.notes);
+                  const fareDetails = getBusFareDetails(bus);
+                  const busUni = getBusUniversity(bus);
+                  const examUnitInfo = getExamUnitInfo(bus);
+                  const rawOp = bus.operator || '';
+                  const isPendingCompany = !rawOp || rawOp === 'Central Transport Office' || rawOp.includes('Pending') || rawOp.includes('পরে নির্ধারণ');
+                  const busStatus = (bus.status || 'ACTIVE').toUpperCase();
+                  const isFemale = bus.busType === 'FEMALE';
+                  const isMale = bus.busType === 'MALE';
+                  const bookingWindow = getBookingWindowStatus(scheduleInfo.bookingOpens, scheduleInfo.bookingCloses);
+
+                  return (
+                    <tr
+                      key={bus.id}
+                      className="hover:bg-blue-50/40 dark:hover:bg-slate-800/50 transition-colors group"
+                    >
+                      {/* Bus Code & Name */}
+                      <td className="py-3.5 px-4 font-medium">
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <span className="font-mono text-xs font-black px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-blue-700 dark:text-blue-300 shadow-2xs text-center">
+                              🚌 {bus.busNumber}
+                            </span>
+                            <span className="font-mono text-[10px] font-black px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 shadow-2xs text-center" title="অ্যাকাউন্টিং ও অডিট ইউনিক কোড">
+                              🏷️ {bus.uniqueCode || extractUniqueCode(bus.notes, bus.busNumber, bus.id)}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-bold text-slate-900 dark:text-white text-sm leading-snug break-words max-w-[280px]">
+                              {cleanBusTitle(bus.busName)}
+                            </div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
+                              {isPendingCompany ? (
+                                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800">
+                                  {language === 'bn' ? 'কোম্পানি: পরে বরাদ্দ হবে' : 'Pending Vendor'}
+                                </span>
+                              ) : (
+                                <span className="font-semibold text-emerald-600 dark:text-emerald-400 truncate max-w-[140px]">
+                                  {bus.operator}
+                                </span>
+                              )}
+                              {bus.regNumber && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-mono text-[10.5px]">{bus.regNumber}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* University & Exam Unit */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
+                            <GraduationCap className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="leading-snug break-words max-w-[220px]">{busUni?.nameBn || bus.targetUniversity || 'ভর্তি কোচ'}</span>
+                          </div>
+                          <div className="pt-0.5">
+                            <span className={`inline-flex items-center gap-1.5 text-xs font-black px-3 py-1 rounded-xl border-2 shadow-xs ${
+                              examUnitInfo
+                                ? 'bg-indigo-600 text-white border-indigo-400 shadow-indigo-500/20'
+                                : 'bg-slate-700 text-slate-100 border-slate-600'
+                            }`}>
+                              <span className="text-amber-300">📝</span>
+                              <span>{examUnitInfo ? `ইউনিট: ${examUnitInfo}` : (language === 'bn' ? 'ইউনিট: সাধারণ' : 'Unit: General')}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Departure & Booking Schedule */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-1">
+                          <div className="font-mono font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                            <span>{scheduleInfo.departureDate}</span>
+                            <span className="text-[11px] font-normal text-slate-500">({scheduleInfo.departureTime})</span>
+                          </div>
+                          <div className="pt-1 border-t border-slate-100 dark:border-slate-800 text-[10px] space-y-0.5">
+                            <div className="text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                              <span>🟢 বুকিং শুরু:</span>
+                              <span className="font-mono">{scheduleInfo.bookingOpens || '০১ সেপ ২০২৬'}</span>
+                            </div>
+                            <div className="text-rose-700 dark:text-rose-400 font-semibold flex items-center gap-1">
+                              <span>🔴 বুকিং শেষ:</span>
+                              <span className="font-mono">{scheduleInfo.bookingCloses || '০৯ সেপ ২০২৬'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Route & Hotel Package */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-1">
+                          <div className="font-semibold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
+                            <span className="truncate max-w-[180px]">
+                              {routeInfo.origin} ➔ {routeInfo.destination}
+                            </span>
+                          </div>
+                          {hotelInfo && (
+                            <span className="inline-flex items-center gap-1 text-[10.5px] font-black text-purple-700 dark:text-purple-300 bg-purple-100/70 dark:bg-purple-950/70 px-2 py-0.5 rounded-md border border-purple-200 dark:border-purple-800">
+                              🏨 {hotelInfo}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Capacity & Gender Policy */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-1">
+                          <div className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                            💺 {bus.capacity} {language === 'bn' ? 'সিট' : 'Seats'}
+                          </div>
+                          <div className="text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 truncate max-w-[130px]" title={fareDetails.displayBn}>
+                            💰 {language === 'bn' ? fareDetails.displayBn : fareDetails.displayEn}
+                          </div>
+                          <span className={`inline-block text-[10.5px] font-bold px-2 py-0.5 rounded-md ${
+                            isFemale
+                              ? 'bg-pink-100 text-pink-700 dark:bg-pink-950/60 dark:text-pink-300'
+                              : isMale
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                              : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                          }`}>
+                            {isFemale
+                              ? (language === 'bn' ? '👩 শুধু ছাত্রী' : 'Female')
+                              : isMale
+                              ? (language === 'bn' ? '👨 শুধু ছাত্র' : 'Male')
+                              : (language === 'bn' ? '👥 মিক্সড' : 'Mixed')}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-3.5 px-4">
+                        <Badge
+                          variant={busStatus === 'ACTIVE' ? 'success' : busStatus === 'MAINTENANCE' ? 'warning' : 'default'}
+                          className="text-[11px] px-2.5 py-0.5 font-bold flex items-center gap-1.5 w-fit"
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            busStatus === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' : busStatus === 'MAINTENANCE' ? 'bg-amber-500' : 'bg-slate-400'
+                          }`} />
+                          <span>
+                            {busStatus === 'ACTIVE'
+                              ? (language === 'bn' ? 'সক্রিয়' : 'Active')
+                              : busStatus === 'MAINTENANCE'
+                              ? (language === 'bn' ? 'সার্ভিসিং' : 'Maint.')
+                              : (language === 'bn' ? 'স্থগিত' : 'Inactive')}
+                          </span>
+                        </Badge>
+                      </td>
+
+                      {/* Actions Toolbar */}
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Direct Ticket Issue CTA */}
+                          <Link
+                            href={`/bookings/new?tripId=${bus.id}`}
+                            className="p-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all cursor-pointer"
+                            title={language === 'bn' ? 'সরাসরি টিকিট ইস্যু করুন' : 'Direct Issue Ticket'}
+                          >
+                            <Ticket className="w-3.5 h-3.5" />
+                          </Link>
+
+                          {/* 1-Click Status Toggle Button */}
+                          <button
+                            type="button"
+                            disabled={isTogglingStatus === bus.id}
+                            onClick={() => handleToggleStatus(bus)}
+                            className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                              busStatus === 'ACTIVE'
+                                ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/50 dark:border-amber-700'
+                                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:border-emerald-700'
+                            }`}
+                            title={busStatus === 'ACTIVE' ? (language === 'bn' ? 'বাসটি নিষ্ক্রিয় / স্থগিত করুন' : 'Deactivate') : (language === 'bn' ? 'বাসটি সক্রিয় করুন' : 'Activate')}
+                          >
+                            {isTogglingStatus === bus.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : busStatus === 'ACTIVE' ? (
+                              <span>⏸️</span>
+                            ) : (
+                              <span>▶️</span>
+                            )}
+                          </button>
+
+                          {/* Seat Map Modal Button */}
+                          <button
+                            type="button"
+                            onClick={() => setViewingSeatMapBus(bus)}
+                            className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer"
+                            title={language === 'bn' ? 'সিট প্ল্যান দেখুন' : 'Seat Map'}
+                          >
+                            <Armchair className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Company Assign Modal Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAssignCompany(bus)}
+                            className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 transition-all cursor-pointer"
+                            title={language === 'bn' ? 'কোম্পানি নির্ধারণ' : 'Assign Vendor'}
+                          >
+                            <Building2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* 1-Click Duplicate Bus Action Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDuplicate(bus)}
+                            className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer"
+                            title={language === 'bn' ? 'বাস ক্লোন / ডুপ্লিকেট করুন' : 'Duplicate Bus'}
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(bus)}
+                            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
+                            title={t.editBus}
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setDeletingBus(bus)}
+                            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
+                            title={t.deleteBus}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* 5. Scalable Pagination Controls Bar */}
       {filteredBuses.length > pageSize && (
@@ -2217,6 +2842,36 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
 
               <div>
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  {language === 'bn' ? 'ভর্তি পরীক্ষার ইউনিট (Admission Exam Unit)' : 'Admission Exam Unit'}
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={['Unit A', 'Unit B', 'Unit C', 'Unit D', 'General / All Units'].includes(editingBus.examUnit) ? editingBus.examUnit : 'CUSTOM'}
+                    onChange={(e) => {
+                      if (e.target.value !== 'CUSTOM') {
+                        setEditingBus({ ...editingBus, examUnit: e.target.value });
+                      }
+                    }}
+                    className="w-1/2 text-xs px-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl font-medium bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  >
+                    <option value="Unit A">Unit A (বিজ্ঞান)</option>
+                    <option value="Unit B">Unit B (মানবিক)</option>
+                    <option value="Unit C">Unit C (বাণিজ্য)</option>
+                    <option value="Unit D">Unit D (বিভাগ পরিবর্তন)</option>
+                    <option value="General / All Units">General / All Units (সকল ইউনিট)</option>
+                    <option value="CUSTOM">অন্যান্য / কাস্টম ইউনিট</option>
+                  </select>
+                  <Input
+                    value={editingBus.examUnit || ''}
+                    onChange={(e) => setEditingBus({ ...editingBus, examUnit: e.target.value })}
+                    placeholder={language === 'bn' ? 'যেমন: Unit C' : 'e.g. Unit C'}
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
                   {language === 'bn' ? 'রুট, হোটেল প্যাকেজ ও অন্যান্য তথ্য' : 'Route, Hotel Package & Notes'}
                 </label>
                 <textarea
@@ -2241,45 +2896,25 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
         </div>
       )}
 
-      {/* DELETE CONFIRMATION MODAL */}
+      {/* UNIVERSAL 3-OPTION DELETE CONFIRMATION MODAL */}
       {deletingBus && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 text-rose-600">
-              <div className="w-10 h-10 rounded-2xl bg-rose-100 dark:bg-rose-950/60 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white">{t.deleteBus}</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{deletingBus.busNumber} • {deletingBus.busName}</p>
-              </div>
-            </div>
-
-            <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">
-              {t.confirmDelete}
-            </p>
-            <p className="text-xs text-rose-500 bg-rose-50 dark:bg-rose-950/40 p-3 rounded-xl border border-rose-100 dark:border-rose-900">
-              {t.deleteWarning}
-            </p>
-
-            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-              <Button variant="ghost" size="md" onClick={() => setDeletingBus(null)}>
-                {t.cancel}
-              </Button>
-              <Button
-                variant="danger"
-                size="md"
-                onClick={handleConfirmDelete}
-                isLoading={isDeleting}
-                className="font-bold"
-              >
-                <Trash2 className="w-4 h-4 mr-1.5" />
-                {t.deleteBus}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <UniversalDeleteModal
+          isOpen={!!deletingBus}
+          onClose={() => setDeletingBus(null)}
+          itemTitle={`${deletingBus.busName || deletingBus.bus_name || ''} (${deletingBus.busNumber || deletingBus.bus_number || ''})`}
+          itemSubtitle={`অপারেটর: ${deletingBus.operator || 'Central Transport'} • সিট: ${deletingBus.capacity} • ধরন: ${deletingBus.busType}`}
+          itemCategory={language === 'bn' ? 'বাস ও ফ্লিট' : 'Buses & Fleet'}
+          onMoveToRecycleBin={handleConfirmDelete}
+          onPermanentDelete={handlePermanentDelete}
+        />
       )}
+
+      {/* Interactive Bus Seat Map Preview Modal */}
+      <BusSeatMapModal
+        isOpen={!!viewingSeatMapBus}
+        onClose={() => setViewingSeatMapBus(null)}
+        bus={viewingSeatMapBus}
+      />
 
       {/* Dynamic Company Manager Modal (Add / Edit / Delete) */}
       <CompanyManagerModal
@@ -2308,6 +2943,259 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
         }}
         language={language}
       />
+
+      {/* DUPLICATE BUS MODAL (1-Click Clone from Bus 1 to Bus 2) */}
+      {duplicatingBus && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full border-2 border-indigo-200 dark:border-indigo-800/80 shadow-2xl p-6 space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <Copy className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-white">
+                    {language === 'bn' ? 'বাস ক্লোন / ডুপ্লিকেট করুন' : 'Duplicate / Clone Bus'}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {language === 'bn' ? 'আগের বাসের সকল তথ্য হুবহু রেখে নতুন বাস তৈরি করুন' : 'Clone all route, layout, and policy settings into a new bus'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDuplicatingBus(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Source Bus Info Summary */}
+            <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/60 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-500">{language === 'bn' ? 'মূল বাস (Source):' : 'Source Bus:'}</span>
+                <span className="font-mono font-black text-indigo-700 dark:text-indigo-300">
+                  🚌 {duplicatingBus.busNumber}
+                </span>
+              </div>
+              <div className="font-extrabold text-slate-900 dark:text-white text-sm">
+                {cleanBusTitle(duplicatingBus.busName)}
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-indigo-100 dark:border-indigo-900/50 text-[11px] text-slate-600 dark:text-slate-300">
+                <div>💺 সিট: <strong>{duplicatingBus.capacity} সিট</strong></div>
+                <div>👥 ধরন: <strong>{duplicatingBus.busType}</strong></div>
+              </div>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleConfirmDuplicate} className="space-y-4">
+              {/* New Bus Number (Uneditable / Locked by User Request) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    {language === 'bn' ? 'নতুন বাসের নম্বর (স্বয়ংক্রিয় ও সংরক্ষিত) *' : 'New Bus Number (Auto-assigned & Locked) *'}
+                  </label>
+                  <span className="text-[10.5px] font-mono font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                    🏷️ ইউনিক কোড: {duplicateUniqueCode}
+                  </span>
+                </div>
+                <div className="relative">
+                  <Input
+                    value={duplicateBusNumber}
+                    readOnly
+                    disabled
+                    className="font-mono text-base font-black border-2 border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-300 cursor-not-allowed pl-9"
+                  />
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                  {language === 'bn'
+                    ? '🔒 ডুপ্লিকেট নম্বর কনফ্লিক্ট এড়াতে ক্যাটাগরি অনুযায়ী পরবর্তী খালি নম্বরটি অপরিবর্তনীয় রাখা হয়েছে।'
+                    : 'Auto-assigned and locked to prevent collision.'}
+                </p>
+              </div>
+
+              {/* Ticket Booking Window Schedule (User Requested: কবে থেকে বুকিং শুরু হবে, কয়টা থেকে, এবং কবে শেষ হবে) */}
+              <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 border-2 border-emerald-200 dark:border-emerald-800/80 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>{language === 'bn' ? '🎟️ টিকিট বুকিং শিডিউল ও সময়সীমা' : 'Ticket Booking Schedule Window'}</span>
+                  </span>
+                  <span className="text-[10.5px] font-bold text-emerald-700 dark:text-emerald-300 bg-white dark:bg-slate-900 px-2.5 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-800 shadow-2xs">
+                    বুকিং উইন্ডো
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  {/* Booking Opens: Date & Time */}
+                  <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800/70 space-y-2">
+                    <span className="text-[11px] font-extrabold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                      🟢 {language === 'bn' ? 'বুকিং শুরুর তারিখ ও সময়:' : 'Booking Opens (Date & Time):'}
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-bold block mb-0.5">
+                          {language === 'bn' ? 'শুরুর তারিখ' : 'Start Date'}
+                        </label>
+                        <Input
+                          type="date"
+                          value={duplicateBookingStartDate}
+                          onChange={(e) => setDuplicateBookingStartDate(e.target.value)}
+                          required
+                          className="text-xs font-mono font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-bold block mb-0.5">
+                          {language === 'bn' ? 'শুরুর সময়' : 'Start Time'}
+                        </label>
+                        <Input
+                          value={duplicateBookingStartTime}
+                          onChange={(e) => setDuplicateBookingStartTime(e.target.value)}
+                          placeholder="e.g. 10:00 AM"
+                          required
+                          className="text-xs font-bold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Booking Closes: Date & Time */}
+                  <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800/70 space-y-2">
+                    <span className="text-[11px] font-extrabold text-rose-700 dark:text-rose-400 flex items-center gap-1">
+                      🔴 {language === 'bn' ? 'বুকিং শেষের তারিখ ও সময়:' : 'Booking Closes (Date & Time):'}
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-bold block mb-0.5">
+                          {language === 'bn' ? 'শেষের তারিখ' : 'End Date'}
+                        </label>
+                        <Input
+                          type="date"
+                          value={duplicateBookingEndDate}
+                          onChange={(e) => setDuplicateBookingEndDate(e.target.value)}
+                          required
+                          className="text-xs font-mono font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-bold block mb-0.5">
+                          {language === 'bn' ? 'শেষের সময়' : 'End Time'}
+                        </label>
+                        <Input
+                          value={duplicateBookingEndTime}
+                          onChange={(e) => setDuplicateBookingEndTime(e.target.value)}
+                          placeholder="e.g. 11:59 PM"
+                          required
+                          className="text-xs font-bold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Presets for Booking Timeline */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-emerald-200/80 dark:border-emerald-800/60 text-[10.5px]">
+                  <span className="text-slate-500 font-bold mr-1">{language === 'bn' ? 'কুইক অ্যাকশন:' : 'Quick:'}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const today = new Date().toISOString().split('T')[0];
+                      setDuplicateBookingStartDate(today);
+                      setDuplicateBookingStartTime('10:00 AM');
+                    }}
+                    className="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold transition-colors cursor-pointer"
+                  >
+                    🟢 আজ সকাল ১০টা থেকে শুরু
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + 1);
+                      const tomorrow = d.toISOString().split('T')[0];
+                      setDuplicateBookingStartDate(tomorrow);
+                      setDuplicateBookingStartTime('08:00 AM');
+                    }}
+                    className="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold transition-colors cursor-pointer"
+                  >
+                    ⚡ আগামীকাল সকাল ৮টা থেকে
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (duplicateBookingStartDate) {
+                        const d = new Date(duplicateBookingStartDate);
+                        d.setDate(d.getDate() + 3);
+                        setDuplicateBookingEndDate(d.toISOString().split('T')[0]);
+                      }
+                    }}
+                    className="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold transition-colors cursor-pointer"
+                  >
+                    📅 ৩ দিনের উইন্ডো
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (duplicateBookingStartDate) {
+                        const d = new Date(duplicateBookingStartDate);
+                        d.setDate(d.getDate() + 7);
+                        setDuplicateBookingEndDate(d.toISOString().split('T')[0]);
+                      }
+                    }}
+                    className="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold transition-colors cursor-pointer"
+                  >
+                    📅 ৭ দিনের উইন্ডো
+                  </button>
+                </div>
+              </div>
+
+              {/* New Bus Title */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    {language === 'bn' ? 'নতুন বাসের নাম / টাইটেল *' : 'New Bus Title *'}
+                  </label>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {duplicateBusName.length}/50 অক্ষর
+                  </span>
+                </div>
+                <Input
+                  value={duplicateBusName}
+                  onChange={(e) => setDuplicateBusName(e.target.value.slice(0, 50))}
+                  maxLength={50}
+                  placeholder="e.g. রাবি A Unit স্পেশাল (45 সিট)"
+                  required
+                  className="font-bold text-sm"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="md"
+                  onClick={() => setDuplicatingBus(null)}
+                >
+                  {t.cancel}
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  isLoading={isDuplicating}
+                  className="font-black bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-md shadow-indigo-500/20"
+                >
+                  <Copy className="w-4 h-4 mr-1.5" />
+                  <span>{language === 'bn' ? '✨ এখনই ক্লোন সম্পন্ন করুন' : 'Confirm Clone'}</span>
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

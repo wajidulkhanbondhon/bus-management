@@ -64,6 +64,9 @@ backend/**/__pycache__/
 
 # local temporary & runtime storage
 bd_path.txt
+*.sql
+*.sql.gz
+*.dump
 bus_management_backup.sql
 backend/backups/*.enc
 backend/uploads/images/*

@@ -34,10 +34,17 @@ engine = create_db_engine()
 AsyncSessionLocal = sessionmaker(
     autocommit=False, 
     autoflush=False, 
+    expire_on_commit=False,
     bind=engine, 
     class_=AsyncSession
 )
 
 async def get_db():
-    async with AsyncSessionLocal() as session:
+    session = AsyncSessionLocal()
+    try:
         yield WrappedAsyncSession(session)
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()

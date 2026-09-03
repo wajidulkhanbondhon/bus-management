@@ -13,10 +13,39 @@ export interface CreateBusInput {
   routeOrigin?: string;
   routeDestination?: string;
   targetUniversity?: string;
+  examUnit?: string;
+}
+
+export function extractExamUnitFromNotes(notes?: string): string {
+  if (!notes) return '';
+  const match = notes.match(/UNIT:\s*([^;|\]]+)/i);
+  return match ? match[1].trim() : '';
+}
+
+export function extractUniqueCode(notes?: string, busNumber?: string, id?: string): string {
+  if (notes) {
+    const match = notes.match(/\[🏷️?\s*CODE:\s*([^\]]+)\]/i);
+    if (match) return match[1].trim();
+  }
+  if (id) {
+    const sum = id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    const num = (sum % 900) + 101;
+    return `ATOMS-${num}`;
+  }
+  return 'ATOMS-101';
 }
 
 export function normalizeBus(b: any) {
   if (!b) return b;
+  const notes = b.notes || '';
+  const parsedUnit = extractExamUnitFromNotes(notes);
+  const examUnit = b.examUnit || b.exam_unit || b.unit || parsedUnit || '';
+  const uniqueCode = b.uniqueCode || extractUniqueCode(notes, b.busNumber || b.bus_number, b.id);
+
+  const rawOp = b.operator || '';
+  const isPending = !rawOp || rawOp === 'Central Transport Office' || rawOp.includes('Pending') || rawOp.includes('পরে নির্ধারণ');
+  const cleanOperator = isPending ? 'পরে নির্ধারণ করা হবে (Pending Vendor Allocation)' : rawOp;
+
   return {
     ...b,
     id: b.id,
@@ -24,14 +53,18 @@ export function normalizeBus(b: any) {
     bus_name: b.bus_name || b.busName || '',
     busNumber: b.busNumber || b.bus_number || '',
     bus_number: b.bus_number || b.busNumber || '',
-    operator: b.operator || 'Central Transport Office',
+    uniqueCode,
+    operator: cleanOperator,
     regNumber: b.regNumber || b.reg_number || '',
     reg_number: b.reg_number || b.regNumber || '',
     capacity: b.capacity ?? 40,
     busType: b.busType || b.bus_type || 'MIXED',
     bus_type: b.bus_type || b.busType || 'MIXED',
     status: b.status || 'ACTIVE',
-    notes: b.notes || '',
+    notes,
+    examUnit,
+    exam_unit: examUnit,
+    unit: examUnit,
     seatLayoutId: b.seatLayoutId || b.seat_layout_id || null,
     seat_layout_id: b.seat_layout_id || b.seatLayoutId || null,
     seatLayout: b.seatLayout || b.seat_layout || null,
@@ -56,11 +89,14 @@ export async function getBusById(id: string) {
 }
 
 export async function createBus(input: CreateBusInput, userId?: string) {
-  const generatedReg = input.regNumber || `DHAKA-METRO-BA-${Date.now().toString().slice(-4)}`;
+  const generatedReg = input.regNumber || `DHAKA-METRO-BA-${Math.floor(1000 + Math.random() * 9000)}`;
+  const cleanOperator = (input.operator && input.operator.trim() && input.operator !== 'Central Transport Office')
+    ? input.operator.trim()
+    : 'পরে নির্ধারণ করা হবে (Pending Vendor Allocation)';
   const res = await fastApiClient.createBus({
     bus_name: input.busName,
     bus_number: input.busNumber,
-    operator: input.operator || 'Central Transport Office',
+    operator: cleanOperator,
     reg_number: generatedReg,
     capacity: input.capacity,
     bus_type: input.busType || 'MIXED',
@@ -103,6 +139,17 @@ export async function updateBus(id: string, input: Partial<CreateBusInput>, user
 
 export async function deleteBus(id: string, userId?: string) {
   const res = await fastApiClient.deleteBus(id);
+  if (res.success) {
+    return res.data || { success: true, id };
+  }
+  if (res.error) {
+    throw new Error(res.error);
+  }
+  return { success: true, id };
+}
+
+export async function purgeBus(id: string, userId?: string) {
+  const res = await fastApiClient.purgeBus(id);
   if (res.success) {
     return res.data || { success: true, id };
   }

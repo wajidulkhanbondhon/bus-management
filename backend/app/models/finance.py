@@ -83,7 +83,7 @@ class BusExpense(Base):
     __tablename__ = "bus_expenses"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    bus_id = Column(String, ForeignKey("buses.id"), nullable=False, index=True)
+    bus_id = Column(String, ForeignKey("buses.id"), nullable=True, index=True)
     trip_id = Column(String, ForeignKey("trips.id"), nullable=True, index=True)
     category = Column(String, nullable=False)  # "FUEL", "TOLL", "MAINTENANCE", "STAFF_ALLOWANCE", "OTHER"
     amount = Column(Money, nullable=False)

@@ -335,10 +335,11 @@ function PassengerHeaderAuthButton({ language }: { language: string }) {
 
   if (!mounted) {
     return (
-      <Link href="/passenger">
-        <Button variant="primary" size="sm" className="text-xs bg-blue-600 text-white font-bold px-3.5">
-          <span>{language === 'bn' ? 'লগইন / টিকিট' : 'Login / Tickets'}</span>
-        </Button>
+      <Link
+        href="/passenger"
+        className="inline-flex items-center justify-center text-xs bg-blue-600 text-white font-bold px-3.5 py-1.5 rounded-xl transition-all duration-150 shadow-xs select-none"
+      >
+        <span>{language === 'bn' ? 'লগইন / টিকিট' : 'Login / Tickets'}</span>
       </Link>
     );
   }
@@ -383,10 +384,11 @@ function PassengerHeaderAuthButton({ language }: { language: string }) {
   }
 
   return (
-    <Link href="/passenger">
-      <Button variant="primary" size="sm" className="text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md shadow-blue-600/20 px-3.5 sm:px-4">
-        <span>{language === 'bn' ? 'লগইন / পিন সেট' : 'Login / Set PIN'}</span>
-      </Button>
+    <Link
+      href="/passenger"
+      className="inline-flex items-center justify-center text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md shadow-blue-600/20 px-3.5 sm:px-4 py-1.5 rounded-xl transition-all duration-150 select-none"
+    >
+      <span>{language === 'bn' ? 'লগইন / পিন সেট' : 'Login / Set PIN'}</span>
     </Link>
   );
 }

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, delete, update
 from app.models.trip import Trip, SeatHold, SeatLock
 from app.models.bus import Bus, SeatLayout, Seat
 from app.models.booking import Booking, BookingSeat
@@ -11,14 +11,18 @@ from app.models.booking import Booking, BookingSeat
 async def clean_expired_inventory(db: Session, trip_id: str):
     now = datetime.now(timezone.utc)
     # 1. Clean expired holds
-    db.query(SeatHold).filter(SeatHold.trip_id == trip_id, SeatHold.expires_at <= now).delete()
+    await db.execute(delete(SeatHold).where(SeatHold.trip_id == trip_id, SeatHold.expires_at <= now))
 
     # 2. Expire unpaid pre-bookings whose timer has passed
-    db.query(Booking).filter(
-        Booking.trip_id == trip_id,
-        Booking.booking_status == "PAYMENT_TIMER_ACTIVE",
-        Booking.payment_expires_at <= now
-    ).update({"booking_status": "EXPIRED"})
+    await db.execute(
+        update(Booking)
+        .where(
+            Booking.trip_id == trip_id,
+            Booking.booking_status == "PAYMENT_TIMER_ACTIVE",
+            Booking.payment_expires_at <= now
+        )
+        .values(booking_status="EXPIRED")
+    )
 
     await db.commit()
 
@@ -65,7 +69,7 @@ async def get_trip_seat_inventory(db: Session, trip_id: str, staff_id: Optional[
 
     # Active Bookings
     active_booking_seats = (
-        db.query(BookingSeat)
+        await db.query(BookingSeat)
         .join(Booking)
         .filter(
             Booking.trip_id == trip_id,
@@ -77,7 +81,7 @@ async def get_trip_seat_inventory(db: Session, trip_id: str, staff_id: Optional[
 
     # Active Locks
     active_locks = (
-        db.query(SeatLock)
+        await db.query(SeatLock)
         .filter(
             SeatLock.trip_id == trip_id,
             SeatLock.is_active == True,
@@ -168,7 +172,7 @@ async def hold_seat(db: Session, trip_id: str, seat_id: str, staff_id: str, dura
         raise ValueError("Seat not found")
 
     # Check if already booked or held
-    existing = db.query(BookingSeat).join(Booking).filter(
+    existing = await db.query(BookingSeat).join(Booking).filter(
         BookingSeat.seat_id == seat_id,
         Booking.trip_id == trip_id,
         Booking.booking_status.in_(["CONFIRMED", "COMPLETED", "PRE_BOOKED", "PAYMENT_TIMER_ACTIVE", "HELD", "VERIFICATION_PENDING"])
@@ -177,7 +181,7 @@ async def hold_seat(db: Session, trip_id: str, seat_id: str, staff_id: str, dura
         raise ValueError("Seat is already booked or held")
 
     # Check if seat is locked
-    locked = db.query(SeatLock).filter(
+    locked = await db.query(SeatLock).filter(
         SeatLock.trip_id == trip_id,
         SeatLock.seat_id == seat_id,
         SeatLock.is_active == True,
@@ -218,7 +222,7 @@ async def lock_seat(
         raise ValueError("Seat not found")
 
     # 1. Check if already booked
-    existing = db.query(BookingSeat).join(Booking).filter(
+    existing = await db.query(BookingSeat).join(Booking).filter(
         BookingSeat.seat_id == seat_id,
         Booking.trip_id == trip_id,
         Booking.booking_status.in_(["CONFIRMED", "COMPLETED", "PRE_BOOKED", "PAYMENT_TIMER_ACTIVE", "HELD", "VERIFICATION_PENDING"])
@@ -227,7 +231,7 @@ async def lock_seat(
         raise ValueError("Cannot lock seat: it is already booked or held in an active booking")
 
     # 2. Check if already actively locked
-    active_lock = db.query(SeatLock).filter(
+    active_lock = await db.query(SeatLock).filter(
         SeatLock.trip_id == trip_id,
         SeatLock.seat_id == seat_id,
         SeatLock.is_active == True,
@@ -250,7 +254,7 @@ async def lock_seat(
     db.add(lock)
 
     # Remove any temporary hold on this seat
-    db.query(SeatHold).filter(SeatHold.trip_id == trip_id, SeatHold.seat_id == seat_id).delete()
+    await db.execute(delete(SeatHold).where(SeatHold.trip_id == trip_id, SeatHold.seat_id == seat_id))
 
     from app.models.audit import AuditLog
     db.add(AuditLog(
@@ -267,7 +271,7 @@ async def lock_seat(
 
 
 async def unlock_seat(db: Session, trip_id: str, seat_id: str, staff_id: str) -> bool:
-    locks = db.query(SeatLock).filter(
+    locks = await db.query(SeatLock).filter(
         SeatLock.trip_id == trip_id,
         SeatLock.seat_id == seat_id,
         SeatLock.is_active == True
@@ -294,12 +298,18 @@ async def unlock_seat(db: Session, trip_id: str, seat_id: str, staff_id: str) ->
 
 async def clean_all_expired(db: Session) -> Dict[str, int]:
     now = datetime.now(timezone.utc)
-    deleted_holds = db.query(SeatHold).filter(SeatHold.expires_at <= now).delete()
+    result = await db.execute(delete(SeatHold).where(SeatHold.expires_at <= now))
+    deleted_holds = result.rowcount
 
-    expired_bookings = db.query(Booking).filter(
-        Booking.booking_status == "PAYMENT_TIMER_ACTIVE",
-        Booking.payment_expires_at <= now
-    ).update({"booking_status": "EXPIRED"})
+    result = await db.execute(
+        update(Booking)
+        .where(
+            Booking.booking_status == "PAYMENT_TIMER_ACTIVE",
+            Booking.payment_expires_at <= now
+        )
+        .values(booking_status="EXPIRED")
+    )
+    expired_bookings = result.rowcount
 
     await db.commit()
     return {

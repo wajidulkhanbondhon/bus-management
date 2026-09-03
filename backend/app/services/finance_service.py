@@ -16,12 +16,12 @@ def _day_bounds(date_input: datetime) -> tuple[datetime, datetime]:
     return start_of_day, end_of_day
 
 
-def calculate_day_closing_summary(db: Session, date_input: datetime) -> Dict[str, Any]:
+async def calculate_day_closing_summary(db: Session, date_input: datetime) -> Dict[str, Any]:
     start_of_day, end_of_day = _day_bounds(date_input)
 
     # Bookings created in the day window — revenue base.
     bookings = (
-        db.query(Booking)
+        await db.query(Booking)
         .filter(
             Booking.created_at >= start_of_day,
             Booking.created_at <= end_of_day,
@@ -37,7 +37,7 @@ def calculate_day_closing_summary(db: Session, date_input: datetime) -> Dict[str
 
     # Payments recorded in the window — even for bookings from prior days.
     payments = (
-        db.query(Payment)
+        await db.query(Payment)
         .filter(Payment.created_at >= start_of_day, Payment.created_at <= end_of_day)
         .all()
     )
@@ -45,7 +45,7 @@ def calculate_day_closing_summary(db: Session, date_input: datetime) -> Dict[str
 
     # Refunds issued in the window — netted against collections.
     refunds = (
-        db.query(Refund)
+        await db.query(Refund)
         .filter(Refund.created_at >= start_of_day, Refund.created_at <= end_of_day)
         .all()
     )
@@ -84,14 +84,14 @@ async def submit_day_closing(db: Session, req: SubmitDayClosingRequest, staff_id
     # Prevent double-closing the same day (closing_date is unique per row).
     start_of_day, _ = _day_bounds(req.closing_date)
     existing = (
-        db.query(DayClosing)
+        await db.query(DayClosing)
         .filter(DayClosing.closing_date == start_of_day)
         .first()
     )
     if existing:
         raise ValueError(f"Day {start_of_day.date().isoformat()} has already been closed")
 
-    summary = calculate_day_closing_summary(db, req.closing_date)
+    summary = await calculate_day_closing_summary(db, req.closing_date)
 
     cash_diff = 0.0
     payment_summaries = []

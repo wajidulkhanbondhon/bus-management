@@ -3,7 +3,7 @@ import secrets
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, delete
 
 from app.models.booking import Booking, BookingSeat, BookingPassenger, Discount
 from app.models.trip import Trip, SeatHold, SeatLock
@@ -190,7 +190,7 @@ async def create_counter_booking(
         db.add(b_pass)
 
     # 7. Delete Database Holds
-    db.query(SeatHold).filter(SeatHold.trip_id == req.trip_id, SeatHold.seat_id.in_(seat_ids)).delete()
+    await db.execute(delete(SeatHold).where(SeatHold.trip_id == req.trip_id, SeatHold.seat_id.in_(seat_ids)))
 
     # 8. Record Discount if applied
     if discount_amount > 0:
@@ -545,7 +545,7 @@ async def cancel_booking_service(
     # Clean up DB seat holds
     seat_ids = [bs.seat_id for bs in booking.seats]
     if seat_ids:
-        db.query(SeatHold).filter(SeatHold.trip_id == booking.trip_id, SeatHold.seat_id.in_(seat_ids)).delete()
+        await db.execute(delete(SeatHold).where(SeatHold.trip_id == booking.trip_id, SeatHold.seat_id.in_(seat_ids)))
 
     db.add(AuditLog(
         user_id=staff_id,
@@ -583,7 +583,7 @@ async def reject_pre_booking_service(
     # Clean up DB seat holds
     seat_ids = [bs.seat_id for bs in booking.seats]
     if seat_ids:
-        db.query(SeatHold).filter(SeatHold.trip_id == booking.trip_id, SeatHold.seat_id.in_(seat_ids)).delete()
+        await db.execute(delete(SeatHold).where(SeatHold.trip_id == booking.trip_id, SeatHold.seat_id.in_(seat_ids)))
 
     db.add(AuditLog(
         user_id=staff_id,

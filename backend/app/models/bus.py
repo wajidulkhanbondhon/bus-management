@@ -12,8 +12,8 @@ class Bus(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
     bus_name = Column(String, nullable=False)
-    bus_number = Column(String, unique=True, index=True, nullable=False)
-    operator = Column(String, default="Central Transport Office")
+    bus_number = Column(String, index=True, nullable=False)
+    operator = Column(String, default="পরে নির্ধারণ করা হবে (Pending Vendor Allocation)")
     reg_number = Column(String, unique=True, nullable=False)
     capacity = Column(Integer, nullable=False)
     bus_type = Column(String, default="MIXED")  # "MALE", "FEMALE", "MIXED"
@@ -25,7 +25,7 @@ class Bus(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="buses")
-    seat_layout = relationship("SeatLayout", back_populates="buses")
+    seat_layout = relationship("SeatLayout", back_populates="buses", lazy="selectin")
     trips = relationship("Trip", back_populates="bus")
 
 
@@ -44,7 +44,7 @@ class SeatLayout(Base):
 
     # Relationships
     buses = relationship("Bus", back_populates="seat_layout")
-    seats = relationship("Seat", back_populates="seat_layout", cascade="all, delete-orphan")
+    seats = relationship("Seat", back_populates="seat_layout", cascade="all, delete-orphan", lazy="selectin")
 
 
 class Seat(Base):

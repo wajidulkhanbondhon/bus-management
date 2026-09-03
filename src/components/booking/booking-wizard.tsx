@@ -413,13 +413,14 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
       colIndex: nextIdx,
       seatType: 'EXTRA',
       genderAllowed: 'ANY',
-      fare: 450,
+      fare: selectedTrip?.basePrice || 450,
       fareZoneName: 'Extra Seat',
       status: 'AVAILABLE',
       isExtra: true
     };
     setExtraSeats((prev) => [...prev, newExtra]);
-  }, [extraSeats.length, selectedTrip?.id]);
+    setSelectedSeatIds((prev) => (prev.includes(newExtra.seatId) ? prev : [...prev, newExtra.seatId]));
+  }, [extraSeats.length, selectedTrip?.id, selectedTrip?.basePrice]);
 
   const handleRemoveExtraSeat = useCallback((seatId: string) => {
     setExtraSeats((prev) => prev.filter((s) => s.seatId !== seatId));

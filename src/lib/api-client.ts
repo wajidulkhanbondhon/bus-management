@@ -35,10 +35,19 @@ export async function apiRequest<T = any>(
         const cookieStore = await cookies();
         const token = cookieStore.get('fastapi_token')?.value;
         const { getValidFastApiToken } = await import('@/lib/token');
-        headers['Authorization'] = `Bearer ${getValidFastApiToken(token)}`;
+        const validToken = getValidFastApiToken(token);
+        if (validToken) {
+          headers['Authorization'] = `Bearer ${validToken}`;
+        }
       } catch {
-        const { generateFastApiJwt } = await import('@/lib/token');
-        headers['Authorization'] = `Bearer ${generateFastApiJwt()}`;
+        // No server cookie context available — try dev fallback
+        try {
+          const { getValidFastApiToken } = await import('@/lib/token');
+          const devToken = getValidFastApiToken(undefined);
+          if (devToken) headers['Authorization'] = `Bearer ${devToken}`;
+        } catch {
+          // No auth possible
+        }
       }
     }
 
@@ -86,12 +95,33 @@ export const fastApiClient = {
   createBus: (data: any) => apiRequest('/buses', { method: 'POST', body: JSON.stringify(data) }),
   updateBus: (id: string, data: any) => apiRequest(`/buses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteBus: (id: string) => apiRequest(`/buses/${id}`, { method: 'DELETE' }),
+  restoreBus: (id: string) => apiRequest(`/buses/${id}/restore`, { method: 'POST' }),
+  purgeBus: (id: string) => apiRequest(`/buses/${id}/purge`, { method: 'DELETE' }),
+  getRecycleBinSummary: () => apiRequest('/recycle-bin/summary'),
+  getRecycleBinItems: (category?: string, search?: string) =>
+    apiRequest(`/recycle-bin/items?category=${category || 'all'}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
+  restoreRecycleItem: (category: string, id: string, newName?: string, force?: boolean) =>
+    apiRequest('/recycle-bin/restore', { method: 'POST', body: JSON.stringify({ category, id, newName, force }) }),
+  purgeRecycleItem: (category: string, id: string) =>
+    apiRequest('/recycle-bin/purge', { method: 'POST', body: JSON.stringify({ category, id }) }),
+  emptyRecycleBin: (category?: string) =>
+    apiRequest('/recycle-bin/empty', { method: 'POST', body: JSON.stringify({ category: category || 'all' }) }),
+  restoreAllInFolder: (folderId: string) =>
+    apiRequest(`/recycle-bin/folders/${folderId}/restore-all`, { method: 'POST' }),
+  bulkRestoreRecycleItems: (items: { category: string; id: string }[]) =>
+    apiRequest('/recycle-bin/bulk-restore', { method: 'POST', body: JSON.stringify({ items }) }),
+  bulkPurgeRecycleItems: (items: { category: string; id: string }[]) =>
+    apiRequest('/recycle-bin/bulk-purge', { method: 'POST', body: JSON.stringify({ items }) }),
   getTrips: (params?: string) => apiRequest(`/trips${params ? `?${params}` : ''}`),
   getTripById: (id: string) => apiRequest(`/trips/${id}`),
   createTrip: (data: any) => apiRequest('/trips', { method: 'POST', body: JSON.stringify(data) }),
   getRoutes: () => apiRequest('/trips/routes'),
   createRoute: (data: any) => apiRequest('/trips/routes', { method: 'POST', body: JSON.stringify(data) }),
   getSeatMap: (tripId: string) => apiRequest(`/inventory/${tripId}/seat-map`),
+  getSeatLayouts: () => apiRequest('/buses/seat-layouts'),
+  createSeatLayout: (data: any) => apiRequest('/buses/seat-layouts', { method: 'POST', body: JSON.stringify(data) }),
+  deleteSeatLayout: (id: string, toRecycleBin: boolean = true) => 
+    apiRequest(`/buses/seat-layouts/${id}?toRecycleBin=${toRecycleBin ? 'true' : 'false'}`, { method: 'DELETE' }),
 
   // Bookings & Pre-Booking
   createCounterBooking: (data: any, options?: RequestInit) =>

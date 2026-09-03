@@ -7,6 +7,12 @@ from app.models.security import BlockedIP
 # In-memory blocked IP set to avoid hammering DB on every request
 _blocked_ips_cache = set()
 
+
+def unblock_ip_cache(ip_address: str) -> None:
+    """Removes an IP from the in-memory blocked cache (used by unblock operations)."""
+    _blocked_ips_cache.discard(ip_address)
+
+
 class FirewallMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         client_ip = request.client.host if request.client else "127.0.0.1"

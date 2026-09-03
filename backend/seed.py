@@ -37,21 +37,17 @@ async def seed_database():
         await conn.run_sync(Base.metadata.create_all)
     
     async with AsyncSessionLocal() as db:
-        try:
-            # Check if already seeded
-            from sqlalchemy.future import select
-            result = await db.execute(select(User))
-            existing_users = result.scalars().all()
-            if existing_users:
-                print("ℹ️ Database already has records. Updating user passwords to pure Argon2id...")
-                argon_pwd = get_password_hash("admin1234")
-                for u in existing_users:
-                    u.password_hash = argon_pwd
-                await db.commit()
-                print("✅ All user accounts successfully updated with Argon2id hashes!")
-                return
+        # Check if already seeded
+        from sqlalchemy.future import select
+        result = await db.execute(select(User))
+        existing_users = result.scalars().all()
+        if existing_users:
+            print("⚠️ Database already contains users. Refusing to re-seed or overwrite existing account passwords.")
+            print("   (Passwords are never auto-reset. Reset individual accounts deliberately if needed.)")
+            return
 
-        # 1. CREATE TENANT (SaaS Bus Company)
+        try:
+            # 1. CREATE TENANT (SaaS Bus Company)
             tenant = Tenant(
                 id="central-transit",
                 name="Central Admission Transport Office",

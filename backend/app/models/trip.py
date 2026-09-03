@@ -44,7 +44,7 @@ class Trip(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
     trip_code = Column(String, unique=True, index=True, nullable=False)  # "TRIP-20260827-001"
-    bus_id = Column(String, ForeignKey("buses.id"), nullable=False)
+    bus_id = Column(String, ForeignKey("buses.id"), nullable=True)
     route_id = Column(String, ForeignKey("bus_routes.id"), nullable=False)
     departure_date = Column(DateTime, nullable=False, index=True)
     departure_time = Column(DateTime, nullable=False)

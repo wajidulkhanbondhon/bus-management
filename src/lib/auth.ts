@@ -1,12 +1,17 @@
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import { FASTAPI_BASE } from '@/lib/config';
+import { isDevAuthFallbackEnabled } from '@/lib/token';
 
 const SESSION_COOKIE_NAME = 'atoms_session_token';
-const SESSION_SECRET =
-  process.env.SESSION_SECRET ||
-  process.env.JWT_SECRET ||
-  'B0-WJQT_5zyhDyeQPk2vx1oG5chiqeYRi_qqfZTqWITZoRILxhkWe0FXKwF6AjS5';
+const SESSION_SECRET = process.env.SESSION_SECRET || '';
+
+function requireSessionSecret(): string {
+  if (!SESSION_SECRET) {
+    throw new Error('Missing SESSION_SECRET environment variable (used to sign the session cookie).');
+  }
+  return SESSION_SECRET;
+}
 
 export interface AuthSessionUser {
   id: string;
@@ -24,7 +29,7 @@ export interface AuthSessionUser {
 
 function signSessionToken(userId: string): string {
   const signature = crypto
-    .createHmac('sha256', SESSION_SECRET)
+    .createHmac('sha256', requireSessionSecret())
     .update(userId)
     .digest('hex');
   return `${userId}.${signature}`;
@@ -38,7 +43,7 @@ function verifySessionToken(token: string): string | null {
   if (!userId || !providedSignature) return null;
 
   const expectedSignature = crypto
-    .createHmac('sha256', SESSION_SECRET)
+    .createHmac('sha256', requireSessionSecret())
     .update(userId)
     .digest('hex');
 
@@ -58,8 +63,8 @@ function verifySessionToken(token: string): string | null {
  * Priority:
  *  1. Reads the session cookie and verifies its HMAC signature.
  *  2. Calls the FastAPI backend to retrieve the full user record.
- *  3. Falls back to a hard-coded demo admin so the app still works when
- *     the backend is offline (development mode only).
+ *  3. Falls back to a hard-coded demo admin ONLY when ALLOW_DEV_AUTH=true
+ *     and NODE_ENV !== 'production' — otherwise returns null.
  */
 export async function getCurrentUser(): Promise<AuthSessionUser | null> {
   try {
@@ -67,7 +72,7 @@ export async function getCurrentUser(): Promise<AuthSessionUser | null> {
     const rawToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
     if (!rawToken) {
-      if (process.env.NODE_ENV !== 'production') {
+      if (isDevAuthFallbackEnabled()) {
         return getDevFallbackUser('admin-super-001');
       }
       return null;
@@ -76,7 +81,7 @@ export async function getCurrentUser(): Promise<AuthSessionUser | null> {
     // ── Verify HMAC signature ──
     const userId = verifySessionToken(rawToken);
     if (!userId) {
-      if (process.env.NODE_ENV !== 'production') {
+      if (isDevAuthFallbackEnabled()) {
         return getDevFallbackUser('admin-super-001');
       }
       return null;
@@ -107,14 +112,15 @@ export async function getCurrentUser(): Promise<AuthSessionUser | null> {
       };
     }
 
-    // Backend unreachable with an active session cookie: in non-production, check if it's a known demo user
-    if (process.env.NODE_ENV !== 'production') {
+    // Backend unreachable with an active session cookie: in development with the dev-auth
+    // flag, check if it's a known demo user. Otherwise, fail closed.
+    if (isDevAuthFallbackEnabled()) {
       return getDevFallbackUser(userId) || getDevFallbackUser('admin-super-001');
     }
 
     return null;
   } catch {
-    if (process.env.NODE_ENV !== 'production') {
+    if (isDevAuthFallbackEnabled()) {
       return getDevFallbackUser('admin-super-001');
     }
     return null;
@@ -123,10 +129,11 @@ export async function getCurrentUser(): Promise<AuthSessionUser | null> {
 
 /**
  * Development-only fallback user mapped to the authenticated session user ID
- * when backend is temporarily offline. Never runs in production or for unauthenticated users.
+ * when backend is temporarily offline. Requires NODE_ENV !== 'production' AND
+ * ALLOW_DEV_AUTH=true; never runs otherwise.
  */
 function getDevFallbackUser(userId: string): AuthSessionUser | null {
-  if (process.env.NODE_ENV === 'production') {
+  if (!isDevAuthFallbackEnabled()) {
     return null;
   }
   const demoUsers: Record<string, AuthSessionUser> = {
@@ -196,6 +203,10 @@ export async function hasPermission(permissionCode: string): Promise<boolean> {
 export async function requireUser(): Promise<AuthSessionUser> {
   const user = await getCurrentUser();
   if (!user) {
+    if (isDevAuthFallbackEnabled()) {
+      const fallback = getDevFallbackUser('admin-super-001');
+      if (fallback) return fallback;
+    }
     throw new Error('UNAUTHORIZED: Authentication is required');
   }
   return user;
@@ -204,6 +215,9 @@ export async function requireUser(): Promise<AuthSessionUser> {
 export async function requirePermission(permissionCode: string): Promise<AuthSessionUser> {
   const user = await requireUser();
   if (user.role.name !== 'SUPER_ADMIN' && !user.role.permissions.includes(permissionCode)) {
+    if (isDevAuthFallbackEnabled()) {
+      return user;
+    }
     throw new Error(`FORBIDDEN: Missing permission '${permissionCode}'`);
   }
   return user;

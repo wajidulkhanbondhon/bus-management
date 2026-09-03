@@ -1,4 +1,5 @@
 from typing import Optional, List, Any
+from datetime import datetime
 from pydantic import BaseModel
 
 
@@ -32,6 +33,9 @@ class SeatLayoutCreate(BaseModel):
 class SeatLayoutOut(SeatLayoutCreate):
     id: str
     seats: List[SeatOut] = []
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    assigned_buses_count: Optional[int] = 0
 
     class Config:
         from_attributes = True
@@ -40,7 +44,7 @@ class SeatLayoutOut(SeatLayoutCreate):
 class BusBase(BaseModel):
     bus_name: str
     bus_number: str
-    operator: str = "Central Transport Office"
+    operator: str = "পরে নির্ধারণ করা হবে (Pending Vendor Allocation)"
     reg_number: str
     capacity: int
     bus_type: str = "MIXED"
