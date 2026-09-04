@@ -51,6 +51,9 @@ import {
   ShieldCheck,
   Settings,
   Trash2,
+  LogIn,
+  Building2,
+  Globe,
   LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -83,8 +86,8 @@ interface SidebarProps {
 const ROLE_ACCESS: Record<string, string[]> = {
   admin: ['all'],
   manager: ['all'],
-  counter_staff: ['dashboard', 'bookings', 'trips', 'sales', 'payments'],
-  supervisor: ['dashboard', 'bookings', 'trips', 'buses'],
+  counter_staff: ['dashboard', 'bookings', 'trips', 'sales', 'payments', 'student-portal'],
+  supervisor: ['dashboard', 'bookings', 'trips', 'buses', 'supervisor'],
 };
 
 export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
@@ -149,9 +152,34 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       items: [
         { href: '/buses/seat-builder', label: language === 'bn' ? 'সিট লেআউট ও ভাড়া' : 'Seat Layouts & Fares', icon: Armchair, highlight: true },
         { href: '/buses', label: t.allBuses, icon: BusFront },
-        { href: '/buses/create', label: t.createBus, icon: PlusCircle },
-        { href: '/supervisor', label: language === 'bn' ? 'সুপারভাইজার পোর্টাল' : 'Supervisor Portal', icon: UserCheck },
-        { href: '/universities/manage', label: language === 'bn' ? 'বিশ্ববিদ্যালয় সার্কুলার' : 'University Circulars', icon: GraduationCap }
+        { href: '/buses/create', label: t.createBus, icon: PlusCircle }
+      ]
+    },
+    {
+      id: 'supervisor',
+      title: language === 'bn' ? 'সুপারভাইজার' : 'Supervisor',
+      subtitle: language === 'bn' ? 'অন-ট্রিপ পোর্টাল' : 'Trip & Attendance',
+      icon: UserCheck,
+      colorClass: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+      items: [
+        { href: '/supervisor', label: language === 'bn' ? 'সুপারভাইজার পোর্টাল' : 'Supervisor Portal', icon: UserCheck, highlight: true },
+        { href: '/ai/supervisor', label: language === 'bn' ? 'সুপারভাইজার এআই কো-পাইলট' : 'Supervisor AI Copilot', icon: Bot, badge: 'AI' },
+        { href: '/supervisor/login', label: language === 'bn' ? 'সুপারভাইজার লগইন' : 'Supervisor Login', icon: LogIn }
+      ]
+    },
+    {
+      id: 'student-portal',
+      title: language === 'bn' ? 'শিক্ষার্থী পোর্টাল' : 'Student Portal',
+      subtitle: language === 'bn' ? 'ভিউ, কন্ট্রোল ও সার্কুলার' : 'View, Control & Circulars',
+      icon: GraduationCap,
+      colorClass: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20',
+      items: [
+        { href: '/passenger', label: language === 'bn' ? 'স্টুডেন্ট টিকিট পোর্টাল ভিউ' : 'Student Portal View', icon: GraduationCap, highlight: true, badge: 'View' },
+        { href: '/settings/landing-control', label: language === 'bn' ? 'স্টুডেন্ট ভিউ ও পোর্টাল কন্ট্রোল' : 'Portal & View Control', icon: Monitor, highlight: true },
+        { href: '/universities/manage', label: language === 'bn' ? 'বিশ্ববিদ্যালয় সার্কুলার ম্যানেজ' : 'University Circulars', icon: Building2, highlight: true },
+        { href: '/universities', label: language === 'bn' ? 'পাবলিক সার্কুলার পেজ ভিউ' : 'Public Circulars Page', icon: Globe },
+        { href: '/ai/student', label: language === 'bn' ? 'শিক্ষার্থী এআই সহকারী' : 'Student AI Copilot', icon: Bot, badge: 'AI' },
+        { href: '/track', label: language === 'bn' ? 'টিকিট ট্র্যাকার পেজ' : 'Ticket Tracker Page', icon: Search }
       ]
     },
     {
@@ -279,7 +307,9 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       '/universities',
       '/settings',
       '/passenger',
-      '/recycle-bin'
+      '/recycle-bin',
+      '/supervisor',
+      '/track'
     ].includes(href);
 
     return isExactRoot

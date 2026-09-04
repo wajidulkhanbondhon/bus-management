@@ -845,9 +845,12 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
     setIsUpdating(true);
     setActionErrorMsg(null);
     try {
+      const originalBus = buses.find((b) => b.id === editingBus.id);
+      const lockedBusNumber = originalBus?.busNumber || editingBus.busNumber;
+
       const res = await updateBusAction(editingBus.id, {
         busName: editingBus.busName,
-        busNumber: editingBus.busNumber,
+        busNumber: lockedBusNumber,
         operator: editingBus.operator,
         regNumber: editingBus.regNumber,
         capacity: Number(editingBus.capacity),
@@ -2755,12 +2758,33 @@ export function BusListView({ buses: initialBuses, layouts }: BusListViewProps) 
                   onChange={(e) => setEditingBus({ ...editingBus, busName: e.target.value })}
                   required
                 />
-                <Input
-                  label={language === 'bn' ? 'বাস নম্বর / কোড' : 'Bus Code / Number'}
-                  value={editingBus.busNumber}
-                  onChange={(e) => setEditingBus({ ...editingBus, busNumber: e.target.value })}
-                  required
-                />
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      {language === 'bn' ? 'বাস নম্বর / কোড' : 'Bus Code / Number'}
+                    </label>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800/60 shadow-2xs">
+                      <Lock className="w-3 h-3" />
+                      {language === 'bn' ? 'লক করা (অপরিবর্তনযোগ্য)' : 'Locked (Fixed)'}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={editingBus.busNumber}
+                      disabled
+                      readOnly
+                      title={language === 'bn' ? 'টিকিট ও সিট ম্যাপের নির্ভুলতা রক্ষার্থে বাস নম্বর পরিবর্তন লক করা রয়েছে।' : 'Bus number is locked to maintain ticketing & seat integrity.'}
+                      className="w-full pl-3.5 pr-8 py-2 text-sm bg-slate-100/90 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold cursor-not-allowed select-all shadow-inner"
+                    />
+                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Lock className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                    {language === 'bn' ? '🔒 টিকিট ও ট্রিপ সুরক্ষায় বাস কোড পরিবর্তন লক করা রয়েছে।' : '🔒 Bus code is locked for data integrity.'}
+                  </p>
+                </div>
               </div>
 
               <div>

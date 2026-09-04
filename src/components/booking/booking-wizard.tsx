@@ -123,7 +123,11 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
   const rowLetters = 'ABCDEFGHIJKLMN';
   const trips = initialTrips && initialTrips.length > 0 ? initialTrips : [];
 
-  const initialTripId = searchParams.get('tripId') || trips[0]?.id || '';
+  const rawParamId = searchParams.get('tripId') || searchParams.get('busId') || '';
+  const matchedTrip = trips.find(
+    (t) => t.id === rawParamId || t.busId === rawParamId || t.bus?.id === rawParamId || t.tripCode === rawParamId || t.bus?.busNumber === rawParamId
+  );
+  const initialTripId = matchedTrip ? matchedTrip.id : (rawParamId || trips[0]?.id || '');
   const initialSeatId = searchParams.get('seatId') || '';
 
   // ── Step state ──────────────────────────────────────────────

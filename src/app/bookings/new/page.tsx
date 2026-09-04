@@ -33,6 +33,7 @@ export default async function NewBookingPage() {
     let fare = 550;
     let hotelPackage = '';
     let examUnit = '';
+    let examDate = '';
 
     if (notes) {
       const timeMatch = notes.match(/DEP_TIME:\s*([^\n;]+)/i);
@@ -40,6 +41,9 @@ export default async function NewBookingPage() {
 
       const dateMatch = notes.match(/DEP_DATE:\s*([^\n;]+)/i);
       if (dateMatch) departureDate = dateMatch[1].trim();
+
+      const examMatch = notes.match(/EXAM_DATE:\s*([^\n;]+)/i);
+      if (examMatch) examDate = examMatch[1].trim();
 
       const repMatch = notes.match(/REPORTING:\s*([^\n;]+)/i);
       if (repMatch) reportingTime = repMatch[1].trim();
@@ -71,7 +75,7 @@ export default async function NewBookingPage() {
       if (unitMatch) examUnit = unitMatch[1].trim();
     }
 
-    return { departureTime, departureDate, reportingTime, estArrival, origin, destination, fare, hotelPackage, examUnit };
+    return { departureTime, departureDate, examDate, reportingTime, estArrival, origin, destination, fare, hotelPackage, examUnit };
   };
 
   // Build standard seat names for a given capacity (A1..A4, B1..B4, ..., K1..K5)
@@ -214,12 +218,12 @@ export default async function NewBookingPage() {
       const origin = b.routeOrigin || parsedNotes.origin;
       const destination = b.routeDestination || parsedNotes.destination || layoutInfo?.university || b.targetUniversity || 'রাজশাহী বিশ্ববিদ্যালয় (RU)';
       const uniName = b.targetUniversity || layoutInfo?.university || destination;
-      const examUnit = layoutInfo?.unit || parsedNotes.examUnit;
+      const examUnit = b.examUnit || layoutInfo?.unit || parsedNotes.examUnit || 'General / All Units';
       const basePrice = layoutInfo ? layoutInfo.minFare : (b.basePrice || parsedNotes.fare || 550);
       const maxPrice = layoutInfo ? layoutInfo.maxFare : basePrice;
 
       const capacity = Number(b.capacity) || 45;
-      const tripId = `trip-bus-${b.id || idx}`;
+      const tripId = b.id; // Use direct bus.id so /bookings/new?tripId=${bus.id} matches instantly!
       const stats = computeTripSeatStats(tripId, b.id, capacity);
 
       return {
@@ -239,7 +243,8 @@ export default async function NewBookingPage() {
           bus_type: b.busType || b.bus_type || 'MIXED',
           operator: b.operator || 'Central Transport Office',
           status: 'ACTIVE',
-          notes: b.notes || ''
+          notes: b.notes || '',
+          examUnit: examUnit
         },
         route: {
           routeName: `${origin} ➔ ${destination}`,
@@ -250,6 +255,7 @@ export default async function NewBookingPage() {
         targetUniversity: uniName,
         departureDate: b.departureDate || parsedNotes.departureDate,
         departureTime: b.departureTime || parsedNotes.departureTime,
+        examDate: b.examDate || parsedNotes.examDate,
         reportingTime: parsedNotes.reportingTime,
         estArrival: parsedNotes.estArrival,
         hotelPackage: parsedNotes.hotelPackage,
@@ -262,28 +268,37 @@ export default async function NewBookingPage() {
       };
     });
 
-  // Attach live seat stats to rawTrips as well
-  const enhancedRawTrips = rawTrips.map((t: any) => {
-    const cap = t.bus?.capacity || 45;
-    const stats = computeTripSeatStats(t.id, t.busId || t.bus?.id, cap);
-    const parsedNotes = parseBusNotes(t.notes || t.bus?.notes || '');
-    const layoutInfo = getLayoutInfo(t.bus?.seatLayoutId || t.bus?.seat_layout_id);
-    
-    const basePrice = layoutInfo ? layoutInfo.minFare : (t.basePrice || parsedNotes.fare || 550);
-    const maxPrice = layoutInfo ? layoutInfo.maxFare : basePrice;
-    const examUnit = t.examUnit || layoutInfo?.unit || parsedNotes.examUnit;
+  // Attach live seat stats to rawTrips as well (only for ACTIVE buses)
+  const enhancedRawTrips = rawTrips
+    .filter((t: any) => {
+      const bStatus = (t.bus?.status || t.bus_status || 'ACTIVE').toUpperCase();
+      return bStatus === 'ACTIVE';
+    })
+    .map((t: any) => {
+      const cap = t.bus?.capacity || 45;
+      const stats = computeTripSeatStats(t.id, t.busId || t.bus?.id, cap);
+      const parsedNotes = parseBusNotes(t.notes || t.bus?.notes || '');
+      const layoutInfo = getLayoutInfo(t.bus?.seatLayoutId || t.bus?.seat_layout_id);
+      
+      const basePrice = layoutInfo ? layoutInfo.minFare : (t.basePrice || parsedNotes.fare || 550);
+      const maxPrice = layoutInfo ? layoutInfo.maxFare : basePrice;
+      const examUnit = t.examUnit || t.bus?.examUnit || layoutInfo?.unit || parsedNotes.examUnit || 'General / All Units';
+      const targetUni = t.targetUniversity || layoutInfo?.university || t.route?.destination || 'রাজশাহী বিশ্ববিদ্যালয় (RU)';
 
-    return {
-      ...t,
-      reportingTime: t.reportingTime || parsedNotes.reportingTime,
-      estArrival: t.estArrival || parsedNotes.estArrival,
-      hotelPackage: t.hotelPackage || parsedNotes.hotelPackage,
-      examUnit: examUnit,
-      basePrice: basePrice,
-      maxPrice: maxPrice,
-      stats: stats
-    };
-  });
+      return {
+        ...t,
+        targetUniversity: targetUni,
+        busId: t.busId || t.bus_id || t.bus?.id,
+        examDate: t.examDate || parsedNotes.examDate,
+        reportingTime: t.reportingTime || parsedNotes.reportingTime,
+        estArrival: t.estArrival || parsedNotes.estArrival,
+        hotelPackage: t.hotelPackage || parsedNotes.hotelPackage,
+        examUnit: examUnit,
+        basePrice: basePrice,
+        maxPrice: maxPrice,
+        stats: stats
+      };
+    });
 
   const combinedTrips = [...enhancedRawTrips, ...synthesizedBusTrips];
 
