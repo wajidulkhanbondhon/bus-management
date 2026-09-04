@@ -58,9 +58,9 @@ class Trip(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="trips")
-    bus = relationship("Bus", back_populates="trips")
-    route = relationship("BusRoute", back_populates="trips")
-    fare_rules = relationship("FareRule", back_populates="trip", cascade="all, delete-orphan")
+    bus = relationship("Bus", back_populates="trips", lazy="selectin")
+    route = relationship("BusRoute", back_populates="trips", lazy="selectin")
+    fare_rules = relationship("FareRule", back_populates="trip", cascade="all, delete-orphan", lazy="selectin")
     seat_holds = relationship("SeatHold", back_populates="trip", cascade="all, delete-orphan")
     seat_locks = relationship("SeatLock", back_populates="trip", cascade="all, delete-orphan")
     bookings = relationship("Booking", back_populates="trip")

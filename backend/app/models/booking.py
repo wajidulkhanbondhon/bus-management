@@ -58,13 +58,13 @@ class Booking(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="bookings")
-    trip = relationship("Trip", back_populates="bookings")
+    trip = relationship("Trip", back_populates="bookings", lazy="selectin")
     created_by = relationship("User", back_populates="created_bookings", foreign_keys=[created_by_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
-    seats = relationship("BookingSeat", back_populates="booking", cascade="all, delete-orphan")
-    passengers = relationship("BookingPassenger", back_populates="booking", cascade="all, delete-orphan")
-    discounts = relationship("Discount", back_populates="booking", cascade="all, delete-orphan")
-    payments = relationship("Payment", back_populates="booking")
+    seats = relationship("BookingSeat", back_populates="booking", cascade="all, delete-orphan", lazy="selectin")
+    passengers = relationship("BookingPassenger", back_populates="booking", cascade="all, delete-orphan", lazy="selectin")
+    discounts = relationship("Discount", back_populates="booking", cascade="all, delete-orphan", lazy="selectin")
+    payments = relationship("Payment", back_populates="booking", lazy="selectin")
     refunds = relationship("Refund", back_populates="booking")
     ledger_entries = relationship("FinancialLedger", back_populates="booking")
 

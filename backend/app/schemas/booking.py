@@ -10,10 +10,17 @@ class PassengerInput(BaseModel):
     gender: str = "FEMALE"           # "MALE", "FEMALE"
     seat_id: str
     admission_id: Optional[str] = None
+    student_admission_id: Optional[str] = None
     institution: Optional[str] = None
     group_category: Optional[str] = None
     address: Optional[str] = None
     guardian_relationship: Optional[str] = None
+    phone_type: Optional[str] = "WHATSAPP"
+    has_whatsapp: Optional[bool] = True
+    whatsapp_number: Optional[str] = None
+
+    class Config:
+        extra = "allow"
 
 
 class CreateBookingRequest(BaseModel):
@@ -68,6 +75,18 @@ class ConfirmPreBookingPaymentRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class BookingPassengerOut(BaseModel):
+    id: str
+    passenger_name: str
+    passenger_phone: str
+    passenger_type: str
+    gender: str
+    seat_number: str
+
+    class Config:
+        from_attributes = True
+
+
 class BookingOut(BaseModel):
     id: str
     booking_number: str
@@ -90,6 +109,7 @@ class BookingOut(BaseModel):
     due_amount: float
     notes: Optional[str] = None
     created_at: datetime
+    passengers: Optional[List[BookingPassengerOut]] = []
 
     class Config:
         from_attributes = True

@@ -29,7 +29,9 @@ export const OptionalBdPhoneNumberSchema = z
 export const PassengerInputSchema = z.object({
   passengerName: z.string().min(1, 'Passenger name is required').max(200),
   passengerPhone: BdPhoneNumberSchema,
-  phoneType: z.enum(['WHATSAPP', 'NORMAL']).optional().default('NORMAL'),
+  phoneType: z.enum(['WHATSAPP', 'NORMAL']).optional().default('WHATSAPP'),
+  hasWhatsapp: z.boolean().optional().default(true),
+  whatsappNumber: OptionalBdPhoneNumberSchema,
   passengerType: PassengerTypeSchema,
   gender: GenderSchema,
   seatId: z.string().min(1, 'Seat ID is required'),
@@ -37,7 +39,9 @@ export const PassengerInputSchema = z.object({
   institution: z.string().max(200).optional().nullable(),
   groupCategory: z.string().max(100).optional().nullable(),
   guardianPhone: OptionalBdPhoneNumberSchema,
-  guardianPhoneType: z.enum(['WHATSAPP', 'NORMAL']).optional().default('NORMAL'),
+  guardianPhoneType: z.enum(['WHATSAPP', 'NORMAL']).optional().default('WHATSAPP'),
+  guardianHasWhatsapp: z.boolean().optional().default(true),
+  guardianWhatsappNumber: OptionalBdPhoneNumberSchema,
   address: z.string().max(500).optional().nullable(),
   guardianRelationship: z.string().max(50).optional().nullable(),
 });

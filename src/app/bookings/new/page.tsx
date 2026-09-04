@@ -8,7 +8,16 @@ import { getAllBookings } from '@/services/booking.service';
 
 export const revalidate = 0;
 
-export default async function NewBookingPage() {
+export default async function NewBookingPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const tripIdParam = typeof resolvedSearchParams.tripId === 'string' ? resolvedSearchParams.tripId : '';
+  const busIdParam = typeof resolvedSearchParams.busId === 'string' ? resolvedSearchParams.busId : '';
+  const seatIdParam = typeof resolvedSearchParams.seatId === 'string' ? resolvedSearchParams.seatId : '';
+
   const [tripsData, busesData, user, savedLayouts, fareZones, allBookingsData] = await Promise.all([
     getAllTrips({ status: 'SCHEDULED' }).catch(() => []),
     getAllBuses().catch(() => []),
@@ -148,9 +157,27 @@ export default async function NewBookingPage() {
     };
   };
 
-  const getLayoutInfo = (layoutId: string | null | undefined) => {
-    if (!layoutId) return null;
-    const layout = savedLayouts.find((l: any) => l.id === layoutId);
+  const getLayoutInfo = (layoutId: string | null | undefined, busItem?: any) => {
+    let layout: any = null;
+    if (layoutId) {
+      const norm = String(layoutId).trim().toLowerCase();
+      layout = savedLayouts.find((l: any) => 
+        (l.id && String(l.id).trim().toLowerCase() === norm) ||
+        (l.name && String(l.name).trim().toLowerCase() === norm)
+      );
+    }
+    if (!layout && busItem) {
+      const bUni = (busItem.targetUniversity || busItem.university || '').trim().toLowerCase();
+      const bUnit = (busItem.examUnit || busItem.unit || '').trim().toLowerCase();
+      layout = savedLayouts.find((l: any) => {
+        const lUni = (l.university || '').trim().toLowerCase();
+        const lUnit = (l.unit || l.examName || '').trim().toLowerCase();
+        return (bUni && lUni && bUni.includes(lUni)) || (bUnit && lUnit && bUnit === lUnit);
+      });
+    }
+    if (!layout && savedLayouts.length === 1) {
+      layout = savedLayouts[0];
+    }
     if (!layout) return null;
 
     let parsedJson: any = null;
@@ -161,8 +188,12 @@ export default async function NewBookingPage() {
     }
 
     const layoutGrid = layout.layoutGrid || parsedJson?.layoutGrid;
+    const extraSeats = layout.extraSeats || parsedJson?.extraSeats || [];
+    const activeSegments = layout.activeSegments || parsedJson?.activeSegments || [];
     const unit = layout.unit || layout.examName || parsedJson?.unit || parsedJson?.examName || '';
     const university = layout.university || parsedJson?.university || '';
+    const genderRule = layout.genderRule || parsedJson?.genderRule || 'ANY';
+    const capacity = layout.totalSeats || layout.seatCount || layout.capacity || parsedJson?.capacity;
 
     let minFare = Infinity;
     let maxFare = 0;
@@ -172,7 +203,7 @@ export default async function NewBookingPage() {
       layoutGrid.forEach((row: any[]) => {
         if (Array.isArray(row)) {
           row.forEach((cell: any) => {
-            if (cell && cell.type === 'SEAT') {
+            if (cell && (cell.type === 'SEAT' || cell.seatType === 'SEAT')) {
               const bFare = Number(cell.baseFare);
               if (!isNaN(bFare) && bFare > 0) {
                 if (bFare < minFare) minFare = bFare;
@@ -188,11 +219,18 @@ export default async function NewBookingPage() {
     if (maxFare === 0) maxFare = minFare;
 
     return {
+      id: layout.id,
+      name: layout.name,
       unit,
       university,
       minFare,
       maxFare,
-      layoutGrid
+      layoutGrid,
+      extraSeats,
+      activeSegments,
+      genderRule,
+      capacity,
+      layout
     };
   };
 
@@ -213,7 +251,7 @@ export default async function NewBookingPage() {
       const cleanBusNum = (b.busNumber || b.bus_number || `B${idx + 1}`).toString().replace(/[^A-Za-z0-9]/g, '');
       const busName = b.busName || b.bus_name || 'বিশ্ববিদ্যালয় এক্সপ্রেস কোচ';
       const parsedNotes = parseBusNotes(b.notes || '');
-      const layoutInfo = getLayoutInfo(b.seatLayoutId || b.seat_layout_id);
+      const layoutInfo = getLayoutInfo(b.seatLayoutId || b.seat_layout_id, b);
       
       const origin = b.routeOrigin || parsedNotes.origin;
       const destination = b.routeDestination || parsedNotes.destination || layoutInfo?.university || b.targetUniversity || 'রাজশাহী বিশ্ববিদ্যালয় (RU)';
@@ -222,7 +260,7 @@ export default async function NewBookingPage() {
       const basePrice = layoutInfo ? layoutInfo.minFare : (b.basePrice || parsedNotes.fare || 550);
       const maxPrice = layoutInfo ? layoutInfo.maxFare : basePrice;
 
-      const capacity = Number(b.capacity) || 45;
+      const capacity = Number(b.capacity) || layoutInfo?.capacity || 45;
       const tripId = b.id; // Use direct bus.id so /bookings/new?tripId=${bus.id} matches instantly!
       const stats = computeTripSeatStats(tripId, b.id, capacity);
 
@@ -232,6 +270,9 @@ export default async function NewBookingPage() {
         trip_code: `TRIP-${cleanBusNum || `COACH${idx + 1}`}`,
         busId: b.id,
         bus_id: b.id,
+        seatLayoutId: b.seatLayoutId || b.seat_layout_id || layoutInfo?.id,
+        seat_layout_id: b.seatLayoutId || b.seat_layout_id || layoutInfo?.id,
+        seatLayout: layoutInfo?.layout || layoutInfo,
         bus: {
           id: b.id,
           busName: busName,
@@ -244,7 +285,10 @@ export default async function NewBookingPage() {
           operator: b.operator || 'Central Transport Office',
           status: 'ACTIVE',
           notes: b.notes || '',
-          examUnit: examUnit
+          examUnit: examUnit,
+          seatLayoutId: b.seatLayoutId || b.seat_layout_id || layoutInfo?.id,
+          seat_layout_id: b.seatLayoutId || b.seat_layout_id || layoutInfo?.id,
+          seatLayout: layoutInfo?.layout || layoutInfo
         },
         route: {
           routeName: `${origin} ➔ ${destination}`,
@@ -278,7 +322,7 @@ export default async function NewBookingPage() {
       const cap = t.bus?.capacity || 45;
       const stats = computeTripSeatStats(t.id, t.busId || t.bus?.id, cap);
       const parsedNotes = parseBusNotes(t.notes || t.bus?.notes || '');
-      const layoutInfo = getLayoutInfo(t.bus?.seatLayoutId || t.bus?.seat_layout_id);
+      const layoutInfo = getLayoutInfo(t.bus?.seatLayoutId || t.bus?.seat_layout_id || t.seatLayoutId || t.seat_layout_id, t.bus || t);
       
       const basePrice = layoutInfo ? layoutInfo.minFare : (t.basePrice || parsedNotes.fare || 550);
       const maxPrice = layoutInfo ? layoutInfo.maxFare : basePrice;
@@ -289,6 +333,15 @@ export default async function NewBookingPage() {
         ...t,
         targetUniversity: targetUni,
         busId: t.busId || t.bus_id || t.bus?.id,
+        seatLayoutId: t.bus?.seatLayoutId || t.bus?.seat_layout_id || t.seatLayoutId || t.seat_layout_id || layoutInfo?.id,
+        seat_layout_id: t.bus?.seatLayoutId || t.bus?.seat_layout_id || t.seatLayoutId || t.seat_layout_id || layoutInfo?.id,
+        seatLayout: layoutInfo?.layout || layoutInfo,
+        bus: {
+          ...t.bus,
+          seatLayoutId: t.bus?.seatLayoutId || t.bus?.seat_layout_id || t.seatLayoutId || t.seat_layout_id || layoutInfo?.id,
+          seat_layout_id: t.bus?.seatLayoutId || t.bus?.seat_layout_id || t.seatLayoutId || t.seat_layout_id || layoutInfo?.id,
+          seatLayout: layoutInfo?.layout || layoutInfo
+        },
         examDate: t.examDate || parsedNotes.examDate,
         reportingTime: t.reportingTime || parsedNotes.reportingTime,
         estArrival: t.estArrival || parsedNotes.estArrival,
@@ -311,6 +364,12 @@ export default async function NewBookingPage() {
             currentUser={user}
             savedLayouts={savedLayouts}
             fareZones={fareZones}
+            allBookings={allBookings}
+            initialParams={{
+              tripId: tripIdParam,
+              busId: busIdParam,
+              seatId: seatIdParam
+            }}
           />
         </Suspense>
       </div>

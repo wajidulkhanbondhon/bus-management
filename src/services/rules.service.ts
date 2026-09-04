@@ -196,6 +196,24 @@ export function validatePassengerRules(context: ValidationContext): RuleValidati
 /**
  * Validates a multi-passenger booking for adjacent seats and guardian relationships
  */
+export const STRICT_ALLOWED_GUARDIAN_RELATIONSHIPS = [
+  'FATHER',
+  'MOTHER',
+  'BROTHER',
+  'SISTER',
+  'PATERNAL_GRANDFATHER',
+  'MATERNAL_GRANDFATHER',
+  'PATERNAL_GRANDMOTHER',
+  'MATERNAL_GRANDMOTHER',
+  'DADA',
+  'NANA',
+  'DADI',
+  'NANI',
+  'SPOUSE',
+  'HUSBAND',
+  'WIFE'
+];
+
 export function validateMultiSeatBookingPairRules(
   passengers: Array<{
     seatId: string;
@@ -207,8 +225,6 @@ export function validateMultiSeatBookingPairRules(
   }>,
   allTripSeats: Array<{ seatId: string; seatNumber: string; status: string; booking?: any }>
 ): RuleValidationResult {
-  const allowedGuardianRelationships = ['FATHER', 'MOTHER', 'BROTHER', 'SISTER', 'SPOUSE', 'HUSBAND', 'WIFE', 'UNCLE', 'AUNT', 'OTHER'];
-
   for (const p of passengers) {
     const sObj = allTripSeats.find(s => s.seatId === p.seatId);
     const seatNum = p.seatNumber || sObj?.seatNumber;
@@ -229,7 +245,7 @@ export function validateMultiSeatBookingPairRules(
       // Both seats are booked together
       const isOppositeGender = p.gender.toUpperCase() !== coPassenger.gender.toUpperCase();
       if (isOppositeGender) {
-        // Must be Student + Guardian with valid relationship
+        // Must be Student + Guardian with valid relationship (বাপ, মা, ভাই, বোন, দাদা, নানা, দাদি, নানি, স্বামী/স্ত্রী)
         const hasStudent = p.passengerType === 'STUDENT' || coPassenger.passengerType === 'STUDENT';
         const guardian = p.passengerType === 'GUARDIAN' ? p : (coPassenger.passengerType === 'GUARDIAN' ? coPassenger : null);
 
@@ -237,16 +253,16 @@ export function validateMultiSeatBookingPairRules(
           return {
             isValid: false,
             code: 'OPPOSITE_GENDER_ADJACENT_NO_GUARDIAN',
-            message: `সিট ${seatNum} এবং ${adjacentSeatNum} বিপরীত জেন্ডারের জন্য শুধুমাত্র শিক্ষার্থী ও অভিভাবক (বাবা, মা, ভাই, বোন, স্বামী/স্ত্রী) একসাথে বুক করতে পারবেন।`
+            message: `সিট ${seatNum} এবং ${adjacentSeatNum} বিপরীত জেন্ডারের ক্ষেত্রে শুধুমাত্র শিক্ষার্থী এবং অভিভাবক (বাপ, মা, ভাই, বোন, দাদা, নানা, দাদি, নানি বা স্বামী/স্ত্রী) একসাথে বুক করতে পারবেন।`
           };
         }
 
         const rel = guardian.guardianRelationship?.toUpperCase();
-        if (!rel || !allowedGuardianRelationships.includes(rel)) {
+        if (!rel || !STRICT_ALLOWED_GUARDIAN_RELATIONSHIPS.includes(rel)) {
           return {
             isValid: false,
             code: 'INVALID_GUARDIAN_RELATIONSHIP',
-            message: `অভিভাবকের সাথে বৈধ সম্পর্ক (বাবা, মা, ভাই, বোন বা স্পাউস) নির্বাচন করা আবশ্যক।`
+            message: `অভিভাবকের সাথে অনুমোদিত বৈধ সম্পর্ক (বাপ, মা, ভাই, বোন, দাদা, নানা, দাদি, নানি বা স্বামী/স্ত্রী) নির্বাচন করা আবশ্যক।`
           };
         }
       }

@@ -1,11 +1,21 @@
 'use client';
 
-import React from 'react';
-import { Bus, Armchair, Palette, PlusCircle, ArrowLeft, ArrowRight, Check, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  Bus,
+  Armchair,
+  Palette,
+  PlusCircle,
+  Plus,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Sparkles
+} from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
+import { formatCurrency, formatDate, formatTime, cn } from '@/lib/utils';
 import { useApp } from '@/lib/context';
 
 const COLOR_OPTIONS: { id: string; bgClass: string; borderClass: string; textClass: string; dotClass: string }[] = [
@@ -118,38 +128,126 @@ export function SeatSelectionStep({
     return sum + (seatObj?.fare || trip?.basePrice || 550);
   }, 0);
 
-  function renderRealisticCoachSeat(seatObj?: any, isMiddleSeat = false, segment?: FareRangeSegment) {
-    if (!seatObj) return <div className="w-[4.25rem] h-[4.25rem] sm:w-[4.75rem] sm:h-[4.75rem] shrink-0" />;
+function LuxuryCoachSeatItem({
+  seatObj,
+  isSelected,
+  isMiddleSeat = false,
+  segment,
+  dynamicLock,
+  onToggle
+}: {
+  seatObj?: any;
+  isSelected: boolean;
+  isMiddleSeat?: boolean;
+  segment?: FareRangeSegment;
+  dynamicLock?: { genderAllowed: string; adjacentBookedSeat: string; reason: string };
+  onToggle: (seatId: string, status: string) => void;
+}) {
+  const [hovered, setHovered] = useState(false);
 
-    const isSelected = selectedSeatIds.includes(seatObj.seatId);
-    const isBooked = seatObj.status === 'BOOKED';
-    const isHeld = seatObj.status === 'HELD';
-    const isAvailable = seatObj.status === 'AVAILABLE' || (!isBooked && !isHeld);
+  if (!seatObj) {
+    return <div className="w-[4.25rem] h-[4.25rem] sm:w-[4.75rem] sm:h-[4.75rem] shrink-0" aria-hidden />;
+  }
 
-    const seatNum = (seatObj.seatNumber || (seatObj as any).seat_number || (seatObj as any).label || '').trim().toUpperCase();
-    const dynamicLock = seatNum ? dynamicAdjacentLocks.get(seatNum) : undefined;
-    const isFemaleOnly = seatObj.genderAllowed === 'FEMALE_ONLY' || dynamicLock?.genderAllowed === 'FEMALE_ONLY';
-    const isMaleOnly = seatObj.genderAllowed === 'MALE_ONLY' || dynamicLock?.genderAllowed === 'MALE_ONLY';
+  const isBooked = seatObj.status === 'BOOKED';
+  const isHeld = seatObj.status === 'HELD';
+  const isAvailable = seatObj.status === 'AVAILABLE' || (!isBooked && !isHeld);
 
-    const segColorCfg = segment ? COLOR_OPTIONS.find((c) => c.id === segment.color) : undefined;
-    const seatPrice = seatObj.fare || segment?.fare || 550;
+  const seatNum = (seatObj.seatNumber || (seatObj as any).seat_number || (seatObj as any).label || '').trim().toUpperCase();
+  const isFemaleOnly = seatObj.genderAllowed === 'FEMALE_ONLY' || dynamicLock?.genderAllowed === 'FEMALE_ONLY';
+  const isMaleOnly = seatObj.genderAllowed === 'MALE_ONLY' || dynamicLock?.genderAllowed === 'MALE_ONLY';
 
-    return (
+  const segColorCfg = segment ? COLOR_OPTIONS.find((c) => c.id === segment.color) : undefined;
+  const seatPrice = seatObj.fare || segment?.fare || 550;
+
+  return (
+    <div
+      className="relative shrink-0 group"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Floating Holographic Tooltip on Hover */}
+      {hovered && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-slate-950 text-white text-[11px] rounded-2xl p-3 whitespace-nowrap shadow-2xl border border-slate-700 leading-snug min-w-[130px] text-center backdrop-blur-md">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <span className="font-mono font-black text-sm text-amber-300">{seatNum}</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 text-white font-bold">
+                {seatObj.fareZoneName || segment?.name || 'Standard'}
+              </span>
+            </div>
+            <p className="text-slate-200 font-bold">
+              {isSelected
+                ? '✔️ নির্বাচিত আসন'
+                : isBooked
+                ? '🔴 টিকিট বুকড'
+                : isHeld
+                ? '⏳ সাময়িক হোল্ড'
+                : isFemaleOnly
+                ? '🩷 নারী সংরক্ষিত (লক)'
+                : isMaleOnly
+                ? '💙 পুরুষ সংরক্ষিত (লক)'
+                : `✅ খালি আসন • ভাড়া ৳${seatPrice}`}
+            </p>
+            {dynamicLock && (
+              <p className="text-amber-300 text-[10px] mt-1 font-semibold max-w-[180px] leading-tight mx-auto">
+                {dynamicLock.reason}
+              </p>
+            )}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-950" />
+          </div>
+        </div>
+      )}
+
+      {/* 3D Left Armrest */}
+      <div
+        className={cn(
+          'absolute -left-1.5 top-3.5 bottom-3.5 w-1.5 rounded-full transition-all duration-200 z-10',
+          isSelected
+            ? 'bg-blue-400 shadow-sm shadow-blue-500/50'
+            : isBooked
+            ? 'bg-rose-300 dark:bg-rose-800'
+            : isHeld
+            ? 'bg-amber-300 dark:bg-amber-800'
+            : isFemaleOnly
+            ? 'bg-pink-300 dark:bg-pink-800'
+            : isMaleOnly
+            ? 'bg-blue-300 dark:bg-blue-800'
+            : 'bg-slate-300 dark:bg-slate-700 shadow-2xs group-hover:bg-indigo-400'
+        )}
+      />
+
+      {/* 3D Right Armrest */}
+      <div
+        className={cn(
+          'absolute -right-1.5 top-3.5 bottom-3.5 w-1.5 rounded-full transition-all duration-200 z-10',
+          isSelected
+            ? 'bg-blue-400 shadow-sm shadow-blue-500/50'
+            : isBooked
+            ? 'bg-rose-300 dark:bg-rose-800'
+            : isHeld
+            ? 'bg-amber-300 dark:bg-amber-800'
+            : isFemaleOnly
+            ? 'bg-pink-300 dark:bg-pink-800'
+            : isMaleOnly
+            ? 'bg-blue-300 dark:bg-blue-800'
+            : 'bg-slate-300 dark:bg-slate-700 shadow-2xs group-hover:bg-indigo-400'
+        )}
+      />
+
+      {/* REALISTIC HIGH-DECK SEAT BUTTON */}
       <button
-        key={seatObj.seatId}
         type="button"
         disabled={!isAvailable}
-        onClick={() => onToggleSeat(seatObj.seatId, seatObj.status)}
-        title={dynamicLock ? `${dynamicLock.reason} (${dynamicLock.genderAllowed === 'FEMALE_ONLY' ? 'শুধুমাত্র নারী' : 'শুধুমাত্র পুরুষ'})` : `সিট: ${seatNum || 'Seat'}`}
-        className={`w-[4.25rem] h-[4.25rem] sm:w-[4.75rem] sm:h-[4.75rem] shrink-0 p-1.5 rounded-2xl flex flex-col items-center justify-between text-base font-black transition-all duration-200 ease-out relative select-none cursor-pointer ${
-          isBooked
-            ? 'bg-gradient-to-b from-rose-50 via-rose-100 to-rose-200 dark:from-rose-950/70 dark:to-rose-900/70 text-rose-950 dark:text-rose-200 border-2 border-rose-300 dark:border-rose-700 opacity-60 shadow-xs cursor-not-allowed'
-            : isHeld
-            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/70 dark:to-amber-900/70 text-amber-950 dark:text-amber-200 border-2 border-amber-300 dark:border-amber-700 opacity-75 shadow-xs cursor-not-allowed'
-            : isSelected
+        onClick={() => onToggle(seatObj.seatId, seatObj.status)}
+        className={cn(
+          'w-[4.25rem] h-[4.25rem] sm:w-[4.75rem] sm:h-[4.75rem] shrink-0 p-1.5 rounded-2xl flex flex-col items-center justify-between text-base font-black transition-all duration-200 ease-out relative select-none cursor-pointer overflow-hidden border-2',
+          isSelected
             ? 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 text-white border-2 border-blue-300 shadow-xl shadow-blue-500/40 ring-4 ring-blue-400/40 -translate-y-1 z-10'
-            : seatObj.isExtra
-            ? 'bg-gradient-to-b from-purple-50 via-purple-100 to-purple-200 dark:from-purple-950/80 dark:to-purple-900/80 text-purple-950 dark:text-purple-100 border-2 border-purple-400 dark:border-purple-500 shadow-sm hover:shadow-lg hover:shadow-purple-500/25 hover:-translate-y-1 active:translate-y-0.5 active:scale-95'
+            : isBooked
+            ? 'bg-gradient-to-b from-rose-50 via-rose-100 to-rose-200 dark:from-rose-950/80 dark:via-rose-900/80 dark:to-rose-950/90 text-rose-950 dark:text-rose-200 border-2 border-rose-400 dark:border-rose-700 opacity-80 shadow-xs cursor-not-allowed'
+            : isHeld
+            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/80 dark:via-amber-900/80 dark:to-amber-950/90 text-amber-950 dark:text-amber-200 border-2 border-amber-400 opacity-85 shadow-xs cursor-not-allowed'
             : isFemaleOnly
             ? 'bg-gradient-to-b from-pink-50 via-pink-100 to-pink-200 dark:from-pink-950/80 dark:to-pink-900/80 text-pink-950 dark:text-pink-100 border-2 border-pink-400 dark:border-pink-500 shadow-sm shadow-pink-500/10 hover:shadow-lg hover:shadow-pink-500/30 hover:border-pink-500 hover:-translate-y-1 active:translate-y-0.5 active:scale-95'
             : isMaleOnly
@@ -159,123 +257,165 @@ export function SeatSelectionStep({
             : segColorCfg
             ? `bg-gradient-to-b ${segColorCfg.bgClass} ${segColorCfg.textClass} border-2 ${segColorCfg.borderClass} shadow-sm hover:shadow-lg hover:-translate-y-1 active:translate-y-0.5 active:scale-95`
             : 'bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-850 dark:to-slate-900 text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-600 shadow-sm hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-1 active:translate-y-0.5 active:scale-95'
-        }`}
+        )}
       >
+        {/* Subtle Glassmorphic Sheen Highlight */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/15 to-transparent pointer-events-none" />
+
+        {/* Ergonomic Headrest Cushion Detail */}
         <div
-          className={`w-10 h-1.5 rounded-full shadow-inner transition-all ${
+          className={cn(
+            'w-10 h-1.5 rounded-full shadow-inner transition-all',
             isSelected
               ? 'bg-white/95 shadow-white/40'
               : isBooked
-              ? 'bg-rose-400'
+              ? 'bg-rose-500'
               : isHeld
-              ? 'bg-amber-400'
-              : seatObj.isExtra
-              ? 'bg-purple-500'
+              ? 'bg-amber-500'
               : isFemaleOnly
               ? 'bg-pink-500'
               : isMaleOnly
               ? 'bg-blue-500'
-              : isMiddleSeat
-              ? 'bg-amber-500'
               : segColorCfg
               ? segColorCfg.dotClass
               : 'bg-slate-400'
-          }`}
+          )}
         />
 
-        <span className={`text-base sm:text-lg font-black tracking-tight leading-none font-mono drop-shadow-xs ${isSelected ? 'text-white' : ''}`}>
-          {seatObj.seatNumber}
+        {/* EXTRA LARGE CRISP SEAT NUMBER */}
+        <span
+          className={cn(
+            'text-base sm:text-lg font-black tracking-tight leading-none font-mono drop-shadow-xs',
+            isSelected ? 'text-white' : 'text-slate-900 dark:text-slate-100'
+          )}
+        >
+          {seatNum}
         </span>
 
+        {/* PROMINENT HIGH-CONTRAST AMOUNT BADGE */}
         <div
-          className={`w-full flex items-center justify-center gap-1 px-1 py-0.5 rounded-lg overflow-hidden backdrop-blur-xs transition-colors ${
-            isSelected ? 'bg-black/25 text-white border border-white/20' : 'bg-black/5 dark:bg-white/10 border border-black/5 dark:border-white/5'
-          }`}
+          className={cn(
+            'w-full flex items-center justify-center gap-1 px-1 py-0.5 rounded-lg overflow-hidden backdrop-blur-xs transition-colors',
+            isSelected
+              ? 'bg-black/25 text-white border border-white/20'
+              : 'bg-black/5 dark:bg-white/10 border border-black/5 dark:border-white/5'
+          )}
         >
           {isSelected ? (
-            <span className="text-xs sm:text-sm font-black font-mono leading-none tracking-tight flex items-center gap-1 text-white">
+            <span className="text-xs sm:text-sm font-black font-mono leading-none tracking-tight flex items-center gap-0.5 text-white">
               <Check className="w-3.5 h-3.5 stroke-[3]" /> ৳{seatPrice}
             </span>
           ) : isBooked ? (
-            <span className="text-[10px] sm:text-xs font-black tracking-tight text-rose-800 dark:text-rose-200 leading-none">বুকড</span>
+            <span className="text-[10px] sm:text-xs font-black tracking-tight text-rose-800 dark:text-rose-200 leading-none">
+              বুকড
+            </span>
           ) : isHeld ? (
-            <span className="text-[10px] sm:text-xs font-black tracking-tight text-amber-800 dark:text-amber-200 leading-none">হোল্ড</span>
+            <span className="text-[10px] sm:text-xs font-black tracking-tight text-amber-800 dark:text-amber-200 leading-none">
+              হোল্ড
+            </span>
           ) : (
-            <span className="text-xs sm:text-sm font-black font-mono leading-none tracking-tight truncate">৳{seatPrice}</span>
-          )}
-
-          {!isSelected && !isBooked && !isHeld && isFemaleOnly && (
-            <span className="text-[9px] text-pink-800 dark:text-pink-300 font-black leading-none" title={dynamicLock?.reason || 'নারী সংরক্ষিত'}>
-              {dynamicLock ? '♀ Lock' : '♀'}
-            </span>
-          )}
-          {!isSelected && !isBooked && !isHeld && isMaleOnly && (
-            <span className="text-[9px] text-blue-800 dark:text-blue-300 font-black leading-none" title={dynamicLock?.reason || 'পুরুষ সংরক্ষিত'}>
-              {dynamicLock ? '♂ Lock' : '♂'}
-            </span>
-          )}
-          {!isSelected && !isBooked && !isHeld && isMiddleSeat && (
-            <span className="text-[8px] text-amber-800 dark:text-amber-200 font-black leading-none">MID</span>
+            <div className="flex items-center justify-center gap-1">
+              <span className="text-xs sm:text-sm font-black font-mono leading-none tracking-tight">
+                ৳{seatPrice}
+              </span>
+              {!isSelected && isFemaleOnly && (
+                <span className="text-[9px] text-pink-800 dark:text-pink-300 font-black leading-none">F</span>
+              )}
+              {!isSelected && isMaleOnly && (
+                <span className="text-[9px] text-blue-800 dark:text-blue-300 font-black leading-none">M</span>
+              )}
+              {!isSelected && isMiddleSeat && (
+                <span className="text-[8px] text-amber-800 dark:text-amber-200 font-black leading-none">MID</span>
+              )}
+            </div>
           )}
         </div>
       </button>
+    </div>
+  );
+}
+
+  function renderSeatSlot(rowCells: any[], r: number, c: number, isMiddle = false, segment?: FareRangeSegment) {
+    const rowChar = rowLetters[r] || `R${r + 1}`;
+    const isLastRow5 = r === totalRows - 1 && (activeCapacity === 45 || activeCapacity === 42);
+
+    let seatObj =
+      rowCells.find((cell) => cell.colIndex === c) ||
+      rowCells.find((cell) => {
+        const sNum = (cell.seatNumber || cell.seat_number || cell.label || '').toString().trim().toUpperCase();
+        const expected = isLastRow5 ? `${rowChar}${c + 1}` : `${rowChar}${c === 0 ? '1' : c === 1 ? '2' : c === 3 ? '3' : '4'}`;
+        return sNum === expected;
+      });
+
+    if (!seatObj) {
+      if (isMiddle) return null;
+      return <div className="w-[4.25rem] h-[4.25rem] sm:w-[4.75rem] sm:h-[4.75rem] shrink-0" />;
+    }
+
+    if (seatObj.type === 'EMPTY') {
+      return (
+        <div className="min-w-[4.25rem] min-h-[4.25rem] sm:min-w-[4.75rem] sm:min-h-[4.75rem] rounded-2xl border-2 border-dashed border-transparent flex items-center justify-center text-xs text-slate-300 dark:text-slate-700">
+          ·
+        </div>
+      );
+    }
+
+    if (seatObj.type === 'AISLE') {
+      return (
+        <div className="w-[4.25rem] h-[4.25rem] sm:w-[4.75rem] sm:h-[4.75rem] shrink-0 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-center text-[10px] font-black text-slate-400 dark:text-slate-600">
+          AISLE
+        </div>
+      );
+    }
+
+    const sNum = (seatObj?.seatNumber || seatObj?.label || '').trim().toUpperCase();
+    const dynamicLock = sNum ? dynamicAdjacentLocks.get(sNum) : undefined;
+    const isSelected = selectedSeatIds.includes(seatObj.seatId);
+
+    return (
+      <LuxuryCoachSeatItem
+        key={`slot-${r}-${c}-${seatObj?.seatId || sNum}`}
+        seatObj={seatObj}
+        isSelected={isSelected}
+        isMiddleSeat={isMiddle}
+        segment={segment}
+        dynamicLock={dynamicLock}
+        onToggle={onToggleSeat}
+      />
     );
   }
 
-  function renderSeatSlot(rowCells: any[], r: number, c: number, isMiddle = false, segment?: FareRangeSegment) {
-    let seatObj = rowCells.find((cell) => cell.colIndex === c);
-
-    if (!seatObj && (!isMiddle || (r === totalRows - 1 && (activeCapacity === 45 || activeCapacity === 42)))) {
-      const rowChar = rowLetters[r] || `R${r + 1}`;
-      let seatNum = '';
-      if (r === totalRows - 1 && (activeCapacity === 45 || activeCapacity === 42)) {
-        seatNum = `${rowChar}${c + 1}`;
-      } else {
-        const colDigit = c === 0 ? '1' : c === 1 ? '2' : c === 3 ? '3' : '4';
-        seatNum = `${rowChar}${colDigit}`;
-      }
-
-      seatObj = {
-        seatId: `seat-${trip?.id || 'trip'}-${seatNum}`,
-        seatNumber: seatNum,
-        rowIndex: r,
-        colIndex: c,
-        seatType: r < 5 ? 'VIP' : 'STANDARD',
-        genderAllowed: 'ANY',
-        fare: segment?.fare || (r < 5 ? 650 : r < 8 ? 550 : 500),
-        fareZoneName: segment?.name || 'Standard',
-        status: 'AVAILABLE'
-      };
-    }
-
-    return renderRealisticCoachSeat(seatObj, isMiddle, segment);
-  }
-
   return (
-    <div className="space-y-5">
+    <div suppressHydrationWarning className="space-y-5">
       {/* Selected Bus Banner */}
       {trip && (
-        <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white p-4 sm:p-5 rounded-3xl shadow-lg flex flex-wrap items-center justify-between gap-4">
+        <div suppressHydrationWarning className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white p-4 sm:p-5 rounded-3xl shadow-lg flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center font-black">
               <Bus className="w-6 h-6 text-white" />
             </div>
             <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono text-xs font-black bg-white/25 px-2.5 py-0.5 rounded-md">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="font-mono text-xs font-black bg-white/25 px-2.5 py-1 rounded-md border border-white/20">
                   {trip.tripCode || trip.trip_code}
                 </span>
-                <span className="font-bold text-sm sm:text-base">
-                  {trip.bus?.busName || trip.bus?.bus_name} ({trip.bus?.busNumber || trip.bus?.bus_number})
+                <span className="font-bold text-base sm:text-lg text-white">
+                  {trip.bus?.busName || trip.bus?.bus_name}
                 </span>
-                <Badge variant="default" className="bg-white/30 text-white font-bold text-xs">
+                {(trip.bus?.busNumber || trip.bus?.bus_number) && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-400 text-slate-950 font-black font-mono text-base sm:text-xl rounded-xl shadow-md border-2 border-amber-300 tracking-wide">
+                    <Bus className="w-4 h-4 sm:w-5 sm:h-5 text-slate-900" />
+                    <span>{trip.bus?.busNumber || trip.bus?.bus_number}</span>
+                  </span>
+                )}
+                <Badge variant="default" className="bg-white/30 text-white font-bold text-xs py-1">
                   {trip.tripBusType === 'FEMALE' ? '👩 ছাত্রী স্পেশাল' : trip.tripBusType === 'MALE' ? '👨 ছাত্র স্পেশাল' : '👥 মিক্সড কোচ'}
                 </Badge>
               </div>
               <div className="text-xs text-white/90 mt-1 flex items-center gap-2 flex-wrap font-medium">
                 <span>📍 {trip.route?.routeName || trip.route?.route_name}</span>
                 <span>•</span>
-                <span>🕒 {formatDate(trip.departureDate)} • {formatTime(trip.departureTime)}</span>
+                <span suppressHydrationWarning>🕒 {formatDate(trip.departureDate)} • {formatTime(trip.departureTime)}</span>
                 <span>•</span>
                 <span className="font-mono font-bold">ভাড়া: {formatCurrency(trip.basePrice || 550)}</span>
               </div>
@@ -354,7 +494,7 @@ export function SeatSelectionStep({
               variant="outline"
               size="sm"
               onClick={onAddExtraSeat}
-              className="text-xs font-bold border-indigo-200 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 rounded-xl"
+              className="text-xs font-bold border-indigo-200 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 rounded-xl cursor-pointer"
             >
               <PlusCircle className="w-3.5 h-3.5 mr-1" />
               {language === 'bn' ? '+ অতিরিক্ত সিট' : '+ Extra Seat'}
@@ -403,19 +543,25 @@ export function SeatSelectionStep({
               <span>লাইভ সিট ম্যাপ লোড হচ্ছে...</span>
             </div>
           ) : (
+            /* REALISTIC HIGH-DECK COACH FRAME (MATCHING LAYOUT SECTION EXACTLY) */
             <div className="bg-white dark:bg-slate-900 p-6 sm:p-9 rounded-[3.5rem] border-4 border-slate-300 dark:border-slate-700 shadow-2xl w-full max-w-xl relative">
+              {/* Bus Exterior Roof Marker & Mirrors */}
               <div className="absolute -top-3.5 left-12 right-12 h-3.5 bg-slate-300 dark:bg-slate-700 rounded-t-2xl opacity-70" />
-              <div className="absolute -left-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-l-md shadow-xs" title="Left Mirror" />
-              <div className="absolute -right-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-r-md shadow-xs" title="Right Mirror" />
+              <div className="absolute -left-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-l-md shadow-xs" title="Left Rearview Mirror" />
+              <div className="absolute -right-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-r-md shadow-xs" title="Right Rearview Mirror" />
 
-              {/* Cockpit */}
+              {/* COCKPIT SECTION: Bonnet Engine Grill + Front Windshield + Driver Cabin + Door Steps */}
               <div className="mb-5 pb-3.5 border-b-2 border-dashed border-slate-200 dark:border-slate-800">
+                {/* Windshield Glass */}
                 <div className="h-6 sm:h-7 bg-blue-100/80 dark:bg-blue-950/60 rounded-t-2xl border-t-2 border-blue-300 dark:border-blue-800 mb-2.5 flex items-center justify-center">
                   <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-blue-700 dark:text-blue-300 font-mono">
                     {language === 'bn' ? 'সামনের উইন্ডশিল্ড গ্লাস' : 'FRONT WINDSHIELD GLASS'}
                   </span>
                 </div>
+
+                {/* Dashboard & Cockpit: Door, Bonnet, and Driver Cabins */}
                 <div className="bg-slate-900 dark:bg-slate-950 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between text-white shadow-inner relative overflow-hidden">
+                  {/* Left: Passenger Entry Door / Gate */}
                   <div className="flex items-center gap-2.5 bg-emerald-950 border-2 border-emerald-500/80 px-3.5 py-2 rounded-xl shadow-md">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
                     <div>
@@ -427,24 +573,33 @@ export function SeatSelectionStep({
                       </div>
                     </div>
                   </div>
+
+                  {/* Center: Bonnet / Engine Hood */}
                   <div className="text-center px-3.5 py-1.5 bg-slate-800 rounded-xl border-2 border-slate-600 shadow-md">
                     <div className="text-xs sm:text-sm font-black text-amber-400 font-mono tracking-wide">
                       {language === 'bn' ? 'বনেট / ইঞ্জিন' : 'ENGINE BONNET'}
                     </div>
                     <div className="text-[9px] text-slate-300 font-bold mt-0.5">Front Chassis</div>
                   </div>
+
+                  {/* Right: Driver Cabin & Steering Wheel */}
                   <div className="flex items-center gap-2.5 bg-blue-950 border-2 border-blue-500/80 px-3.5 py-2 rounded-xl text-right shadow-md">
                     <div>
                       <div className="text-xs sm:text-sm font-black text-blue-400 leading-tight">
                         {language === 'bn' ? 'ড্রাইভার কেবিন' : 'DRIVER CABIN'}
                       </div>
+                      <div className="text-[10px] sm:text-[11px] text-blue-300 font-bold leading-none mt-0.5">
+                        {language === 'bn' ? 'কন্ট্রোল (Cockpit)' : 'Cockpit'}
+                      </div>
                     </div>
-                    <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600/50 border-2 border-blue-300 flex items-center justify-center text-xs font-black text-blue-100">✇</div>
+                    <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600/50 border-2 border-blue-300 flex items-center justify-center text-xs font-black text-blue-100">
+                      ✇
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Seating grid */}
+              {/* REALISTIC SEATING GRID */}
               <div className="space-y-3.5">
                 {Array.from({ length: totalRows }).map((_, r) => {
                   const rowCells = tripSeats.filter((c) => c.rowIndex === r);
@@ -454,21 +609,31 @@ export function SeatSelectionStep({
 
                   return (
                     <div key={r} className="flex items-center justify-between gap-3">
+                      {/* Left Seats: Col 0 & Col 1 */}
                       <div className="flex items-center gap-2.5">
                         {renderSeatSlot(rowCells, r, 0, false, rowSegment)}
                         {renderSeatSlot(rowCells, r, 1, false, rowSegment)}
                       </div>
+
+                      {/* Middle Aisle Walkway OR 45-Seat Middle Seat (K3 on Row K) OR Custom Middle Seat */}
                       <div className="flex-1 text-center font-mono flex items-center justify-center">
-                        {isLastRow && (activeCapacity === 45 || activeCapacity === 42) ? (
+                        {((isLastRow && (activeCapacity === 45 || activeCapacity === 42)) || rowCells.some(c => c.colIndex === 2 && (c.type === 'SEAT' || c.seatType === 'SEAT' || !c.type))) ? (
                           renderSeatSlot(rowCells, r, 2, true, rowSegment)
                         ) : (
                           <div className="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 min-w-[3.75rem]">
                             <span className="text-sm sm:text-base font-black tracking-wider text-slate-800 dark:text-slate-100 leading-none">
                               {rowLabel}
                             </span>
+                            {rowSegment && (
+                              <span className="text-[11px] font-black font-mono text-blue-600 dark:text-blue-400 mt-1 leading-none">
+                                ৳{rowSegment.fare}
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>
+
+                      {/* Right Seats: Col 3 & Col 4 */}
                       <div className="flex items-center gap-2.5">
                         {renderSeatSlot(rowCells, r, 3, false, rowSegment)}
                         {renderSeatSlot(rowCells, r, 4, false, rowSegment)}
@@ -477,78 +642,77 @@ export function SeatSelectionStep({
                   );
                 })}
               </div>
+
+              {/* Rear Passenger Bench Notice */}
+              <div className="mt-6 pt-3 border-t-2 border-dashed border-slate-200 dark:border-slate-800 text-center text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-mono font-black">
+                {activeCapacity === 45
+                  ? (language === 'bn' ? '★ ৪৫ সিট: শেষ সারিতে ৫টি সিট (K1, K2, K3 মাঝে, K4, K5)' : '★ 45-Seat: 5 Seats on Row K with K3 in Center Walkway')
+                  : activeCapacity === 40
+                  ? (language === 'bn' ? '★ ৪০ সিট: ১০ সারি × ৪ সিট (২+২ স্ট্যান্ডার্ড)' : '★ 40-Seat: 10 Rows of 4 (2+2)')
+                  : (language === 'bn' ? `★ মোট আসন: ${activeCapacity} টি` : `★ Total Seats: ${activeCapacity}`)}
+              </div>
+
+              {/* OVERLOAD / EXTRA SEATS SECTION (MATCHING SEAT-BUILDER EXACTLY) */}
+              {extraSeats.length > 0 && (
+                <div className="mt-5 pt-4 border-t-2 border-indigo-300 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/40 p-4 rounded-2xl">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <span className="text-xs sm:text-sm font-black text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-indigo-600" />
+                      <span>{language === 'bn' ? 'অতিরিক্ত / ওভারলোড সিট' : 'Extra Seats'} ({extraSeats.length})</span>
+                    </span>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono font-bold hidden sm:inline">
+                        {language === 'bn' ? 'সিটে ক্লিক করে বুকিংয়ের জন্য নির্বাচন করুন' : 'Click seat to toggle for booking'}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        onClick={onAddExtraSeat}
+                        className="text-xs font-bold border-indigo-200 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 rounded-xl cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 mr-1" />
+                        {language === 'bn' ? '+ অতিরিক্ত সিট যোগ' : '+ Add Extra'}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-center gap-3">
+                    {extraSeats.map((extra) => {
+                      const isSelected = selectedSeatIds.includes(extra.seatId);
+                      return (
+                        <div key={extra.seatId || extra.id || extra.seatNumber} className="relative group">
+                          <LuxuryCoachSeatItem
+                            seatObj={extra}
+                            isSelected={isSelected}
+                            isMiddleSeat={false}
+                            onToggle={onToggleSeat}
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRemoveExtraSeat(extra.seatId);
+                            }}
+                            className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-rose-600 text-white flex items-center justify-center text-xs font-black shadow-md hover:bg-rose-700 transition-all z-20 cursor-pointer"
+                            title={language === 'bn' ? 'মুছে ফেলুন' : 'Remove Extra Seat'}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Extra seats strip */}
-      {extraSeats.length > 0 && (
-        <div className="p-4 bg-purple-50/80 dark:bg-purple-950/40 rounded-3xl border-2 border-purple-200 dark:border-purple-800/60 space-y-3 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-              <span>{language === 'bn' ? 'অতিরিক্ত আসনসমূহ (Extra Seats - বুকিংয়ের জন্য ক্লিক করুন):' : 'Extra Seats (Click to toggle for booking):'}</span>
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onAddExtraSeat}
-              className="text-xs font-bold h-7 rounded-xl border-purple-300 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 cursor-pointer"
-            >
-              + {language === 'bn' ? 'আরেকটি অতিরিক্ত সিট' : 'Add Another'}
-            </Button>
-          </div>
-
-          <div className="flex flex-wrap gap-2.5">
-            {extraSeats.map((s) => {
-              const isSelected = selectedSeatIds.includes(s.seatId);
-              return (
-                <div
-                  key={s.seatId}
-                  className={`flex items-center gap-1.5 p-1.5 pl-3 rounded-2xl border transition-all duration-200 ${
-                    isSelected
-                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-purple-400 shadow-md shadow-purple-500/30'
-                      : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:border-purple-400'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onToggleSeat(s.seatId, s.status || 'AVAILABLE')}
-                    className="flex items-center gap-2 cursor-pointer text-xs font-black font-mono"
-                  >
-                    <span>{isSelected ? '✓' : '○'}</span>
-                    <span className="font-bold">{s.seatNumber}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${
-                      isSelected ? 'bg-white/20 text-white' : 'bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-300'
-                    }`}>
-                      ৳{s.fare || 450}
-                    </span>
-                    <span className="text-[10px] font-sans font-bold">
-                      {isSelected ? (language === 'bn' ? '(নির্বাচিত)' : '(Selected)') : (language === 'bn' ? '(সিলেক্ট করুন)' : '(Select)')}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => onRemoveExtraSeat(s.seatId)}
-                    className={`w-6 h-6 rounded-xl flex items-center justify-center text-xs font-black hover:bg-rose-500 hover:text-white transition-colors cursor-pointer ${
-                      isSelected ? 'text-white/80 hover:text-white' : 'text-slate-400 hover:text-rose-500'
-                    }`}
-                    title={language === 'bn' ? 'মুছে ফেলুন' : 'Remove Extra Seat'}
-                  >
-                    ✕
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Action Bar */}
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm mr-0 sm:mr-32">
         <div>
           <span className="text-xs text-slate-500 dark:text-slate-400 block font-medium">
             {language === 'bn' ? 'মোট নির্বাচিত সিট ও আনুমানিক ভাড়া:' : 'Selected Seats & Estimated Fare:'}

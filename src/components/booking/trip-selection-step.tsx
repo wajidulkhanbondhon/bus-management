@@ -21,6 +21,7 @@ import {
   LayoutGrid,
   List,
   TableProperties,
+  ArrowLeft,
   ArrowRight,
   Calendar,
   Ticket,
@@ -30,7 +31,10 @@ import {
   X,
   Zap,
   Users,
-  Compass
+  Compass,
+  Lock,
+  Eye,
+  CheckCircle
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -71,7 +75,7 @@ export interface FormattedUniInfo {
   examDate: string;
 }
 
-function matchTripUniversityCode(t: any): string {
+export function matchTripUniversityCode(t: any): string {
   const targetUni = (t.targetUniversity || '').trim();
   const dest = (t.route?.destination || t.route?.routeName || '').trim();
   const busName = (t.bus?.busName || t.bus?.bus_name || '').trim();
@@ -317,6 +321,15 @@ export function getTripUniversityAndUnit(t: any): FormattedUniInfo {
   return { ...info, examDate };
 }
 
+export function isTripBookingFull(t: any): boolean {
+  const totalSeats = t.stats?.totalSeats || t.bus?.capacity || 45;
+  const bookedCount = t.stats?.bookedCount || 0;
+  const availableCount = t.stats?.availableCount ?? Math.max(0, totalSeats - bookedCount);
+  const soldPct = t.stats?.soldPercentage ?? (totalSeats > 0 ? Math.round((bookedCount / totalSeats) * 100) : 0);
+  const status = (t.status || '').toUpperCase();
+  return status === 'COMPLETED' || status === 'CANCELLED' || availableCount <= 0 || soldPct >= 100;
+}
+
 export function TripSelectionStep({
   trips,
   activeCapacity,
@@ -382,6 +395,21 @@ export function TripSelectionStep({
   const [selectedUnitFilter, setSelectedUnitFilter] = useState('ALL');
   const [expandedSeatPreviewTripId, setExpandedSeatPreviewTripId] = useState<string | null>(null);
 
+  // Booking status tab: 'ACTIVE' (open seats) vs 'FULL' (sold out / completed)
+  const [tripBookingStatusTab, setTripBookingStatusTab] = useState<'ACTIVE' | 'FULL'>('ACTIVE');
+
+  // Count active vs full trips in entire fleet
+  const activeTripsCount = useMemo(() => trips.filter((t) => !isTripBookingFull(t)).length, [trips]);
+  const fullTripsCount = useMemo(() => trips.filter((t) => isTripBookingFull(t)).length, [trips]);
+
+  // Base trips for current tab
+  const currentTabBaseTrips = useMemo(() => {
+    return trips.filter((t) => {
+      const isFull = isTripBookingFull(t);
+      return tripBookingStatusTab === 'FULL' ? isFull : !isFull;
+    });
+  }, [trips, tripBookingStatusTab]);
+
   // Fleet aggregate stats
   const fleetStats = useMemo(() => {
     let totalSeats = 0;
@@ -394,6 +422,8 @@ export function TripSelectionStep({
     });
     return {
       coaches: trips.length,
+      activeCoaches: trips.filter((t) => !isTripBookingFull(t)).length,
+      fullCoaches: trips.filter((t) => isTripBookingFull(t)).length,
       totalSeats,
       totalBooked,
       totalAvailable: Math.max(0, totalSeats - totalBooked),
@@ -401,10 +431,11 @@ export function TripSelectionStep({
     };
   }, [trips]);
 
-  // University options derived from trips
+  // University options derived from currentTabBaseTrips (falling back to trips if none)
   const universityOptions = useMemo(() => {
     const uniMap: Record<string, { code: string; label: string; count: number; minFare: number; maxFare: number; freeSeats: number }> = {};
-    trips.forEach((t) => {
+    const sourceTrips = currentTabBaseTrips.length > 0 ? currentTabBaseTrips : trips;
+    sourceTrips.forEach((t) => {
       const uniInfo = getTripUniversityAndUnit(t);
       const code = uniInfo.code;
       if (!uniMap[code]) {
@@ -419,34 +450,37 @@ export function TripSelectionStep({
       if (entry.maxFare === 0 || fare > entry.maxFare) entry.maxFare = fare;
     });
     return Object.values(uniMap).sort((a, b) => b.count - a.count);
-  }, [trips]);
+  }, [currentTabBaseTrips, trips]);
 
   const operatorOptions = useMemo(() => {
     const opMap: Record<string, number> = {};
-    trips.forEach((t) => {
+    const sourceTrips = currentTabBaseTrips.length > 0 ? currentTabBaseTrips : trips;
+    sourceTrips.forEach((t) => {
       const op = (t.bus?.operator || '').trim();
       if (op) opMap[op] = (opMap[op] || 0) + 1;
     });
     return Object.entries(opMap).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-  }, [trips]);
+  }, [currentTabBaseTrips, trips]);
 
   const unitOptions = useMemo(() => {
     const uMap: Record<string, number> = {};
-    trips.forEach((t) => {
+    const sourceTrips = currentTabBaseTrips.length > 0 ? currentTabBaseTrips : trips;
+    sourceTrips.forEach((t) => {
       const u = (t.examUnit || t.bus?.examUnit || '').trim();
       if (u) uMap[u] = (uMap[u] || 0) + 1;
     });
     return Object.entries(uMap).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-  }, [trips]);
+  }, [currentTabBaseTrips, trips]);
 
   const dateOptions = useMemo(() => {
     const dateMap: Record<string, number> = {};
-    trips.forEach((t) => {
+    const sourceTrips = currentTabBaseTrips.length > 0 ? currentTabBaseTrips : trips;
+    sourceTrips.forEach((t) => {
       const d = (t.departureDate || '').toString().split('T')[0];
       if (d) dateMap[d] = (dateMap[d] || 0) + 1;
     });
     return Object.entries(dateMap);
-  }, [trips]);
+  }, [currentTabBaseTrips, trips]);
 
   const allFleetAvailableSeats = useMemo(() => {
     const seatSet = new Set<string>();
@@ -496,7 +530,7 @@ export function TripSelectionStep({
 
   // Filtered trips
   const filteredTrips = useMemo(() => {
-    const filtered = trips.filter((t) => {
+    const filtered = currentTabBaseTrips.filter((t) => {
       const uniInfo = getTripUniversityAndUnit(t);
       if (selectedUniFilter !== 'ALL' && uniInfo.code !== selectedUniFilter) return false;
 
@@ -591,7 +625,7 @@ export function TripSelectionStep({
       }
       return 0;
     });
-  }, [trips, selectedUniFilter, selectedFareFilter, customFareInput, selectedSeatFilter, selectedGenderFilter, selectedOccupancyFilter, selectedDateFilter, selectedHotelFilter, selectedCompanyFilter, busSearchQuery, selectedSortOrder, selectedUnitFilter]);
+  }, [currentTabBaseTrips, selectedUniFilter, selectedFareFilter, customFareInput, selectedSeatFilter, selectedGenderFilter, selectedOccupancyFilter, selectedDateFilter, selectedHotelFilter, selectedCompanyFilter, busSearchQuery, selectedSortOrder, selectedUnitFilter]);
 
   const selectStyle = (isActive: boolean, activeColor = 'bg-blue-600 text-white shadow-md shadow-blue-500/20') =>
     `px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
@@ -599,11 +633,24 @@ export function TripSelectionStep({
     }`;
 
   return (
-    <Card className="border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden">
+    <Card suppressHydrationWarning className="border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden">
       {/* Top Header */}
-      <div className="px-5 sm:px-6 py-4 sm:py-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-blue-50/60 via-slate-50 to-transparent dark:from-slate-800/60 dark:via-slate-900 flex flex-wrap items-center justify-between gap-4">
+      <div suppressHydrationWarning className="px-5 sm:px-6 py-4 sm:py-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-blue-50/60 via-slate-50 to-transparent dark:from-slate-800/60 dark:via-slate-900 flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2.5">
+            {onBack && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onBack}
+                className="rounded-2xl px-3 py-2 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 mr-1 shrink-0"
+                title={language === 'bn' ? 'বুকিং তালিকায় ফিরে যান' : 'Back to Bookings'}
+              >
+                <ArrowLeft className="w-4 h-4 text-slate-700 dark:text-slate-300" />
+                <span>{language === 'bn' ? 'পেছনে যান' : 'Back'}</span>
+              </Button>
+            )}
             <div className="p-2 rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20">
               <Bus className="w-5 h-5" />
             </div>
@@ -677,9 +724,9 @@ export function TripSelectionStep({
         {/* Fleet Overview 4 Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
           {[
-            { label: language === 'bn' ? 'মোট সক্রিয় কোচ' : 'Active Coaches', value: String(fleetStats.coaches), icon: '🚌', color: 'text-blue-600 dark:text-blue-400' },
+            { label: language === 'bn' ? 'সক্রিয় কোচ (বুকিং ওপেন)' : 'Active Coaches', value: `${fleetStats.activeCoaches}টি`, icon: '🚌', color: 'text-blue-600 dark:text-blue-400' },
+            { label: language === 'bn' ? 'বুকিং সম্পন্ন / ফুল' : 'Full Coaches', value: `${fleetStats.fullCoaches}টি`, icon: '🔒', color: 'text-rose-600 dark:text-rose-400' },
             { label: language === 'bn' ? 'মোট খালি সিট' : 'Total Free Seats', value: String(fleetStats.totalAvailable), icon: '🟢', color: 'text-emerald-600 dark:text-emerald-400' },
-            { label: language === 'bn' ? 'মোট বিক্রিত সিট' : 'Total Booked Seats', value: String(fleetStats.totalBooked), icon: '🔴', color: 'text-rose-600 dark:text-rose-400' },
             { label: language === 'bn' ? 'ফ্লিট বিক্রি হার' : 'Fleet Sold', value: `${fleetStats.soldPct}%`, icon: '🔥', color: 'text-amber-600 dark:text-amber-400' }
           ].map((s) => (
             <div key={s.label} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 space-y-0.5">
@@ -689,6 +736,79 @@ export function TripSelectionStep({
               <span className={`text-lg sm:text-2xl font-black font-mono block ${s.color}`}>{s.value}</span>
             </div>
           ))}
+        </div>
+
+        {/* ── TOP-LEVEL BUS STATUS TABS: ACTIVE vs FULL / COMPLETED ── */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-1.5 sm:p-2 bg-slate-100 dark:bg-slate-950/80 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+          <div className="flex items-center gap-2 flex-1">
+            {/* Tab 1: Active / Available */}
+            <button
+              type="button"
+              onClick={() => {
+                setTripBookingStatusTab('ACTIVE');
+                if (selectedOccupancyFilter === 'FULL') setSelectedOccupancyFilter('ALL');
+              }}
+              className={`flex-1 sm:flex-initial px-4 sm:px-6 py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer ${
+                tripBookingStatusTab === 'ACTIVE'
+                  ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-md border border-slate-200/80 dark:border-slate-700 ring-2 ring-blue-500/20'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-800/60'
+              }`}
+            >
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+              <span>{language === 'bn' ? 'সক্রিয় বাস (বুকিং চলছে)' : 'Active Buses (Open)'}</span>
+              <span className={`text-xs font-mono px-2.5 py-0.5 rounded-full font-black ${
+                tripBookingStatusTab === 'ACTIVE'
+                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                  : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+              }`}>
+                {activeTripsCount}
+              </span>
+            </button>
+
+            {/* Tab 2: Full / Completed */}
+            <button
+              type="button"
+              onClick={() => {
+                setTripBookingStatusTab('FULL');
+                if (selectedOccupancyFilter === 'AVAILABLE') setSelectedOccupancyFilter('ALL');
+              }}
+              className={`flex-1 sm:flex-initial px-4 sm:px-6 py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer ${
+                tripBookingStatusTab === 'FULL'
+                  ? 'bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 shadow-md border border-slate-200/80 dark:border-slate-700 ring-2 ring-rose-500/20'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-800/60'
+              }`}
+            >
+              <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-rose-500 text-white text-[9px]">
+                <Lock className="w-2.5 h-2.5" />
+              </span>
+              <span>{language === 'bn' ? 'বুকিং সম্পন্ন / ফুল বাস' : 'Full / Completed Buses'}</span>
+              <span className={`text-xs font-mono px-2.5 py-0.5 rounded-full font-black ${
+                tripBookingStatusTab === 'FULL'
+                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                  : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+              }`}>
+                {fullTripsCount}
+              </span>
+            </button>
+          </div>
+
+          {/* Context pill */}
+          <div className="hidden lg:flex items-center gap-2 px-3 py-1 text-xs font-bold text-slate-500">
+            {tripBookingStatusTab === 'ACTIVE' ? (
+              <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 text-xs font-semibold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>খালি আসন বিশিষ্ট বাসের তালিকা প্রদর্শিত হচ্ছে</span>
+              </span>
+            ) : (
+              <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1.5 text-xs font-semibold">
+                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                <span>সম্পূর্ণ বুকড বা সম্পন্ন হওয়া বাসের তালিকা প্রদর্শিত হচ্ছে</span>
+              </span>
+            )}
+          </div>
         </div>
 
         {/* --- PREMIUM FILTER SECTION WITH MINIMIZE / EXPAND TOGGLE --- */}
@@ -1087,42 +1207,70 @@ export function TripSelectionStep({
         {/* --- RESULTS SECTION --- */}
         {filteredTrips.length === 0 ? (
           <div className="p-10 text-center rounded-3xl bg-slate-50 dark:bg-slate-900/50 border-2 border-dashed border-slate-200 dark:border-slate-800 space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 mx-auto flex items-center justify-center">
-              <AlertCircle className="w-7 h-7" />
+            <div className={`w-14 h-14 rounded-2xl mx-auto flex items-center justify-center ${
+              tripBookingStatusTab === 'FULL' && fullTripsCount === 0
+                ? 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
+                : 'bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400'
+            }`}>
+              {tripBookingStatusTab === 'FULL' && fullTripsCount === 0 ? (
+                <CheckCircle2 className="w-7 h-7 text-emerald-500" />
+              ) : (
+                <AlertCircle className="w-7 h-7" />
+              )}
             </div>
             <div className="space-y-1.5 max-w-lg mx-auto">
               <h4 className="text-base font-black text-slate-800 dark:text-slate-200">
-                {selectedSeatFilter
+                {tripBookingStatusTab === 'FULL' && fullTripsCount === 0
+                  ? (language === 'bn' ? '🎉 বর্তমানে কোনো বুকিং সম্পন্ন বা ফুল বাস নেই!' : 'No full or completed coaches!')
+                  : selectedSeatFilter
                   ? `⚠️ সিট "${selectedSeatFilter}" কোনো বাসে খালি পাওয়া যায়নি!`
-                  : language === 'bn' ? 'কোনো সক্রিয় বাস খুঁজে পাওয়া যায়নি' : 'No active buses match your criteria'}
+                  : language === 'bn'
+                  ? (tripBookingStatusTab === 'FULL' ? 'কোনো ফুল বাস ফিল্টারের সাথে মেলেনি' : 'কোনো সক্রিয় বাস খুঁজে পাওয়া যায়নি')
+                  : 'No buses match your criteria'}
               </h4>
               <p className="text-xs text-slate-500">
-                {language === 'bn' ? 'দয়া করে ফিল্টার পরিবর্তন বা রিসেট করুন।' : 'Please adjust your filter settings.'}
+                {tripBookingStatusTab === 'FULL' && fullTripsCount === 0
+                  ? (language === 'bn' ? 'সকল সক্রিয় বাসে আসন খালি রয়েছে এবং টিকিট বুকিং চলছে।' : 'All active coaches have seats available.')
+                  : (language === 'bn' ? 'দয়া করে ফিল্টার পরিবর্তন বা রিসেট করুন।' : 'Please adjust your filter settings.')}
               </p>
             </div>
-            {selectedSeatFilter && allFleetAvailableSeats.length > 0 && (
-              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-w-xl mx-auto space-y-2">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
-                  💡 {language === 'bn' ? 'বর্তমানে অন্যান্য যে সিটগুলো খালি আছে:' : 'Other currently available seats:'}
-                </span>
-                <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                  {allFleetAvailableSeats.slice(0, 14).map((altSeat) => (
-                    <button
-                      key={altSeat}
-                      type="button"
-                      onClick={() => setSelectedSeatFilter(altSeat)}
-                      className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-mono font-bold hover:bg-emerald-100 cursor-pointer transition-all"
-                    >
-                      {altSeat}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            {tripBookingStatusTab === 'FULL' && fullTripsCount === 0 ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setTripBookingStatusTab('ACTIVE')}
+                className="mx-auto rounded-xl font-bold"
+              >
+                <Bus className="w-3.5 h-3.5 mr-1" />
+                {language === 'bn' ? 'সক্রিয় বাসসমূহ দেখুন (ACTIVE)' : 'View Active Buses'}
+              </Button>
+            ) : (
+              <>
+                {selectedSeatFilter && allFleetAvailableSeats.length > 0 && (
+                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-w-xl mx-auto space-y-2">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                      💡 {language === 'bn' ? 'বর্তমানে অন্যান্য যে সিটগুলো খালি আছে:' : 'Other currently available seats:'}
+                    </span>
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                      {allFleetAvailableSeats.slice(0, 14).map((altSeat) => (
+                        <button
+                          key={altSeat}
+                          type="button"
+                          onClick={() => setSelectedSeatFilter(altSeat)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-mono font-bold hover:bg-emerald-100 cursor-pointer transition-all"
+                        >
+                          {altSeat}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <Button variant="outline" size="sm" onClick={resetFilters} className="mx-auto rounded-xl font-bold">
+                  <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                  {language === 'bn' ? 'সকল ফিল্টার রিসেট করুন' : 'Reset All Filters'}
+                </Button>
+              </>
             )}
-            <Button variant="outline" size="sm" onClick={resetFilters} className="mx-auto rounded-xl font-bold">
-              <RotateCcw className="w-3.5 h-3.5 mr-1" />
-              {language === 'bn' ? 'সকল ফিল্টার রিসেট করুন' : 'Reset All Filters'}
-            </Button>
           </div>
         ) : viewMode === 'card' ? (
           /* ============================================================ */
@@ -1148,6 +1296,7 @@ export function TripSelectionStep({
               const freeSeatsList: string[] = t.stats?.availableSeatNumbersPreview || [];
               const isPreviewExpanded = expandedSeatPreviewTripId === t.id;
 
+              const isFull = isTripBookingFull(t);
               const isHighOccupancy = soldPct >= 80;
               const isMediumOccupancy = soldPct >= 40 && soldPct < 80;
 
@@ -1182,13 +1331,20 @@ export function TripSelectionStep({
                       </div>
 
                       <div className="shrink-0">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/20 backdrop-blur-md text-white border border-white/30 text-xs font-black uppercase shadow-xs">
-                          <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-80"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                        {isFull ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-rose-600 text-white border border-rose-400/60 text-xs font-black uppercase shadow-xs">
+                            <Lock className="w-3 h-3 text-white" />
+                            বুকিং সম্পন্ন
                           </span>
-                          LIVE সিট
-                        </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/20 backdrop-blur-md text-white border border-white/30 text-xs font-black uppercase shadow-xs">
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-80"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                            </span>
+                            LIVE সিট
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1198,7 +1354,7 @@ export function TripSelectionStep({
                     <div className="space-y-2 pb-3 border-b border-slate-100 dark:border-slate-800">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-black px-2.5 py-1 rounded-xl bg-slate-900 text-white dark:bg-slate-800 dark:text-amber-300 border border-slate-700 shadow-2xs">
+                          <span className="font-mono text-sm sm:text-base font-black px-3 py-1 rounded-xl bg-amber-400 text-slate-950 dark:bg-amber-400 dark:text-slate-950 border border-amber-300 shadow-sm">
                             🚌 {busNumber}
                           </span>
                           <Badge
@@ -1287,8 +1443,9 @@ export function TripSelectionStep({
                             {soldPct}% বিক্রি ({bookedCount}/{totalSeats})
                           </span>
                         </div>
-                        <div className="h-2.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden shadow-inner flex">
+                        <div className="h-2.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden shadow-inner flex" suppressHydrationWarning>
                           <div
+                            suppressHydrationWarning
                             style={{ width: `${Math.max(4, soldPct)}%` }}
                             className={`h-full transition-all duration-500 rounded-full ${
                               isHighOccupancy
@@ -1390,13 +1547,27 @@ export function TripSelectionStep({
 
                       <Button
                         type="button"
-                        variant="primary"
+                        variant={isFull ? 'secondary' : 'primary'}
                         onClick={() => onSelectTrip(t.id)}
-                        className="w-full py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md active:scale-[0.98]"
+                        className={`w-full py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md active:scale-[0.98] ${
+                          isFull
+                            ? 'bg-slate-800 hover:bg-slate-700 text-white dark:bg-slate-700 dark:hover:bg-slate-600 border border-slate-600'
+                            : ''
+                        }`}
                       >
-                        <Armchair className="w-4 h-4" />
-                        <span>সিট নির্বাচন ও টিকিট ইস্যু করুন</span>
-                        <ArrowRight className="w-4 h-4" />
+                        {isFull ? (
+                          <>
+                            <Eye className="w-4 h-4 text-amber-400" />
+                            <span>সিট ও বুকিং বিবরণ দেখুন</span>
+                            <ArrowRight className="w-4 h-4 text-amber-400" />
+                          </>
+                        ) : (
+                          <>
+                            <Armchair className="w-4 h-4" />
+                            <span>সিট নির্বাচন ও টিকিট ইস্যু করুন</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -1422,6 +1593,7 @@ export function TripSelectionStep({
               const bookedCount = t.stats?.bookedCount || 0;
               const availableCount = t.stats?.availableCount ?? Math.max(0, totalSeats - bookedCount);
               const soldPct = t.stats?.soldPercentage ?? (totalSeats > 0 ? Math.round((bookedCount / totalSeats) * 100) : 0);
+              const isFull = isTripBookingFull(t);
 
               let minF = t.basePrice || 550;
               let maxF = t.maxPrice || minF;
@@ -1489,15 +1661,23 @@ export function TripSelectionStep({
                   {/* Col 4: Seat Occupancy */}
                   <div className="space-y-1.5 min-w-[170px]">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm">
-                        🟢 {availableCount} সিট খালি
-                      </span>
+                      {isFull ? (
+                        <span className="font-black text-rose-600 dark:text-rose-400 text-sm flex items-center gap-1">
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>আসন পূর্ণ (ফুল)</span>
+                        </span>
+                      ) : (
+                        <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                          🟢 {availableCount} সিট খালি
+                        </span>
+                      )}
                       <span className="font-mono text-slate-500 text-[11px] font-bold">
                         {bookedCount}/{totalSeats}
                       </span>
                     </div>
-                    <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden shadow-inner">
+                    <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden shadow-inner" suppressHydrationWarning>
                       <div
+                        suppressHydrationWarning
                         style={{ width: `${Math.max(4, soldPct)}%` }}
                         className={`h-full rounded-full ${
                           soldPct >= 80 ? 'bg-rose-500' : soldPct >= 40 ? 'bg-amber-500' : 'bg-emerald-500'
@@ -1505,7 +1685,7 @@ export function TripSelectionStep({
                       />
                     </div>
                     <span className="text-[10px] font-mono text-slate-400 block">
-                      {soldPct}% সিট বুকড
+                      {isFull ? '১০০% বুকিং সম্পন্ন' : `${soldPct}% সিট বুকড`}
                     </span>
                   </div>
 
@@ -1519,13 +1699,24 @@ export function TripSelectionStep({
                     </div>
                     <Button
                       size="sm"
-                      variant="primary"
+                      variant={isFull ? 'secondary' : 'primary'}
                       onClick={() => onSelectTrip(t.id)}
-                      className="px-4 py-2 rounded-xl font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95"
+                      className={`px-4 py-2 rounded-xl font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 ${
+                        isFull ? 'bg-slate-800 hover:bg-slate-700 text-white' : ''
+                      }`}
                     >
-                      <Armchair className="w-3.5 h-3.5" />
-                      <span>সিট বুকিং</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      {isFull ? (
+                        <>
+                          <Eye className="w-3.5 h-3.5 text-amber-400" />
+                          <span>বিবরণ দেখুন</span>
+                        </>
+                      ) : (
+                        <>
+                          <Armchair className="w-3.5 h-3.5" />
+                          <span>সিট বুকিং</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -1565,6 +1756,7 @@ export function TripSelectionStep({
                     const bookedCount = t.stats?.bookedCount || 0;
                     const availableCount = t.stats?.availableCount ?? Math.max(0, totalSeats - bookedCount);
                     const soldPct = t.stats?.soldPercentage ?? (totalSeats > 0 ? Math.round((bookedCount / totalSeats) * 100) : 0);
+                    const isFull = isTripBookingFull(t);
 
                     let minF = t.basePrice || 550;
                     let maxF = t.maxPrice || minF;
@@ -1623,9 +1815,16 @@ export function TripSelectionStep({
 
                         {/* Seats */}
                         <td className="py-3.5 px-4 text-center">
-                          <span className="inline-block font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">
-                            {availableCount} খালি
-                          </span>
+                          {isFull ? (
+                            <span className="inline-flex items-center gap-1 font-mono font-black text-rose-600 dark:text-rose-400 text-xs px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800">
+                              <Lock className="w-3 h-3" />
+                              ফুল (০ খালি)
+                            </span>
+                          ) : (
+                            <span className="inline-block font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                              {availableCount} খালি
+                            </span>
+                          )}
                           <div className="text-[10px] text-slate-400 font-mono">
                             {bookedCount}/{totalSeats} ({soldPct}%)
                           </div>
@@ -1640,11 +1839,13 @@ export function TripSelectionStep({
                         <td className="py-3.5 px-4 text-center">
                           <Button
                             size="sm"
-                            variant="primary"
+                            variant={isFull ? 'secondary' : 'primary'}
                             onClick={() => onSelectTrip(t.id)}
-                            className="rounded-xl px-3 py-1.5 text-xs font-black shadow-2xs"
+                            className={`rounded-xl px-3 py-1.5 text-xs font-black shadow-2xs ${
+                              isFull ? 'bg-slate-800 hover:bg-slate-700 text-white' : ''
+                            }`}
                           >
-                            সিট বুকিং
+                            {isFull ? 'বিবরণ দেখুন' : 'সিট বুকিং'}
                           </Button>
                         </td>
                       </tr>

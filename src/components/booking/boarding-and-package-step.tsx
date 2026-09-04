@@ -65,9 +65,14 @@ export function BoardingAndPackageStep({
       {/* Trip recap chip */}
       {trip && (
         <div className="p-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
-          <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
-            <Bus className="w-4 h-4 text-blue-600" />
-            <span>{trip.bus?.busName || trip.bus?.bus_name} ({trip.bus?.busNumber || trip.bus?.bus_number})</span>
+          <div className="flex items-center gap-2.5 font-bold text-slate-800 dark:text-slate-200 flex-wrap">
+            <Bus className="w-5 h-5 text-blue-600 shrink-0" />
+            <span className="text-sm sm:text-base font-extrabold">{trip.bus?.busName || trip.bus?.bus_name}</span>
+            {(trip.bus?.busNumber || trip.bus?.bus_number) && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-400 text-slate-950 font-black font-mono text-sm sm:text-base rounded-lg shadow-2xs border border-amber-300">
+                {trip.bus?.busNumber || trip.bus?.bus_number}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-medium">
             <Calendar className="w-3.5 h-3.5" />
@@ -221,23 +226,42 @@ export function BoardingAndPackageStep({
         </CardContent>
       </Card>
 
-      <div className="flex justify-between items-center">
-        <Button variant="outline" onClick={onGoBack} className="rounded-2xl px-5 font-bold cursor-pointer">
+      {/* Step Error Alert */}
+      {(!boardingPoint?.trim() || !droppingPoint?.trim()) && (
+        <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 rounded-2xl flex items-center gap-2.5 text-xs text-amber-900 dark:text-amber-200 font-bold">
+          <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>{language === 'bn' ? 'যাত্রার বোর্ডিং ও ড্রপিং পয়েন্ট নিশ্চিত করে এগিয়ে যান।' : 'Please ensure both boarding and dropping points are selected.'}</span>
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 pb-12 mr-0 sm:mr-32">
+        <Button variant="outline" onClick={onGoBack} className="w-full sm:w-auto rounded-2xl px-5 font-bold cursor-pointer">
           <ArrowLeft className="w-4 h-4 mr-2" />
           {language === 'bn' ? 'পেছনে যান (যাত্রী তথ্য)' : 'Back to Passenger Details'}
         </Button>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
           <div className="text-right hidden sm:block">
             <span className="text-[10px] uppercase font-bold text-slate-400 block">{language === 'bn' ? 'আনুমানিক মোট' : 'Estimated Total'}</span>
             <span className="text-base font-black font-mono text-slate-900 dark:text-white">{formatCurrency(estimatedNet)}</span>
           </div>
           <Button
             variant="primary"
-            onClick={onContinue}
-            className="font-bold rounded-2xl shadow-md px-6 cursor-pointer"
+            size="lg"
+            onClick={() => {
+              if (!boardingPoint?.trim()) {
+                alert(language === 'bn' ? 'অনুগ্রহ করে বোর্ডিং পয়েন্ট নির্বাচন করুন।' : 'Please select a boarding point.');
+                return;
+              }
+              if (!droppingPoint?.trim()) {
+                alert(language === 'bn' ? 'অনুগ্রহ করে ড্রপিং পয়েন্ট নির্বাচন করুন।' : 'Please select a dropping point.');
+                return;
+              }
+              onContinue();
+            }}
+            className="w-full sm:w-auto font-black rounded-2xl shadow-lg shadow-blue-500/25 px-8 text-sm sm:text-base py-3 cursor-pointer"
           >
             {language === 'bn' ? 'ছাড় ও ভাড়া ধাপে যান' : 'Continue to Discounts & Fare'}
-            <ArrowRight className="w-4 h-4 ml-2" />
+            <ArrowRight className="w-5 h-5 ml-2" />
           </Button>
         </div>
       </div>

@@ -13,7 +13,11 @@ import {
   ShieldCheck,
   X,
   BadgeCheck,
-  Users
+  Users,
+  Share2,
+  Copy,
+  Check,
+  ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,8 +27,62 @@ import {
   NagadLogo,
   RocketLogo,
   BankTransferLogo,
-  CashMoneyLogo
+  CashMoneyLogo,
+  WhatsAppLogo
 } from './payment-brand-icons';
+
+export function buildWhatsAppTicketMessage(booking: any, passenger?: any): { phone: string; message: string; waUrl: string } {
+  const bNumber = booking?.bookingNumber || booking?.booking_number || 'N/A';
+  const rawPhone = passenger?.whatsappNumber || passenger?.passengerPhone || passenger?.passenger_phone || booking?.contactPhone || booking?.contact_phone || '';
+  const cleanPhone = (rawPhone || '').replace(/\D/g, '');
+  const bdPhone = cleanPhone.startsWith('880')
+    ? cleanPhone
+    : cleanPhone.startsWith('0')
+    ? `88${cleanPhone}`
+    : cleanPhone
+    ? `880${cleanPhone}`
+    : '';
+
+  const pName = passenger?.passengerName || passenger?.passenger_name || booking?.contactName || booking?.contact_name || 'সম্মানিত যাত্রী';
+
+  const allSeats = booking?.passengers?.map((p: any) => p.seatNumber || p.seat_number || p.seatId).filter(Boolean) || [];
+  const passengerSeat = passenger?.seatNumber || passenger?.seat_number;
+  const seatsStr = passengerSeat ? passengerSeat : (allSeats.length > 0 ? allSeats.join(', ') : 'বরাদ্দকৃত সিট');
+
+  const tripObj = booking?.trip || {};
+  const routeName = tripObj.route?.routeName || tripObj.route?.route_name || tripObj.route_name || `${booking?.boardingPoint || 'ঢাকা'} ➔ ${booking?.droppingPoint || 'ভর্তি কেন্দ্র'}`;
+  const depDate = tripObj.departureDate || tripObj.departure_date ? formatDate(tripObj.departureDate || tripObj.departure_date) : 'নির্ধারিত তারিখ';
+  const depTime = tripObj.departureTime || tripObj.departure_time ? formatTime(tripObj.departureTime || tripObj.departure_time) : 'নির্ধারিত সময়';
+  const boardingStr = booking?.boardingPoint || booking?.boarding_point || 'কাউন্টার পয়েন্ট';
+  const droppingStr = booking?.droppingPoint || booking?.dropping_point || 'বিশ্ববিদ্যালয় ভর্তি কেন্দ্র';
+
+  const paidAmt = booking?.paidAmount ?? booking?.paid_amount ?? booking?.grossAmount ?? booking?.gross_amount ?? 0;
+  const dueAmt = booking?.dueAmount ?? booking?.due_amount ?? 0;
+  const pmtStatus = (booking?.paymentStatus || booking?.payment_status) === 'PAID' || dueAmt === 0 ? 'পরিশোধিত (PAID)' : `বকেয়া ৳${dueAmt}`;
+
+  const hostUrl = typeof window !== 'undefined' ? window.location.origin : 'https://atoms-transit.com';
+  const verifyUrl = `${hostUrl}/bookings/${booking?.id || ''}`;
+
+  const message = `🚌 *ATOMS বাস টিকিট ও পেমেন্ট রসিদ*
+━━━━━━━━━━━━━━━━━━━━
+📋 *বুকিং ট্র্যাকিং নম্বর:* ${bNumber}
+👤 *যাত্রীর নাম:* ${pName}
+💺 *সিট নম্বর:* ${seatsStr}
+📍 *রুট:* ${routeName}
+📅 *যাত্রার সময়:* ${depDate} (${depTime})
+🏢 *বোর্ডিং পয়েন্ট:* ${boardingStr}
+🏁 *গন্তব্য:* ${droppingStr}
+💳 *ভাড়া স্ট্যাটাস:* ৳${paidAmt} [${pmtStatus}]
+━━━━━━━━━━━━━━━━━━━━
+🔗 *অনলাইন টিকিট ডাউনলোড ও লাইভ স্ট্যাটাস:*
+${verifyUrl}
+
+আপনার যাত্রা শুভ ও নিরাপদ হোক!
+*ATOMS Transit Management*`;
+
+  const waUrl = bdPhone ? `https://wa.me/${bdPhone}?text=${encodeURIComponent(message)}` : `https://wa.me/?text=${encodeURIComponent(message)}`;
+  return { phone: rawPhone, message, waUrl };
+}
 
 export interface PaymentReceiptProps {
   booking: any;
@@ -280,7 +338,19 @@ export function PaymentReceiptCard({ booking }: { booking: any }) {
                         {p.passengerName || booking.contactName}
                       </td>
                       <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-300 font-bold">
-                        {p.passengerPhone || booking.contactPhone}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{p.passengerPhone || booking.contactPhone}</span>
+                          {p.phoneType !== 'NORMAL' && p.hasWhatsapp !== false ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800" title="WhatsApp সক্রিয় নম্বর">
+                              <WhatsAppLogo className="w-3 h-3 shrink-0" />
+                              <span>WhatsApp</span>
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700" title="সাধারণ কল নম্বর">
+                              কল
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
@@ -448,10 +518,35 @@ export function PaymentReceiptModal({
   onClose: () => void;
   onNewBooking?: () => void;
 }) {
+  const [copiedIndex, setCopiedIndex] = React.useState<number | null>(null);
+
   if (!isOpen || !booking) return null;
+
+  const passengers = (booking.passengers && booking.passengers.length > 0)
+    ? booking.passengers
+    : [{
+        passengerName: booking.contactName || 'সম্মানিত যাত্রী',
+        passengerPhone: booking.contactPhone || '',
+        phoneType: 'WHATSAPP',
+        hasWhatsapp: true
+      }];
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleSendWhatsApp = (p?: any) => {
+    const { waUrl } = buildWhatsAppTicketMessage(booking, p);
+    window.open(waUrl, '_blank');
+  };
+
+  const handleCopyMessage = (p?: any, idx: number = 0) => {
+    const { message } = buildWhatsAppTicketMessage(booking, p);
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(message);
+      setCopiedIndex(idx);
+      setTimeout(() => setCopiedIndex(null), 3000);
+    }
   };
 
   return (
@@ -490,6 +585,70 @@ export function PaymentReceiptModal({
             >
               <X className="w-5 h-5" />
             </button>
+          </div>
+        </div>
+
+        {/* WhatsApp Instant Notification Banner */}
+        <div className="bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-700 text-white p-3.5 sm:p-4 border-b border-emerald-500/40 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden shadow-sm">
+          <div className="flex items-center gap-3">
+            <WhatsAppLogo className="w-9 h-9 shrink-0 drop-shadow-md rounded-full" />
+            <div>
+              <div className="text-xs sm:text-sm font-black flex items-center gap-2 flex-wrap">
+                <span>WhatsApp এ সরাসরি টিকিট পাঠান</span>
+                <span className="bg-emerald-800/80 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-400/40">
+                  তাৎক্ষণিক মেসেজ প্রস্তুত
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-100 font-medium mt-0.5">
+                যাত্রীদের নিশ্চিতকরণ টিকিট, সিট নম্বর ও ট্র্যাকিং লিঙ্ক এক ক্লিকেই WhatsApp-এ পাঠিয়ে দিন।
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap ml-auto">
+            {passengers.map((p: any, idx: number) => {
+              const pPhone = p.whatsappNumber || p.passengerPhone || p.passenger_phone || booking.contactPhone || '';
+              const pName = p.passengerName || p.passenger_name || `যাত্রী ${idx + 1}`;
+              const sNum = p.seatNumber || p.seat_number || `সিট ${idx + 1}`;
+
+              return (
+                <div key={idx} className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => handleSendWhatsApp(p)}
+                    className="bg-white hover:bg-emerald-50 text-emerald-900 font-black text-xs px-3 py-1.5 rounded-xl shadow-md cursor-pointer flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 border border-emerald-100"
+                    title={`WhatsApp এ পাঠান: ${pPhone}`}
+                  >
+                    <WhatsAppLogo className="w-4 h-4 shrink-0" />
+                    <span>
+                      {passengers.length === 1 ? 'WhatsApp এ টিকিট পাঠান' : `${pName} (${sNum})`}
+                    </span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleCopyMessage(p, idx)}
+                    className="bg-emerald-800/70 hover:bg-emerald-800 border-emerald-400/50 text-white font-bold text-xs px-2.5 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 shadow-2xs"
+                    title="মেসেজ টেক্সট কপি করুন"
+                  >
+                    {copiedIndex === idx ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-200" />
+                        <span className="text-[11px] text-emerald-100 font-bold">কপি হয়েছে!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-emerald-100" />
+                        <span className="text-[11px] hidden sm:inline">কপি</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         </div>
 

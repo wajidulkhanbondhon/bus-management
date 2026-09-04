@@ -9,7 +9,7 @@ from app.models.booking import Booking, BookingSeat
 
 
 async def clean_expired_inventory(db: Session, trip_id: str):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     # 1. Clean expired holds
     await db.execute(delete(SeatHold).where(SeatHold.trip_id == trip_id, SeatHold.expires_at <= now))
 
@@ -28,10 +28,53 @@ async def clean_expired_inventory(db: Session, trip_id: str):
 
 
 async def get_trip_seat_inventory(db: Session, trip_id: str, staff_id: Optional[str] = None) -> Dict[str, Any]:
-    clean_expired_inventory(db, trip_id)
-    now = datetime.now(timezone.utc)
+    await clean_expired_inventory(db, trip_id)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     trip = await db.query(Trip).filter(Trip.id == trip_id).first()
+    if not trip:
+        # Fallback 1: Look up active trip by bus ID
+        trip = await db.query(Trip).filter(
+            Trip.bus_id == trip_id,
+            Trip.status.in_(["SCHEDULED", "BOARDING"])
+        ).first()
+
+    if not trip:
+        # Fallback 2: Check if trip_id is a bus ID that needs auto-trip provisioned
+        bus = await db.query(Bus).filter(Bus.id == trip_id).first()
+        if bus and bus.status != "INACTIVE":
+            from app.models.trip import BusRoute
+            route = await db.query(BusRoute).first()
+            if not route:
+                route = BusRoute(
+                    route_name="Dhaka to Exam Center",
+                    origin="ঢাকা (গাবতলী/সায়েদাবাদ)",
+                    destination="ভর্তি কেন্দ্র",
+                    distance_km=250.0,
+                    est_duration="5h 30m",
+                    tenant_id=bus.tenant_id
+                )
+                db.add(route)
+                await db.flush()
+
+            clean_bus_num = "".join(ch for ch in (bus.bus_number or "COACH") if ch.isalnum()).upper()
+            dep_date = datetime.now(timezone.utc).replace(tzinfo=None, hour=22, minute=30, second=0, microsecond=0)
+            auto_trip = Trip(
+                id=bus.id,
+                trip_code=f"TRIP-{clean_bus_num}-{int(datetime.now().timestamp()) % 10000:04d}",
+                bus_id=bus.id,
+                route_id=route.id,
+                departure_date=dep_date,
+                departure_time=dep_date,
+                trip_bus_type=bus.bus_type or "MIXED",
+                status="SCHEDULED",
+                base_price=550.0,
+                tenant_id=bus.tenant_id
+            )
+            db.add(auto_trip)
+            await db.commit()
+            trip = await db.query(Trip).filter(Trip.id == auto_trip.id).first()
+
     if not trip:
         raise ValueError("Trip not found")
 
@@ -138,6 +181,7 @@ async def get_trip_seat_inventory(db: Session, trip_id: str, staff_id: Optional[
             "status": status,
             "booking_number": booking_info.booking_number if booking_info else None,
             "passenger_name": booking_info.contact_name if booking_info else None,
+            "passenger_phone": booking_info.contact_phone if booking_info else None,
             "payment_expires_at": booking_info.payment_expires_at.isoformat() if booking_info and booking_info.payment_expires_at else None,
         })
 
@@ -160,7 +204,7 @@ async def get_trip_seat_inventory(db: Session, trip_id: str, staff_id: Optional[
 
 
 async def hold_seat(db: Session, trip_id: str, seat_id: str, staff_id: str, duration_minutes: int = 10) -> SeatHold:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     expires_at = now + timedelta(minutes=duration_minutes)
     hold_token = f"HOLD-{int(now.timestamp())}-{uuid.uuid4().hex[:6].upper()}"
 
@@ -213,8 +257,10 @@ async def lock_seat(
     notes: Optional[str] = None,
     locked_until: Optional[datetime] = None
 ) -> SeatLock:
-    clean_expired_inventory(db, trip_id)
-    now = datetime.now(timezone.utc)
+    await clean_expired_inventory(db, trip_id)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if locked_until and hasattr(locked_until, "tzinfo") and locked_until.tzinfo is not None:
+        locked_until = locked_until.replace(tzinfo=None)
 
     # Lock the seat row to serialize concurrent lock/booking attempts.
     seat = await db.query(Seat).filter(Seat.id == seat_id).with_for_update().first()
@@ -297,7 +343,7 @@ async def unlock_seat(db: Session, trip_id: str, seat_id: str, staff_id: str) ->
 
 
 async def clean_all_expired(db: Session) -> Dict[str, int]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     result = await db.execute(delete(SeatHold).where(SeatHold.expires_at <= now))
     deleted_holds = result.rowcount
 

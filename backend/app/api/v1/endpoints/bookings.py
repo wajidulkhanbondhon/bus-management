@@ -65,6 +65,14 @@ async def create_booking(
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/pre-booking", response_model=BookingOut, status_code=status.HTTP_201_CREATED)

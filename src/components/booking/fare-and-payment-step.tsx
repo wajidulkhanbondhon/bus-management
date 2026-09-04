@@ -66,6 +66,9 @@ export interface FarePaymentProps {
   isSubmitting: boolean;
   isStaffCouponModalOpen: boolean;
   customLogos?: Record<string, string>;
+  errorMessage?: string | null;
+  onSetErrorMessage?: (msg: string | null) => void;
+  onGoToStep?: (step: number) => void;
   onDiscountChange: (state: Partial<DiscountState>) => void;
   onCouponApply: (code: string) => Promise<void>;
   onCouponRemove: () => void;
@@ -129,6 +132,9 @@ export function FareAndPaymentStep({
   isSubmitting,
   isStaffCouponModalOpen,
   customLogos,
+  errorMessage,
+  onSetErrorMessage,
+  onGoToStep,
   onDiscountChange,
   onCouponApply,
   onCouponRemove,
@@ -146,6 +152,15 @@ export function FareAndPaymentStep({
   const { language } = useApp();
   const { isDiscountApplied, discountType, discountRate, discountReference, discountReason } = discountState;
   const [couponInput, setCouponInput] = useState(appliedCoupon?.code || '');
+
+  // Pre-fill senderRef from 1st passenger mobile if currently blank
+  React.useEffect(() => {
+    if (!senderRef && passengers[0]?.passengerPhone) {
+      onSenderRefChange(passengers[0].passengerPhone);
+    } else if (!senderRef && paymentMethod === 'HAND_CASH') {
+      onSenderRefChange(passengers[0]?.passengerPhone || 'CASH-COUNTER');
+    }
+  }, [passengers, senderRef, paymentMethod, onSenderRefChange]);
 
   return (
     <div className="space-y-5">
@@ -764,9 +779,47 @@ export function FareAndPaymentStep({
         </CardContent>
       </Card>
 
-      {/* Navigation */}
-      <div className="flex justify-between items-center">
-        <Button variant="outline" onClick={onGoBack} className="rounded-2xl px-5 font-bold">
+      {/* Inline Validation / Submission Error Alert (Above Action Buttons) */}
+      {errorMessage && (
+        <div className="p-4 bg-rose-50 dark:bg-rose-950/80 border-2 border-rose-400 dark:border-rose-600 rounded-3xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-rose-900 dark:text-rose-100 text-sm shadow-md animate-pulse">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <span className="block font-black text-xs uppercase tracking-wider text-rose-700 dark:text-rose-300">
+                {language === 'bn' ? '⚠️ বুকিং সম্পন্ন করার আগে সংশোধন করুন:' : 'Action Required:'}
+              </span>
+              <span className="font-bold text-sm mt-0.5 block">{errorMessage}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            {onGoToStep && (errorMessage.includes('সিট') || errorMessage.includes('যাত্রী') || errorMessage.includes('Passenger') || errorMessage.includes('Seat') || errorMessage.includes('Guardian') || errorMessage.includes('Gender')) && (
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                onClick={() => onGoToStep(3)}
+                className="rounded-xl font-black text-xs bg-white text-rose-700 hover:bg-rose-100 shadow-sm shrink-0 border border-rose-300 dark:bg-slate-900 dark:text-rose-300"
+              >
+                {language === 'bn' ? '← যাত্রী তথ্যে ফিরে যান (ধাপ ৩)' : '← Fix in Passenger Step 3'}
+              </Button>
+            )}
+            {onSetErrorMessage && (
+              <button
+                type="button"
+                onClick={() => onSetErrorMessage(null)}
+                className="text-rose-500 hover:text-rose-800 dark:hover:text-rose-200 font-black text-sm px-2 cursor-pointer"
+                title={language === 'bn' ? 'বন্ধ করুন' : 'Close'}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Navigation - Spaced inward to prevent overlapping with bottom-right floating AI widget */}
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 pb-16 mr-0 sm:mr-32">
+        <Button variant="outline" onClick={onGoBack} className="w-full sm:w-auto rounded-2xl px-5 font-bold cursor-pointer">
           <ArrowLeft className="w-4 h-4 mr-2" />
           {language === 'bn' ? 'পেছনে যান (বোর্ডিং)' : 'Back to Boarding'}
         </Button>
@@ -774,8 +827,65 @@ export function FareAndPaymentStep({
           variant="primary"
           size="lg"
           isLoading={isSubmitting}
-          onClick={onConfirm}
-          className="font-black shadow-lg shadow-blue-500/25 px-8 rounded-2xl text-sm sm:text-base py-3"
+          onClick={() => {
+            if (onSetErrorMessage) onSetErrorMessage(null);
+
+            // 1. Discount reference validation
+            if (discountState.isDiscountApplied && discountState.discountRate > 0 && !discountState.discountReference?.trim()) {
+              const msg = language === 'bn'
+                ? 'টিকিটের মূল্য ছাড় দেওয়ার জন্য অনুমোদনকারী বা রেফারেন্সের নাম আবশ্যক।'
+                : 'Authorizer or reference name is required when applying a discount.';
+              if (onSetErrorMessage) onSetErrorMessage(msg);
+              return;
+            }
+
+            // 2. Sender reference validation
+            if (paymentMethod !== 'HAND_CASH') {
+              if (senderSourceType === 'MFS_WALLET') {
+                const clean = cleanAndLimitPhoneNumber(senderRef);
+                if (!clean) {
+                  const msg = language === 'bn'
+                    ? 'প্রেরক বিকাশ/নগদ/রকেট মোবাইল নম্বর (১১ ডিজিট) আবশ্যক।'
+                    : 'Sender mobile number is required.';
+                  if (onSetErrorMessage) onSetErrorMessage(msg);
+                  return;
+                }
+                if (!isValidBdMobile(clean)) {
+                  const msg = language === 'bn'
+                    ? `প্রেরক মোবাইল নম্বর (${senderRef}) সঠিক নয়! ১১ ডিজিটের সঠিক বাংলাদেশী মোবাইল নম্বর লিখুন।`
+                    : 'Invalid 11-digit sender mobile number.';
+                  if (onSetErrorMessage) onSetErrorMessage(msg);
+                  return;
+                }
+              } else if (senderSourceType === 'BANK_TO_MFS') {
+                if (!selectedBankName) {
+                  const msg = language === 'bn'
+                    ? 'অনুগ্রহ করে তালিকা থেকে প্রেরক ব্যাংক নির্বাচন করুন।'
+                    : 'Please select a sender bank.';
+                  if (onSetErrorMessage) onSetErrorMessage(msg);
+                  return;
+                }
+                if (!senderRef?.trim()) {
+                  const msg = language === 'bn'
+                    ? 'প্রেরক ব্যাংক অ্যাকাউন্ট বা কার্ড নম্বর আবশ্যক।'
+                    : 'Bank account or card number is required.';
+                  if (onSetErrorMessage) onSetErrorMessage(msg);
+                  return;
+                }
+              } else if (senderSourceType === 'CASH_RECEIPT') {
+                if (!senderRef?.trim()) {
+                  const msg = language === 'bn'
+                    ? 'কাউন্টার ক্যাশ রিসিট নম্বর বা প্রদানকারীর নাম আবশ্যক।'
+                    : 'Cash receipt number or payer name is required.';
+                  if (onSetErrorMessage) onSetErrorMessage(msg);
+                  return;
+                }
+              }
+            }
+
+            onConfirm();
+          }}
+          className="w-full sm:w-auto font-black shadow-lg shadow-blue-500/25 px-8 rounded-2xl text-sm sm:text-base py-3.5 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white"
         >
           <Check className="w-5 h-5 mr-2" />
           {language === 'bn' ? 'বুকিং নিশ্চিত করুন ও টিকিট প্রিন্ট নিন' : 'Confirm Booking & Print Invoice'}

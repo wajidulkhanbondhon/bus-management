@@ -172,9 +172,9 @@ export function Header({ currentUser, onMobileMenuToggle }: HeaderProps) {
         </div>
 
         {/* Mobile Mini Time Badge */}
-        <div className="flex sm:hidden items-center gap-1.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 px-2.5 py-1 rounded-xl text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
+        <div suppressHydrationWarning className="flex sm:hidden items-center gap-1.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 px-2.5 py-1 rounded-xl text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
           <Clock className="w-3 h-3 text-blue-500" />
-          <span>{timeStr?.slice(0, 8) || '--:--'}</span>
+          <span suppressHydrationWarning>{timeStr?.slice(0, 8) || '--:--'}</span>
         </div>
 
         <div className={cn(

@@ -47,7 +47,7 @@ async def record_counter_payment(
         if booking.tenant_id != current_user.tenant_id:
             raise HTTPException(status_code=403, detail="Access denied for this tenant's booking")
 
-    receipt_number = generate_unique_receipt_number(db)
+    receipt_number = await generate_unique_receipt_number(db)
     payment = Payment(
         receipt_number=receipt_number,
         booking_id=booking.id,
@@ -64,8 +64,9 @@ async def record_counter_payment(
     booking.due_amount = new_due
     booking.payment_status = "PAID" if new_due == 0 else "PARTIALLY_PAID"
 
+    ledger_no = await generate_unique_ledger_number(db)
     ledger = FinancialLedger(
-        entry_number=generate_unique_ledger_number(db),
+        entry_number=ledger_no,
         entry_type="PAYMENT_RECEIVED",
         debit=0.0,
         credit=req.amount,

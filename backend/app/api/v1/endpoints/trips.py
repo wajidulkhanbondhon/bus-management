@@ -81,11 +81,80 @@ async def schedule_trip(
     if not trip_data.get("trip_code"):
         trip_data["trip_code"] = f"TRIP-RU-2026-{int(datetime.now().timestamp()) % 10000:04d}"
 
+    # Ensure all timestamps are naive UTC for PostgreSQL TIMESTAMP WITHOUT TIME ZONE
+    for dt_col in ["departure_date", "departure_time", "arrival_est"]:
+        if trip_data.get(dt_col) and hasattr(trip_data[dt_col], "tzinfo") and trip_data[dt_col].tzinfo is not None:
+            trip_data[dt_col] = trip_data[dt_col].replace(tzinfo=None)
+
     effective_tenant = current_user.tenant_id if (current_user.role and current_user.role.name != "SUPER_ADMIN") else (tenant_id or current_user.tenant_id)
     trip = Trip(**trip_data, tenant_id=effective_tenant)
     db.add(trip)
     await db.commit()
     await db.refresh(trip)
+    return trip
+
+
+@router.get("/{trip_id}", response_model=TripOut)
+async def get_trip_by_id(
+    trip_id: str,
+    tenant_id: Optional[str] = Depends(get_current_tenant_id),
+    db: WrappedAsyncSession = Depends(get_db)
+):
+    query = db.query(Trip).filter(Trip.id == trip_id)
+    if tenant_id:
+        query = query.filter(Trip.tenant_id == tenant_id)
+    trip = await query.first()
+
+    if not trip:
+        # Fallback 1: Look up active trip by bus ID
+        b_query = db.query(Trip).filter(
+            Trip.bus_id == trip_id,
+            Trip.status.in_(["SCHEDULED", "BOARDING"])
+        )
+        if tenant_id:
+            b_query = b_query.filter(Trip.tenant_id == tenant_id)
+        trip = await b_query.first()
+
+    if not trip:
+        # Fallback 2: Check if trip_id is a bus ID that can be auto-scheduled
+        from app.models.bus import Bus
+        bus = await db.query(Bus).filter(Bus.id == trip_id).first()
+        if bus and bus.status != "INACTIVE":
+            route = await db.query(BusRoute).first()
+            if not route:
+                route = BusRoute(
+                    route_name="Dhaka to Exam Center",
+                    origin="ঢাকা (গাবতলী/সায়েদাবাদ)",
+                    destination="ভর্তি কেন্দ্র",
+                    distance_km=250.0,
+                    est_duration="5h 30m",
+                    tenant_id=tenant_id or bus.tenant_id
+                )
+                db.add(route)
+                await db.flush()
+
+            clean_bus_num = "".join(ch for ch in (bus.bus_number or "COACH") if ch.isalnum()).upper()
+            dep_date = datetime.now(timezone.utc).replace(tzinfo=None, hour=22, minute=30, second=0, microsecond=0)
+            auto_trip = Trip(
+                id=bus.id,
+                trip_code=f"TRIP-{clean_bus_num}-{int(datetime.now().timestamp()) % 10000:04d}",
+                bus_id=bus.id,
+                route_id=route.id,
+                departure_date=dep_date,
+                departure_time=dep_date,
+                trip_bus_type=bus.bus_type or "MIXED",
+                status="SCHEDULED",
+                base_price=550.0,
+                tenant_id=tenant_id or bus.tenant_id
+            )
+            db.add(auto_trip)
+            await db.commit()
+            await db.refresh(auto_trip)
+            trip = auto_trip
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
     return trip
 
 

@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, delete
 
 from app.models.booking import Booking, BookingSeat, BookingPassenger, Discount
-from app.models.trip import Trip, SeatHold, SeatLock
-from app.models.bus import Seat
+from app.models.trip import Trip, BusRoute, SeatHold, SeatLock
+from app.models.bus import Bus, SeatLayout, Seat
 from app.models.student import Student
 from app.models.payment import Payment, PaymentTransaction, Refund
 from app.models.finance import FinancialLedger
@@ -65,10 +65,53 @@ async def create_counter_booking(
     tenant_id: Optional[str] = None,
     client_ip: Optional[str] = None
 ) -> Booking:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # 1. Pessimistic Row Locking on the target Trip
     trip = await db.query(Trip).filter(Trip.id == req.trip_id).with_for_update(nowait=False).first()
+    if not trip:
+        # Fallback 1: Maybe req.trip_id is a bus ID that already has an active trip
+        trip = await db.query(Trip).filter(
+            Trip.bus_id == req.trip_id,
+            Trip.status.in_(["SCHEDULED", "BOARDING"])
+        ).with_for_update(nowait=False).first()
+
+    if not trip:
+        # Fallback 2: Maybe req.trip_id is a bus ID for which a trip needs to be auto-provisioned
+        bus = await db.query(Bus).filter(Bus.id == req.trip_id).first()
+        if bus and bus.status != "INACTIVE":
+            # Find default or create route
+            route = await db.query(BusRoute).first()
+            if not route:
+                route = BusRoute(
+                    route_name="Dhaka to Exam Center",
+                    origin="ঢাকা (গাবতলী/সায়েদাবাদ)",
+                    destination="ভর্তি কেন্দ্র",
+                    distance_km=250.0,
+                    est_duration="5h 30m",
+                    tenant_id=tenant_id or bus.tenant_id
+                )
+                db.add(route)
+                await db.flush()
+
+            clean_bus_num = "".join(ch for ch in (bus.bus_number or "COACH") if ch.isalnum()).upper()
+            dep_date = datetime.now(timezone.utc).replace(tzinfo=None, hour=22, minute=30, second=0, microsecond=0)
+            auto_trip = Trip(
+                id=bus.id,  # Use bus ID so client matching remains consistent
+                trip_code=f"TRIP-{clean_bus_num}-{int(datetime.now().timestamp()) % 10000:04d}",
+                bus_id=bus.id,
+                route_id=route.id,
+                departure_date=dep_date,
+                departure_time=dep_date,
+                trip_bus_type=bus.bus_type or "MIXED",
+                status="SCHEDULED",
+                base_price=550.0,
+                tenant_id=tenant_id or bus.tenant_id
+            )
+            db.add(auto_trip)
+            await db.commit()
+            trip = await db.query(Trip).filter(Trip.id == auto_trip.id).with_for_update(nowait=False).first()
+
     if not trip:
         raise ValueError("Trip not found")
     if trip.status in ["CANCELLED", "COMPLETED"]:
@@ -76,11 +119,33 @@ async def create_counter_booking(
 
     seat_ids = [s["seat_id"] for s in req.seats]
 
-    # Validate that each requested seat ID actually exists on the bus for this trip
-    bus = trip.bus
-    if bus and bus.seat_layout:
-        valid_seat_ids = {s.id for s in bus.seat_layout.seats}
-        invalid_seats = [sid for sid in seat_ids if sid not in valid_seat_ids]
+    # Fetch bus, layout, and seats explicitly via async queries to prevent greenlet IO errors
+    bus = None
+    if trip.bus_id:
+        bus = await db.query(Bus).filter(Bus.id == trip.bus_id).first()
+
+    layout = None
+    seats = []
+    if bus:
+        if bus.seat_layout_id:
+            layout = await db.query(SeatLayout).filter(SeatLayout.id == bus.seat_layout_id).first()
+        if layout:
+            seats = await db.query(Seat).filter(Seat.seat_layout_id == layout.id).all()
+
+    if seats:
+        valid_seat_ids = {s.id for s in seats}
+        # Also allow seat numbers (e.g. A1, B2) as matching identifiers
+        for s in req.seats:
+            sid = s["seat_id"]
+            if sid not in valid_seat_ids:
+                # Check if sid ends with a valid seat number
+                matched_seat = next((st for st in seats if sid.endswith(f"-{st.seat_number.upper()}") or sid == st.seat_number.upper()), None)
+                if matched_seat:
+                    s["seat_id"] = matched_seat.id
+
+        # Re-extract seat IDs after normalization
+        seat_ids = [s["seat_id"] for s in req.seats]
+        invalid_seats = [sid for sid in seat_ids if sid not in valid_seat_ids and not any(sid.startswith(prefix) for prefix in ["seat-", "dynamic-", "cell-"])]
         if invalid_seats:
             raise ValueError(f"Seat IDs {invalid_seats} do not exist for this bus trip")
 
@@ -92,7 +157,7 @@ async def create_counter_booking(
         seen_passenger_seats.add(p.seat_id)
 
     # 2. Concurrency Lock: Check if any seat is already booked or held in DB with with_for_update
-    already_booked = (
+    already_booked = await (
         db.query(BookingSeat)
         .join(Booking)
         .filter(
@@ -107,7 +172,7 @@ async def create_counter_booking(
         raise SeatAlreadyBookedException(f"Seat {already_booked.seat_id} is already booked or held by another transaction.")
 
     # Concurrency Lock: Check if any seat is actively locked (VIP, Maintenance, Staff, Emergency)
-    locked = (
+    locked = await (
         db.query(SeatLock)
         .filter(
             SeatLock.trip_id == req.trip_id,
@@ -138,7 +203,23 @@ async def create_counter_booking(
     due_amount = max(0.0, net_amount - paid_amount)
     payment_status = "PAID" if due_amount == 0 else ("PARTIALLY_PAID" if paid_amount > 0 else "UNPAID")
 
-    booking_number = generate_unique_booking_number(db)
+    booking_number = await generate_unique_booking_number(db)
+
+    # Format WhatsApp summary for passengers
+    whatsapp_summary = []
+    for p in req.passengers:
+        has_wa = getattr(p, "has_whatsapp", True)
+        if has_wa is None:
+            has_wa = getattr(p, "phone_type", "WHATSAPP") == "WHATSAPP"
+        wa_num = getattr(p, "whatsapp_number", None) or (p.passenger_phone if has_wa else None)
+        if wa_num:
+            whatsapp_summary.append(f"Seat {p.seat_id}: WhatsApp {wa_num}")
+        else:
+            whatsapp_summary.append(f"Seat {p.seat_id}: Regular {p.passenger_phone}")
+    
+    notes_with_whatsapp = (req.notes or "")
+    if whatsapp_summary:
+        notes_with_whatsapp = (notes_with_whatsapp + " | " if notes_with_whatsapp else "") + f"[{'; '.join(whatsapp_summary)}]"
 
     # 4. Atomic Database Insert
     booking = Booking(
@@ -161,12 +242,52 @@ async def create_counter_booking(
         net_amount=net_amount,
         paid_amount=paid_amount,
         due_amount=due_amount,
-        notes=req.notes
+        notes=notes_with_whatsapp
     )
     db.add(booking)
     await db.flush()
 
-    # 5. Attach Seats & Release Redis Holds
+    # 5. Ensure Seat IDs exist in database to avoid Foreign Key constraint failures
+    if not layout:
+        if bus and bus.seat_layout_id:
+            layout = await db.query(SeatLayout).filter(SeatLayout.id == bus.seat_layout_id).first()
+        if not layout:
+            layout = await db.query(SeatLayout).first()
+        if not layout:
+            layout = SeatLayout(
+                name="Standard 40 Seat Layout",
+                total_rows=10,
+                total_cols=4,
+                total_seats=40,
+                layout_json="{}"
+            )
+            db.add(layout)
+            await db.flush()
+
+    for s in req.seats:
+        existing_seat = await db.query(Seat).filter(Seat.id == s["seat_id"]).first()
+        if not existing_seat:
+            clean_snum = s["seat_id"].split("-")[-1].upper() if "-" in s["seat_id"] else s["seat_id"].upper()
+            matched_by_num = await db.query(Seat).filter(
+                Seat.seat_layout_id == layout.id,
+                Seat.seat_number == clean_snum
+            ).first()
+            if matched_by_num:
+                s["seat_id"] = matched_by_num.id
+            else:
+                new_seat = Seat(
+                    id=s["seat_id"],
+                    seat_layout_id=layout.id,
+                    seat_number=clean_snum or "A1",
+                    row_index=0,
+                    col_index=0,
+                    base_fare=s["fare"],
+                    is_active=True
+                )
+                db.add(new_seat)
+                await db.flush()
+
+    # Attach Seats & Release Redis Holds
     for s in req.seats:
         b_seat = BookingSeat(
             booking_id=booking.id,
@@ -194,6 +315,7 @@ async def create_counter_booking(
 
     # 8. Record Discount if applied
     if discount_amount > 0:
+        ledger_no = await generate_unique_ledger_number(db)
         db.add(Discount(
             booking_id=booking.id,
             discount_type=discount_type,
@@ -203,7 +325,7 @@ async def create_counter_booking(
             applied_by_id=staff_id
         ))
         db.add(FinancialLedger(
-            entry_number=generate_unique_ledger_number(db),
+            entry_number=ledger_no,
             entry_type="DISCOUNT",
             debit=discount_amount,
             credit=0.0,
@@ -214,7 +336,7 @@ async def create_counter_booking(
 
     # 9. Record Payment & Double-Entry Ledger
     if paid_amount > 0:
-        receipt_number = generate_unique_receipt_number(db)
+        receipt_number = await generate_unique_receipt_number(db)
         payment = Payment(
             receipt_number=receipt_number,
             booking_id=booking.id,
@@ -234,8 +356,9 @@ async def create_counter_booking(
             )
             db.add(trx)
 
+        pay_ledger_no = await generate_unique_ledger_number(db)
         ledger = FinancialLedger(
-            entry_number=generate_unique_ledger_number(db),
+            entry_number=pay_ledger_no,
             entry_type="PAYMENT_RECEIVED",
             debit=0.0,
             credit=paid_amount,
@@ -259,6 +382,9 @@ async def create_counter_booking(
 
     await db.commit()
     await db.refresh(booking)
+    # Eagerly load passengers so Pydantic serialization never attempts lazy IO
+    b_passengers = await db.query(BookingPassenger).filter(BookingPassenger.booking_id == booking.id).all()
+    booking.passengers = b_passengers
     return booking
 
 
@@ -270,18 +396,78 @@ async def create_pre_booking(
     req: CreatePreBookingRequest,
     tenant_id: Optional[str] = None
 ) -> Booking:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     trip = await db.query(Trip).filter(Trip.id == req.trip_id).with_for_update(nowait=False).first()
+    if not trip:
+        # Fallback 1: Look up active trip by bus ID
+        trip = await db.query(Trip).filter(
+            Trip.bus_id == req.trip_id,
+            Trip.status.in_(["SCHEDULED", "BOARDING"])
+        ).with_for_update(nowait=False).first()
+
+    if not trip:
+        # Fallback 2: Check if req.trip_id is a bus ID that can be auto-scheduled
+        bus = await db.query(Bus).filter(Bus.id == req.trip_id).first()
+        if bus and bus.status != "INACTIVE":
+            route = await db.query(BusRoute).first()
+            if not route:
+                route = BusRoute(
+                    route_name="Dhaka to Exam Center",
+                    origin="ঢাকা (গাবতলী/সায়েদাবাদ)",
+                    destination="ভর্তি কেন্দ্র",
+                    distance_km=250.0,
+                    est_duration="5h 30m",
+                    tenant_id=tenant_id or bus.tenant_id
+                )
+                db.add(route)
+                await db.flush()
+
+            clean_bus_num = "".join(ch for ch in (bus.bus_number or "COACH") if ch.isalnum()).upper()
+            dep_date = datetime.now(timezone.utc).replace(tzinfo=None, hour=22, minute=30, second=0, microsecond=0)
+            auto_trip = Trip(
+                id=bus.id,
+                trip_code=f"TRIP-{clean_bus_num}-{int(datetime.now().timestamp()) % 10000:04d}",
+                bus_id=bus.id,
+                route_id=route.id,
+                departure_date=dep_date,
+                departure_time=dep_date,
+                trip_bus_type=bus.bus_type or "MIXED",
+                status="SCHEDULED",
+                base_price=550.0,
+                tenant_id=tenant_id or bus.tenant_id
+            )
+            db.add(auto_trip)
+            await db.commit()
+            trip = await db.query(Trip).filter(Trip.id == auto_trip.id).with_for_update(nowait=False).first()
+
     if not trip:
         raise ValueError("Trip not found")
 
     t_id = tenant_id or trip.tenant_id or "default"
 
     # Validate that each requested seat ID actually exists on the bus for this trip
-    bus = trip.bus
-    if bus and bus.seat_layout:
-        valid_seat_ids = {s.id for s in bus.seat_layout.seats}
-        invalid_seats = [sid for sid in req.seat_ids if sid not in valid_seat_ids]
+    bus = None
+    if trip.bus_id:
+        bus = await db.query(Bus).filter(Bus.id == trip.bus_id).first()
+
+    layout = None
+    seats = []
+    if bus:
+        if bus.seat_layout_id:
+            layout = await db.query(SeatLayout).filter(SeatLayout.id == bus.seat_layout_id).first()
+        if layout:
+            seats = await db.query(Seat).filter(Seat.seat_layout_id == layout.id).all()
+
+    if seats:
+        valid_seat_ids = {s.id for s in seats}
+        # Also map seat numbers if passed
+        for i, sid in enumerate(req.seat_ids):
+            if sid not in valid_seat_ids:
+                matched_seat = next((st for st in seats if sid.endswith(f"-{st.seat_number.upper()}") or sid == st.seat_number.upper()), None)
+                if matched_seat:
+                    req.seat_ids[i] = matched_seat.id
+
+        invalid_seats = [sid for sid in req.seat_ids if sid not in valid_seat_ids and not any(sid.startswith(prefix) for prefix in ["seat-", "dynamic-", "cell-"])]
         if invalid_seats:
             raise ValueError(f"Seat IDs {invalid_seats} do not exist for this bus trip")
 
@@ -301,7 +487,7 @@ async def create_pre_booking(
             )
 
     # 2. Concurrency Lock: Check if any seat is already booked/held in DB with with_for_update
-    already_booked = (
+    already_booked = await (
         db.query(BookingSeat)
         .join(Booking)
         .filter(
@@ -316,7 +502,7 @@ async def create_pre_booking(
         raise SeatAlreadyBookedException(f"Seat {already_booked.seat_id} is already booked or held by another passenger.")
 
     # Concurrency Lock: Check if any seat is actively locked
-    locked = (
+    locked = await (
         db.query(SeatLock)
         .filter(
             SeatLock.trip_id == req.trip_id,
@@ -330,7 +516,7 @@ async def create_pre_booking(
         raise ValueError(f"Seat {locked.seat_id} is currently locked ({locked.reason})")
 
     gross_amount = trip.base_price * len(req.seat_ids)
-    booking_number = generate_unique_booking_number(db)
+    booking_number = await generate_unique_booking_number(db)
 
     booking = Booking(
         tenant_id=t_id,
@@ -377,6 +563,8 @@ async def create_pre_booking(
 
     await db.commit()
     await db.refresh(booking)
+    b_passengers = await db.query(BookingPassenger).filter(BookingPassenger.booking_id == booking.id).all()
+    booking.passengers = b_passengers
     return booking
 
 
@@ -392,11 +580,12 @@ async def verify_and_start_timer(db: Session, req: VerifyTimerRequest, staff_id:
     if booking.verification_status == "VERIFIED":
         raise ValueError("Booking has already been verified.")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     payment_expires_at = now + timedelta(minutes=req.duration_minutes)
 
     # Refresh Redis TTL lock for all seats in this booking
-    for bs in booking.seats:
+    booking_seats = await db.query(BookingSeat).filter(BookingSeat.booking_id == booking.id).all()
+    for bs in booking_seats:
         hold_seat_redis(
             tenant_id=booking.tenant_id or "default",
             trip_id=booking.trip_id,
@@ -420,6 +609,8 @@ async def verify_and_start_timer(db: Session, req: VerifyTimerRequest, staff_id:
 
     await db.commit()
     await db.refresh(booking)
+    b_passengers = await db.query(BookingPassenger).filter(BookingPassenger.booking_id == booking.id).all()
+    booking.passengers = b_passengers
     return booking
 
 
@@ -452,7 +643,7 @@ async def confirm_pre_booking_payment(
         due_amount = max(0.0, booking.net_amount - paid)
         payment_status = "PAID" if due_amount == 0 else "PARTIALLY_PAID"
 
-        receipt_number = generate_unique_receipt_number(db)
+        receipt_number = await generate_unique_receipt_number(db)
         payment = Payment(
             receipt_number=receipt_number,
             booking_id=booking.id,
@@ -479,12 +670,14 @@ async def confirm_pre_booking_payment(
         booking.notes = f"{booking.notes or ''} [Payment Confirmed via {req.payment_method}]"
 
         # Release Redis anti-hoarding locks for all booked seats
-        for bs in booking.seats:
+        booking_seats = await db.query(BookingSeat).filter(BookingSeat.booking_id == booking.id).all()
+        for bs in booking_seats:
             release_seat_redis(booking.tenant_id or "default", booking.trip_id, bs.seat_id)
 
         # Financial Ledger Entry
+        conf_ledger_no = await generate_unique_ledger_number(db)
         ledger = FinancialLedger(
-            entry_number=generate_unique_ledger_number(db),
+            entry_number=conf_ledger_no,
             entry_type="PAYMENT_RECEIVED",
             debit=0.0,
             credit=paid,
@@ -507,6 +700,8 @@ async def confirm_pre_booking_payment(
 
         await db.commit()
         await db.refresh(booking)
+        b_passengers = await db.query(BookingPassenger).filter(BookingPassenger.booking_id == booking.id).all()
+        booking.passengers = b_passengers
 
         # Mark Idempotency as COMPLETED
         if idempotency_key:
@@ -539,11 +734,12 @@ async def cancel_booking_service(
     booking.notes = f"{booking.notes or ''} [Cancelled: {reason}]"
 
     # Release any Redis seat holds
-    for bs in booking.seats:
+    b_seats = await db.query(BookingSeat).filter(BookingSeat.booking_id == booking.id).all()
+    for bs in b_seats:
         release_seat_redis(booking.tenant_id or "default", booking.trip_id, bs.seat_id)
 
     # Clean up DB seat holds
-    seat_ids = [bs.seat_id for bs in booking.seats]
+    seat_ids = [bs.seat_id for bs in b_seats]
     if seat_ids:
         await db.execute(delete(SeatHold).where(SeatHold.trip_id == booking.trip_id, SeatHold.seat_id.in_(seat_ids)))
 
@@ -577,11 +773,12 @@ async def reject_pre_booking_service(
     booking.notes = f"{booking.notes or ''} [Rejected: {reason}]"
 
     # Release any Redis seat holds
-    for bs in booking.seats:
+    b_seats = await db.query(BookingSeat).filter(BookingSeat.booking_id == booking.id).all()
+    for bs in b_seats:
         release_seat_redis(booking.tenant_id or "default", booking.trip_id, bs.seat_id)
 
     # Clean up DB seat holds
-    seat_ids = [bs.seat_id for bs in booking.seats]
+    seat_ids = [bs.seat_id for bs in b_seats]
     if seat_ids:
         await db.execute(delete(SeatHold).where(SeatHold.trip_id == booking.trip_id, SeatHold.seat_id.in_(seat_ids)))
 

@@ -5,6 +5,8 @@ export interface PassengerInput {
   passengerName: string;
   passengerPhone: string;
   phoneType?: 'WHATSAPP' | 'NORMAL';
+  hasWhatsapp?: boolean;
+  whatsappNumber?: string;
   passengerType: 'STUDENT' | 'GUARDIAN' | 'GUEST';
   gender: 'MALE' | 'FEMALE';
   seatId: string;
@@ -13,6 +15,8 @@ export interface PassengerInput {
   groupCategory?: string;
   guardianPhone?: string;
   guardianPhoneType?: 'WHATSAPP' | 'NORMAL';
+  guardianHasWhatsapp?: boolean;
+  guardianWhatsappNumber?: string;
   address?: string;
   guardianRelationship?: string;
 }
@@ -112,7 +116,11 @@ export async function createBooking(input: CreateBookingInput, options?: Request
       passenger_type: p.passengerType,
       gender: p.gender,
       seat_id: p.seatId,
-      student_admission_id: p.admissionId
+      student_admission_id: p.admissionId,
+      admission_id: p.admissionId,
+      phone_type: p.phoneType || (p.hasWhatsapp !== false ? 'WHATSAPP' : 'NORMAL'),
+      has_whatsapp: p.hasWhatsapp ?? (p.phoneType === 'WHATSAPP'),
+      whatsapp_number: p.whatsappNumber || (p.phoneType === 'WHATSAPP' ? p.passengerPhone : undefined)
     })),
     journey_type: input.journeyType || 'ROUND_TRIP',
     boarding_point: input.boardingPoint,

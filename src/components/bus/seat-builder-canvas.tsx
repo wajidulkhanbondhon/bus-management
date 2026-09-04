@@ -1783,7 +1783,8 @@ export function SeatBuilderCanvas({
         totalRows: totalRows,
         totalCols: totalCols,
         layoutGrid,
-        extraSeats: extraSeats
+        extraSeats: extraSeats,
+        activeSegments: segments
       });
 
       if (res.success) {

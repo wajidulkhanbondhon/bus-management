@@ -16,7 +16,7 @@ import {
 import { validateAndCalculateCoupon } from '@/services/coupon.service';
 import { recordPassengerInDirectory, lookupPassengerByPhone } from '@/services/passenger-directory.service';
 import { useApp } from '@/lib/context';
-import { Armchair, AlertCircle, Shield } from 'lucide-react';
+import { Armchair, AlertCircle, Shield, ArrowLeft } from 'lucide-react';
 import { StepIndicator, BookingSummaryBar, BOOKING_STEPS } from './step-indicator';
 import { TripSelectionStep } from './trip-selection-step';
 import { SeatSelectionStep } from './seat-selection-step';
@@ -38,6 +38,12 @@ interface Props {
   currentUser?: any;
   savedLayouts?: any[];
   fareZones?: any[];
+  allBookings?: any[];
+  initialParams?: {
+    tripId?: string;
+    busId?: string;
+    seatId?: string;
+  };
 }
 
 const universityPresets: { id: string; name: string; defaultLayoutName: string; capacity: number; segments: FareRangeSegment[] }[] = [
@@ -115,7 +121,7 @@ const universityPresets: { id: string; name: string; defaultLayoutName: string; 
   }
 ];
 
-export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts = [], fareZones = [] }: Props) {
+export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts = [], fareZones = [], allBookings = [], initialParams }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t, language, currentColor, customLogos } = useApp();
@@ -123,12 +129,17 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
   const rowLetters = 'ABCDEFGHIJKLMN';
   const trips = initialTrips && initialTrips.length > 0 ? initialTrips : [];
 
-  const rawParamId = searchParams.get('tripId') || searchParams.get('busId') || '';
+  const rawParamId =
+    initialParams?.tripId ||
+    initialParams?.busId ||
+    searchParams.get('tripId') ||
+    searchParams.get('busId') ||
+    '';
   const matchedTrip = trips.find(
     (t) => t.id === rawParamId || t.busId === rawParamId || t.bus?.id === rawParamId || t.tripCode === rawParamId || t.bus?.busNumber === rawParamId
   );
   const initialTripId = matchedTrip ? matchedTrip.id : (rawParamId || trips[0]?.id || '');
-  const initialSeatId = searchParams.get('seatId') || '';
+  const initialSeatId = initialParams?.seatId || searchParams.get('seatId') || '';
 
   // ── Step state ──────────────────────────────────────────────
   const [step, setStep] = useState<number>(initialTripId && initialSeatId ? 2 : 1);
@@ -171,15 +182,81 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
   const [bookingNotes, setBookingNotes] = useState<string>('');
   const [confirmedBookingForReceipt, setConfirmedBookingForReceipt] = useState<any | null>(null);
 
-  const [genderWarningModal, setGenderWarningModal] = useState<{ isOpen: boolean; seatNumber: string; adjacentSeatNumber?: string; title: string; message: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || trips[0];
 
+  const [liveLayouts, setLiveLayouts] = useState<any[]>(savedLayouts || []);
+
+  useEffect(() => {
+    fetch('/api/v1/seat-layouts', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && Array.isArray(data.data) && data.data.length > 0) {
+          setLiveLayouts(data.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const resolveLayout = useCallback(
+    (trip: any, layouts: any[]) => {
+      if (!trip) return null;
+      const busLayoutId = trip.bus?.seatLayoutId || trip.bus?.seat_layout_id || trip.seatLayoutId || trip.seat_layout_id;
+      let matched: any = null;
+      if (busLayoutId && Array.isArray(layouts)) {
+        const norm = String(busLayoutId).trim().toLowerCase();
+        matched = layouts.find(
+          (l: any) =>
+            (l.id && String(l.id).trim().toLowerCase() === norm) ||
+            (l.name && String(l.name).trim().toLowerCase() === norm)
+        );
+      }
+      if (!matched) {
+        matched = trip.seatLayout?.layout || trip.bus?.seatLayout?.layout || trip.seatLayout || trip.bus?.seatLayout;
+      }
+      if (!matched && Array.isArray(layouts)) {
+        const bUni = (trip.bus?.targetUniversity || trip.targetUniversity || '').trim().toLowerCase();
+        const bUnit = (trip.bus?.examUnit || trip.examUnit || '').trim().toLowerCase();
+        matched = layouts.find((l: any) => {
+          const lUni = (l.university || '').trim().toLowerCase();
+          const lUnit = (l.unit || l.examName || '').trim().toLowerCase();
+          return (bUni && lUni && bUni.includes(lUni)) || (bUnit && lUnit && bUnit === lUnit);
+        });
+      }
+      if (!matched && Array.isArray(layouts) && layouts.length === 1) {
+        matched = layouts[0];
+      }
+      return matched;
+    },
+    []
+  );
+
   // ── Layout auto-detection from trip ─────────────────────────
   useEffect(() => {
     if (!selectedTrip) return;
+    const matchedLayout = resolveLayout(selectedTrip, liveLayouts);
+
+    if (matchedLayout) {
+      let parsedJson: any = null;
+      if (matchedLayout.layout_json && typeof matchedLayout.layout_json === 'string') {
+        try { parsedJson = JSON.parse(matchedLayout.layout_json); } catch (e) {}
+      }
+      const layoutGrid = matchedLayout.layoutGrid || parsedJson?.layoutGrid;
+      const layoutExtraSeats = matchedLayout.extraSeats || parsedJson?.extraSeats || [];
+      const layoutSegments = matchedLayout.activeSegments || parsedJson?.activeSegments;
+      const layoutUni = matchedLayout.university || parsedJson?.university || selectedTrip.targetUniversity || '';
+      const layoutCapacity = matchedLayout.totalSeats || matchedLayout.seatCount || matchedLayout.capacity || (Array.isArray(layoutGrid) ? layoutGrid.flat().filter((c: any) => c && (c.type === 'SEAT' || c.seatType === 'SEAT')).length + layoutExtraSeats.length : undefined) || selectedTrip.bus?.capacity || 45;
+
+      if (layoutUni) setTargetUniversity(layoutUni);
+      if (layoutCapacity) setActiveCapacity(layoutCapacity);
+      if (layoutSegments && Array.isArray(layoutSegments) && layoutSegments.length > 0) {
+        setActiveSegments(layoutSegments);
+      }
+      return;
+    }
+
     const dest = (selectedTrip.route?.destination || selectedTrip.route?.routeName || selectedTrip.bus?.busName || selectedTrip.bus?.targetUniversity || '').toLowerCase();
 
     let matchedPreset = universityPresets[0];
@@ -194,7 +271,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
     setTargetUniversity(matchedPreset.name);
     setActiveCapacity(matchedPreset.capacity);
     setActiveSegments(matchedPreset.segments);
-  }, [selectedTripId]);
+  }, [selectedTripId, selectedTrip, liveLayouts, resolveLayout]);
 
   // ── Seat inventory fetch ────────────────────────────────────
   const getSegmentForRow = useCallback(
@@ -208,13 +285,13 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         return curIdx >= startIdx && curIdx <= endIdx;
       });
     },
-    [activeSegments]
+    [activeSegments, rowLetters]
   );
 
   const parseSeatPosition = useCallback(
-    (seat: any, totalRowsCount: number) => {
-      if (!seat) return { rowIndex: 0, colIndex: 0, isExtra: false };
-      const numStr = (seat?.seatNumber || seat?.seat_number || seat?.label || seat?.seatId || seat?.id || '').toString().trim().toUpperCase();
+    (seat: any): { rowIndex: number; colIndex: number; isExtra: boolean } => {
+      const numStr = (seat?.seatNumber || seat?.seat_number || seat?.label || '').toString().trim().toUpperCase();
+      const totalRowsCount = activeCapacity === 40 ? 10 : 11;
 
       if (numStr.startsWith('EX') || seat?.isExtra || seat?.seatType === 'EXTRA') {
         return { rowIndex: 999, colIndex: seat?.colIndex ?? 0, isExtra: true };
@@ -226,7 +303,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         const colDigit = parseInt(match[2], 10);
         const rIdx = rowLetters.indexOf(rowChar);
         if (rIdx >= 0) {
-          if (rIdx === totalRowsCount - 1 && (totalRowsCount === 11 || activeCapacity === 45 || activeCapacity === 42)) {
+          if (rIdx === totalRowsCount - 1 && (activeCapacity === 45 || activeCapacity === 42)) {
             if (colDigit >= 1 && colDigit <= 5) return { rowIndex: rIdx, colIndex: colDigit - 1, isExtra: false };
           }
           if (colDigit === 1) return { rowIndex: rIdx, colIndex: 0, isExtra: false };
@@ -247,12 +324,84 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
   useEffect(() => {
     if (!selectedTripId) {
       setTripSeats([]);
+      setExtraSeats([]);
       return;
     }
 
     const currentTrip = trips.find((t) => t.id === selectedTripId);
-    const busCap = currentTrip?.bus?.capacity || activeCapacity || 45;
-    const expectedRows = busCap === 45 ? 11 : busCap === 40 ? 10 : Math.ceil(busCap / 4);
+    const matchedLayout = resolveLayout(currentTrip, liveLayouts);
+
+    let parsedJson: any = null;
+    if (matchedLayout && matchedLayout.layout_json && typeof matchedLayout.layout_json === 'string') {
+      try { parsedJson = JSON.parse(matchedLayout.layout_json); } catch (e) {}
+    }
+    const layoutGrid = matchedLayout?.layoutGrid || parsedJson?.layoutGrid;
+    const layoutExtraSeats = matchedLayout?.extraSeats || parsedJson?.extraSeats || [];
+    const layoutSegments = (matchedLayout?.activeSegments || parsedJson?.activeSegments || activeSegments) as FareRangeSegment[];
+
+    const hasCustomLayoutGrid = Array.isArray(layoutGrid) && layoutGrid.length > 0;
+    const busCap = currentTrip?.bus?.capacity || (hasCustomLayoutGrid ? layoutGrid.flat().filter((c: any) => c && (c.type === 'SEAT' || c.seatType === 'SEAT')).length + layoutExtraSeats.length : activeCapacity) || 45;
+    const expectedRows = hasCustomLayoutGrid
+      ? layoutGrid.length
+      : busCap === 45 ? 11 : busCap === 40 ? 10 : Math.ceil(busCap / 4);
+
+    const generateFromLayout = () => {
+      const generatedSeats: any[] = [];
+      layoutGrid.forEach((row: any[], r: number) => {
+        if (!Array.isArray(row)) return;
+        const rowChar = rowLetters[r] || `R${r + 1}`;
+        const matchingSeg = getSegmentForRow(rowChar, layoutSegments);
+        row.forEach((cell: any, c: number) => {
+          if (!cell) return;
+          if (cell.type === 'EMPTY' || cell.type === 'AISLE') {
+            generatedSeats.push({
+              seatId: `cell-${r}-${c}`,
+              seatNumber: '',
+              type: cell.type,
+              rowIndex: r,
+              colIndex: c,
+              status: 'EMPTY',
+              isExtra: false
+            });
+            return;
+          }
+          const sNum = (cell.label || cell.seatNumber || `${rowChar}${c + 1}`).toString().trim().toUpperCase();
+          const colIndex = cell.colIndex !== undefined ? cell.colIndex : c;
+          generatedSeats.push({
+            seatId: `seat-${selectedTripId}-${sNum}`,
+            seatNumber: sNum,
+            type: 'SEAT',
+            rowIndex: cell.rowIndex !== undefined ? cell.rowIndex : r,
+            colIndex: colIndex,
+            seatType: r < 2 ? 'VIP' : 'STANDARD',
+            genderAllowed: cell.genderAllowed || cell.genderRule || 'ANY',
+            fare: Number(cell.baseFare) || matchingSeg?.fare || (r < 4 ? 650 : r < 7 ? 550 : 500),
+            fareZoneName: cell.fareZoneId || matchingSeg?.name || 'Standard',
+            status: 'AVAILABLE',
+            isExtra: false
+          });
+        });
+      });
+
+      const extras = (layoutExtraSeats || []).map((ex: any, exIdx: number) => {
+        const sNum = (ex.seatNumber || ex.label || `EX-${exIdx + 1}`).toString().trim().toUpperCase();
+        return {
+          seatId: `seat-${selectedTripId}-${sNum}`,
+          seatNumber: sNum,
+          type: 'SEAT',
+          rowIndex: 999,
+          colIndex: ex.colIndex !== undefined ? ex.colIndex : exIdx,
+          seatType: 'EXTRA',
+          genderAllowed: ex.genderRule || ex.genderAllowed || 'ANY',
+          fare: Number(ex.baseFare) || 500,
+          fareZoneName: 'Extra Seat',
+          status: 'AVAILABLE',
+          isExtra: true
+        };
+      });
+
+      return { seats: generatedSeats, extras };
+    };
 
     const generateFallbackSeats = () => {
       const generatedSeats: any[] = [];
@@ -266,11 +415,13 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         for (let c = 0; c < rowCols; c++) {
           if (counter >= busCap) break;
           const seatNum = `${rowChar}${c + 1}`;
+          const colIndex = isLast5 ? c : (c === 0 ? 0 : c === 1 ? 1 : c === 2 ? 3 : 4);
           generatedSeats.push({
             seatId: `seat-${selectedTripId}-${seatNum}`,
             seatNumber: seatNum,
+            type: 'SEAT',
             rowIndex: r,
-            colIndex: c,
+            colIndex: colIndex,
             seatType: r < 2 ? 'VIP' : 'STANDARD',
             genderAllowed: 'ANY',
             fare: seatFare,
@@ -281,66 +432,108 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           counter++;
         }
       }
-      return generatedSeats;
+      return { seats: generatedSeats, extras: [] };
     };
 
     setIsLoadingSeats(true);
     fetch(`/api/backend/inventory/${selectedTripId}/seat-map`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
+        const baseInventory = hasCustomLayoutGrid ? generateFromLayout() : generateFallbackSeats();
+        let finalSeats = baseInventory.seats;
+        let finalExtras = baseInventory.extras;
+
         if (data && data.seats && Array.isArray(data.seats) && data.seats.length > 0) {
-          const normalized = data.seats.map((s: any, idx: number) => {
-            const rawNumber = (s.seatNumber || s.seat_number || s.label || s.seatId || `S${idx + 1}`).toString().trim();
-            const cleanSeatNumber = rawNumber.toUpperCase();
-            const pos = parseSeatPosition({ ...s, seatNumber: cleanSeatNumber }, expectedRows);
-            const rowChar = rowLetters[pos.rowIndex] || 'A';
-            const matchingSeg = getSegmentForRow(rowChar);
-            const finalSeatId = s.seatId || s.seat_id || s.id || `seat-${selectedTripId}-${cleanSeatNumber}-${idx}`;
+          const seatDataMap = new Map<string, any>();
+          data.seats.forEach((s: any) => {
+            const raw = (s.seatNumber || s.seat_number || s.label || s.seatId || '').toString().trim().toUpperCase();
+            if (raw) seatDataMap.set(raw, s);
+          });
+
+          finalSeats = finalSeats.map((s: any) => {
+            const bSeat = seatDataMap.get(s.seatNumber);
+            if (!bSeat) return s;
+            const phone = bSeat.passenger_phone || bSeat.contact_phone || bSeat.passengerPhone || bSeat.booking?.contactPhone || bSeat.booking?.passengerPhone;
+            const gender = bSeat.gender || bSeat.passengerGender || bSeat.booking?.passengerGender;
             return {
               ...s,
-              seatId: finalSeatId,
-              seatNumber: cleanSeatNumber,
-              rowIndex: pos.rowIndex,
-              colIndex: pos.colIndex,
-              fare: Number(s.fare) || matchingSeg?.fare || (pos.rowIndex < 5 ? 650 : pos.rowIndex < 8 ? 550 : 500),
-              isExtra: pos.isExtra,
-              status: (s.status || 'AVAILABLE').toUpperCase()
+              status: (bSeat.status || 'AVAILABLE').toUpperCase(),
+              passengerPhone: phone,
+              passenger_phone: phone,
+              passengerGender: gender,
+              booking: {
+                ...s.booking,
+                passengerPhone: phone,
+                contactPhone: phone,
+                passengerGender: gender
+              }
             };
           });
-          setTripSeats(normalized);
-        } else {
-          setTripSeats(generateFallbackSeats());
+
+          finalExtras = finalExtras.map((s: any) => {
+            const bSeat = seatDataMap.get(s.seatNumber);
+            if (!bSeat) return s;
+            const phone = bSeat.passenger_phone || bSeat.contact_phone || bSeat.passengerPhone || bSeat.booking?.contactPhone || bSeat.booking?.passengerPhone;
+            const gender = bSeat.gender || bSeat.passengerGender || bSeat.booking?.passengerGender;
+            return {
+              ...s,
+              status: (bSeat.status || 'AVAILABLE').toUpperCase(),
+              passengerPhone: phone,
+              passenger_phone: phone,
+              passengerGender: gender,
+              booking: {
+                ...s.booking,
+                passengerPhone: phone,
+                contactPhone: phone,
+                passengerGender: gender
+              }
+            };
+          });
         }
+
+        setTripSeats(finalSeats);
+        setExtraSeats(finalExtras);
       })
       .catch(() => {
-        setTripSeats(generateFallbackSeats());
+        const baseInventory = hasCustomLayoutGrid ? generateFromLayout() : generateFallbackSeats();
+        setTripSeats(baseInventory.seats);
+        setExtraSeats(baseInventory.extras);
       })
       .finally(() => setIsLoadingSeats(false));
-  }, [selectedTripId, activeCapacity, activeSegments, getSegmentForRow, parseSeatPosition, trips, rowLetters]);
+  }, [selectedTripId, activeCapacity, activeSegments, getSegmentForRow, parseSeatPosition, trips, rowLetters, liveLayouts, resolveLayout]);
 
   // ── Passenger list sync with selected seats ────────────────
   useEffect(() => {
-    const newPassengerList: PassengerInput[] = selectedSeatIds.map((seatId) => {
-      const existing = passengers.find((p) => p.seatId === seatId);
-      if (existing) return existing;
-      return {
-        passengerName: '',
-        passengerPhone: '',
-        phoneType: 'WHATSAPP',
-        passengerType: 'STUDENT',
-        gender: 'FEMALE',
-        seatId,
-        admissionId: '',
-        institution: `${targetUniversity} (Admission Candidate)`,
-        guardianPhone: '',
-        guardianPhoneType: 'WHATSAPP',
-        guardianRelationship: undefined
-      };
+    setPassengers((prev) => {
+      const existingMap = new Map(prev.map((p) => [p.seatId, p]));
+      return selectedSeatIds.map((seatId) => {
+        const existing = existingMap.get(seatId);
+        if (existing) return existing;
+        return {
+          passengerName: '',
+          passengerPhone: '',
+          phoneType: 'WHATSAPP',
+          hasWhatsapp: true,
+          whatsappNumber: '',
+          passengerType: 'STUDENT',
+          gender: 'FEMALE',
+          seatId,
+          admissionId: '',
+          institution: `${targetUniversity} (Admission Candidate)`,
+          guardianPhone: '',
+          guardianPhoneType: 'WHATSAPP',
+          guardianHasWhatsapp: true,
+          guardianWhatsappNumber: '',
+          guardianRelationship: undefined
+        };
+      });
     });
-    setPassengers(newPassengerList);
   }, [selectedSeatIds, targetUniversity]);
 
-  const allCurrentSeats = useMemo(() => [...tripSeats, ...extraSeats], [tripSeats, extraSeats]);
+  const allCurrentSeats = useMemo(() => [
+    ...tripSeats.filter((s) => s.type !== 'EMPTY' && s.type !== 'AISLE'),
+    ...extraSeats
+  ], [tripSeats, extraSeats]);
 
   const dynamicAdjacentLocks = useMemo(() => calculateDynamicAdjacentSeatLocks(allCurrentSeats), [allCurrentSeats]);
 
@@ -431,118 +624,12 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
     setSelectedSeatIds((prev) => prev.filter((id) => id !== seatId));
   }, []);
 
-  // ── Passenger update with gender rules ──────────────────────
+  // ── Passenger update ────────────────────────────────────────
   const handleUpdatePassenger = useCallback(
     (seatId: string, updates: Partial<PassengerInput>) => {
       setErrorMessage(null);
 
-      const seatObj = allCurrentSeats.find((s) => s.seatId === seatId);
-      const seatNum = (seatObj?.seatNumber || (seatObj as any)?.seat_number || (seatObj as any)?.label || '').trim().toUpperCase();
       const targetPassenger = passengers.find((p) => p.seatId === seatId);
-      const effectiveType = updates.passengerType ?? targetPassenger?.passengerType ?? 'STUDENT';
-      const effectiveGender = updates.gender ?? targetPassenger?.gender ?? 'FEMALE';
-      const isFemaleDesignated = seatObj?.genderAllowed === 'FEMALE_ONLY';
-
-      // 1. Strict validation if user tries to set MALE for a seat
-      if (updates.gender === 'MALE' && seatNum) {
-        const dynamicLock = dynamicAdjacentLocks.get(seatNum);
-        const adjacentNum = getAdjacentSeatNumber(seatNum);
-
-        const adjacentCoPassenger = adjacentNum
-          ? passengers.find((p) => {
-              const pObj = allCurrentSeats.find((s) => s.seatId === p.seatId);
-              const pSeatNum = (pObj?.seatNumber || (pObj as any)?.seat_number || (pObj as any)?.label || '').trim().toUpperCase();
-              return pSeatNum === adjacentNum;
-            })
-          : null;
-
-        const isFemaleBus = selectedTrip?.tripBusType === 'FEMALE' || selectedTrip?.bus?.busType === 'FEMALE';
-
-        if (isFemaleBus && effectiveType === 'STUDENT') {
-          const warning = {
-            isOpen: true,
-            seatNumber: seatNum,
-            adjacentSeatNumber: adjacentNum || '',
-            title: language === 'bn' ? '⚠️ নারী বিশেষ বাসে পুরুষ শিক্ষার্থী নিষিদ্ধ!' : 'Female Bus Restriction',
-            message: language === 'bn'
-              ? `এই বাসটি (${selectedTrip?.bus?.busName || 'ফিমেল স্পেশাল'}) শুধুমাত্র নারী শিক্ষার্থীদের জন্য নির্ধারিত। কোনো পুরুষ শিক্ষার্থী এই বাসে সিট নিতে পারবেন না!`
-              : 'This is a female-only bus. Male students are strictly prohibited!'
-          };
-          setGenderWarningModal(warning);
-          setErrorMessage(warning.message);
-          updates.gender = 'FEMALE';
-        } else if (adjacentCoPassenger && (adjacentCoPassenger.gender === 'FEMALE' || !adjacentCoPassenger.gender) && effectiveType === 'STUDENT' && (adjacentCoPassenger.passengerType === 'STUDENT' || !adjacentCoPassenger.passengerType)) {
-          const warning = {
-            isOpen: true,
-            seatNumber: seatNum,
-            adjacentSeatNumber: adjacentNum || '',
-            title: language === 'bn' ? '⚠️ নারী শিক্ষার্থীর পাশে পুরুষ শিক্ষার্থী নিষিদ্ধ!' : 'Student Gender Restriction',
-            message: language === 'bn'
-              ? `সিট ${seatNum} এবং ${adjacentNum} উভয়ই সাধারণ শিক্ষার্থী। কোনো নারী শিক্ষার্থীর পাশে পুরুষ শিক্ষার্থী বসতে পারবে না। সাথে অভিভাবক (বাবা/ভাই/মা/স্বামী) থাকলে যাত্রীর ধরন "অভিভাবক" (Guardian) নির্বাচন করুন।`
-              : `Seats ${seatNum} and ${adjacentNum} are both students. A male student cannot sit next to a female student unless travelling as a legal guardian!`
-          };
-          setGenderWarningModal(warning);
-          setErrorMessage(warning.message);
-          updates.gender = 'FEMALE';
-        } else if (isFemaleDesignated && effectiveType === 'STUDENT') {
-          const warning = {
-            isOpen: true,
-            seatNumber: seatNum,
-            adjacentSeatNumber: adjacentNum || '',
-            title: language === 'bn' ? '⚠️ নারী সংরক্ষিত সিটে পুরুষ শিক্ষার্থী নিষিদ্ধ!' : 'Female Reserved Seat Restriction',
-            message: language === 'bn'
-              ? `সিট ${seatNum} শুধুমাত্র নারী শিক্ষার্থীদের জন্য সংরক্ষিত। সাধারণ শিক্ষার্থীদের ক্ষেত্রে কোনো পুরুষ শিক্ষার্থী এখানে সিট নিতে পারবেন না!`
-              : `Seat ${seatNum} is strictly reserved for female students. Male students cannot select this seat!`
-          };
-          setGenderWarningModal(warning);
-          setErrorMessage(warning.message);
-          updates.gender = 'FEMALE';
-        } else if (dynamicLock?.genderAllowed === 'FEMALE_ONLY') {
-          const isPairInSameCart = passengers.some((p) => {
-            const pObj = allCurrentSeats.find((s) => s.seatId === p.seatId);
-            return (pObj?.seatNumber || (pObj as any)?.seat_number || '').trim().toUpperCase() === dynamicLock.adjacentBookedSeat;
-          });
-          if (!isPairInSameCart) {
-            const warning = {
-              isOpen: true,
-              seatNumber: seatNum,
-              adjacentSeatNumber: dynamicLock.adjacentBookedSeat,
-              title: language === 'bn' ? '⚠️ নারী সংরক্ষিত সিটে পুরুষ শিক্ষার্থী নিষিদ্ধ!' : 'Female Protected Seat Restriction',
-              message: language === 'bn'
-                ? `সিট ${seatNum}-এর পাশের সিটটি (${dynamicLock.adjacentBookedSeat}) একজন নারী শিক্ষার্থী আগে থেকেই বুক করে রেখেছেন। অন্য কোনো পুরুষ শিক্ষার্থী এই সিট নিতে পারবেন না!`
-                : `Seat ${seatNum} is adjacent to an already booked female student (${dynamicLock.adjacentBookedSeat}). Male students cannot select this seat!`
-            };
-            setGenderWarningModal(warning);
-            setErrorMessage(warning.message);
-            updates.gender = 'FEMALE';
-          }
-        }
-      }
-
-      // 2. Strict validation if passengerType is changed back to STUDENT while sitting next to female student
-      if (updates.passengerType === 'STUDENT' && effectiveGender === 'MALE' && seatNum) {
-        const adjacentNum = getAdjacentSeatNumber(seatNum);
-        if (adjacentNum) {
-          const adjacentCoPassenger = passengers.find((p) => {
-            const pObj = allCurrentSeats.find((s) => s.seatId === p.seatId);
-            return (pObj?.seatNumber || (pObj as any)?.seat_number || '').trim().toUpperCase() === adjacentNum;
-          });
-          if (adjacentCoPassenger && (adjacentCoPassenger.gender === 'FEMALE' || !adjacentCoPassenger.gender)) {
-            const warning = {
-              isOpen: true,
-              seatNumber: seatNum,
-              adjacentSeatNumber: adjacentNum,
-              title: language === 'bn' ? '⚠️ নারী শিক্ষার্থীর পাশে পুরুষ শিক্ষার্থী নিষিদ্ধ!' : 'Student Gender Restriction',
-              message: language === 'bn'
-                ? `সিট ${seatNum} এবং ${adjacentNum} উভয়ই সাধারণ শিক্ষার্থী। নারী শিক্ষার্থীর পাশে কোনো পুরুষ শিক্ষার্থী বসতে পারবে না।`
-                : `Both seats are students. A male student cannot sit next to a female student!`
-            };
-            setGenderWarningModal(warning);
-            setErrorMessage(warning.message);
-            updates.passengerType = 'GUARDIAN';
-          }
-        }
-      }
 
       // Phone suggestion lookup
       if (updates.passengerPhone !== undefined) {
@@ -572,19 +659,11 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         updates.guardianPhone = cleanAndLimitPhoneNumber(updates.guardianPhone);
       }
 
-      setPassengers((prev) => {
-        const updatedList = prev.map((p) => (p.seatId === seatId ? { ...p, ...updates } : p));
-
-        if (updates.gender || updates.passengerType || updates.guardianRelationship) {
-          const pairCheck = validateMultiSeatBookingPairRules(updatedList, allCurrentSeats);
-          if (!pairCheck.isValid) {
-            setErrorMessage(pairCheck.message || 'Gender rule violation.');
-          }
-        }
-        return updatedList;
-      });
+      setPassengers((prev) =>
+        prev.map((p) => (p.seatId === seatId ? { ...p, ...updates } : p))
+      );
     },
-    [allCurrentSeats, dynamicAdjacentLocks, language, passengers, selectedTrip]
+    [passengers]
   );
 
   // ── Coupon handlers ─────────────────────────────────────────
@@ -640,6 +719,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
       if (!p.passengerName.trim()) {
         setErrorMessage(language === 'bn' ? `সিট ${sLabel}-এর যাত্রীর পূর্ণ নাম আবশ্যক।` : `Passenger name for Seat ${sLabel} is required.`);
         setIsSubmitting(false);
+        setStep(3);
         return;
       }
 
@@ -647,12 +727,14 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
       if (!cleanPhone) {
         setErrorMessage(language === 'bn' ? `সিট ${sLabel}-এর মোবাইল নম্বর আবশ্যক।` : `Passenger mobile for Seat ${sLabel} is required.`);
         setIsSubmitting(false);
+        setStep(3);
         return;
       }
 
       if (!bdPhoneRegex.test(cleanPhone)) {
         setErrorMessage(language === 'bn' ? `সিট ${sLabel}-এর মোবাইল নম্বর (${p.passengerPhone}) সঠিক নয়! ১১ ডিজিটের সঠিক বাংলাদেশী মোবাইল নম্বর লিখুন (যেমন: 017XXXXXXXX)।` : `Invalid 11-digit Bangladeshi mobile number for Seat ${sLabel}.`);
         setIsSubmitting(false);
+        setStep(3);
         return;
       }
 
@@ -661,8 +743,16 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         if (!bdPhoneRegex.test(cleanGPhone)) {
           setErrorMessage(language === 'bn' ? `সিট ${sLabel}-এর অভিভাবকের মোবাইল নম্বর (${p.guardianPhone}) সঠিক নয়! ১১ ডিজিটের সঠিক নম্বর লিখুন।` : `Invalid 11-digit guardian phone number for Seat ${sLabel}.`);
           setIsSubmitting(false);
+          setStep(3);
           return;
         }
+      }
+
+      if (p.passengerType === 'GUARDIAN' && !p.guardianRelationship) {
+        setErrorMessage(language === 'bn' ? `সিট ${sLabel}-এর অভিভাবকের সাথে সম্পর্ক নির্বাচন আবশ্যক।` : `Guardian relationship required for Seat ${sLabel}.`);
+        setIsSubmitting(false);
+        setStep(3);
+        return;
       }
     }
 
@@ -670,6 +760,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
     if (!pairValidation.isValid) {
       setErrorMessage(pairValidation.message || 'Gender or Guardian validation failed.');
       setIsSubmitting(false);
+      setStep(3);
       return;
     }
 
@@ -679,7 +770,12 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
       return;
     }
 
-    if (!senderRef.trim()) {
+    let effectiveSenderRef = senderRef.trim();
+    if (!effectiveSenderRef && paymentMethod === 'HAND_CASH') {
+      effectiveSenderRef = passengers[0]?.passengerPhone || 'CASH-COUNTER-OFFICE';
+    }
+
+    if (!effectiveSenderRef) {
       if (senderSourceType === 'MFS_WALLET') {
         setErrorMessage(language === 'bn' ? 'প্রেরক বিকাশ/নগদ মোবাইল নম্বর (১১ ডিজিট) আবশ্যক।' : 'Sender mobile number is required.');
       } else if (senderSourceType === 'BANK_TO_MFS') {
@@ -692,9 +788,9 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
     }
 
     if (senderSourceType === 'MFS_WALLET') {
-      const cleanSender = senderRef.replace(/[\s-]/g, '');
+      const cleanSender = effectiveSenderRef.replace(/[\s-]/g, '');
       if (!/^01[3-9]\d{8}$/.test(cleanSender)) {
-        setErrorMessage(language === 'bn' ? `প্রেরক মোবাইল নম্বর (${senderRef}) সঠিক নয়! ১১ ডিজিটের সঠিক বাংলাদেশী নম্বর (যেমন: 017XXXXXXXX) লিখুন।` : 'Invalid 11-digit sender mobile number.');
+        setErrorMessage(language === 'bn' ? `প্রেরক মোবাইল নম্বর (${effectiveSenderRef}) সঠিক নয়! ১১ ডিজিটের সঠিক বাংলাদেশী নম্বর (যেমন: 017XXXXXXXX) লিখুন।` : 'Invalid 11-digit sender mobile number.');
         setIsSubmitting(false);
         return;
       }
@@ -715,8 +811,8 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
       });
 
       const finalSenderRef = selectedBankName && senderSourceType === 'BANK_TO_MFS'
-        ? `${selectedBankName} [${senderRef.trim()}]`
-        : senderRef.trim();
+        ? `${selectedBankName} [${effectiveSenderRef}]`
+        : effectiveSenderRef;
 
       const res = await createBookingAction({
         tripId: selectedTripId,
@@ -803,14 +899,60 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
   };
 
   // ── Navigation helpers ──────────────────────────────────────
+  const isTripSelected = !!selectedTripId;
+  const isSeatSelected = selectedSeatIds.length > 0;
+
+  const isPassengersStepValid = useMemo(() => {
+    if (!isSeatSelected || passengers.length === 0) return false;
+    const bdPhoneRegex = /^01[3-9]\d{8}$/;
+    for (let i = 0; i < passengers.length; i++) {
+      const p = passengers[i];
+      if (!p.passengerName || !p.passengerName.trim()) return false;
+      const cleanPhone = (p.passengerPhone || '').replace(/[\s-]/g, '');
+      if (!cleanPhone || !bdPhoneRegex.test(cleanPhone)) return false;
+      if (p.guardianPhone && p.guardianPhone.trim()) {
+        const cleanGPhone = p.guardianPhone.replace(/[\s-]/g, '');
+        if (!bdPhoneRegex.test(cleanGPhone)) return false;
+      }
+      if (p.passengerType === 'GUARDIAN' && !p.guardianRelationship) return false;
+    }
+    const pairRes = validateMultiSeatBookingPairRules(passengers, allCurrentSeats);
+    return pairRes.isValid;
+  }, [isSeatSelected, passengers, allCurrentSeats]);
+
+  const isBoardingStepValid = useMemo(() => {
+    return isPassengersStepValid && !!boardingPoint?.trim() && !!droppingPoint?.trim();
+  }, [isPassengersStepValid, boardingPoint, droppingPoint]);
+
   const maxReachableStep = useMemo(() => {
-    if (!selectedTripId) return 1;
-    if (selectedSeatIds.length === 0) return 2;
+    if (!isTripSelected) return 1;
+    if (!isSeatSelected) return 2;
+    if (!isPassengersStepValid) return 3;
+    if (!isBoardingStepValid) return 4;
     return 5;
-  }, [selectedTripId, selectedSeatIds.length]);
+  }, [isTripSelected, isSeatSelected, isPassengersStepValid, isBoardingStepValid]);
 
   const handleNavigate = (target: number) => {
-    if (target > maxReachableStep) return;
+    if (target <= step) {
+      setErrorMessage(null);
+      setStep(target);
+      return;
+    }
+
+    if (target > maxReachableStep) {
+      if (maxReachableStep === 1) {
+        setErrorMessage(language === 'bn' ? 'প্রথমে একটি বাস বা ট্রিপ নির্বাচন করুন।' : 'Please select a bus trip first.');
+      } else if (maxReachableStep === 2) {
+        setErrorMessage(language === 'bn' ? 'যাত্রী তথ্যে যাওয়ার আগে অন্তত একটি সিট নির্বাচন করুন।' : 'Please select at least one seat first.');
+      } else if (maxReachableStep === 3) {
+        setErrorMessage(language === 'bn' ? 'পরবর্তী ধাপে যাওয়ার আগে সব যাত্রীর নাম ও ১১ ডিজিটের মোবাইল নম্বর পূরণ করুন।' : 'Please complete all passenger names and mobile numbers first.');
+      } else if (maxReachableStep === 4) {
+        setErrorMessage(language === 'bn' ? 'বোর্ডিং ও ড্রপিং পয়েন্ট নির্বাচন করুন।' : 'Please select boarding and dropping points.');
+      }
+      return;
+    }
+
+    setErrorMessage(null);
     setStep(target);
   };
 
@@ -827,27 +969,48 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
     .filter(Boolean);
 
   return (
-    <div className="w-full space-y-5">
+    <div suppressHydrationWarning className="w-full space-y-5 pb-44 sm:pb-52">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <Badge variant="primary" className="text-xs px-3 py-1 font-bold">
-              {targetUniversity}
-            </Badge>
-            <span className="text-xs font-mono font-bold text-slate-500">
-              {activeCapacity} {language === 'bn' ? 'সিট কোচ' : 'Seat Coach'}
-            </span>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4" suppressHydrationWarning>
+        <div className="flex items-center gap-3 sm:gap-4" suppressHydrationWarning>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            suppressHydrationWarning
+            onClick={() => {
+              if (step > 1) {
+                setStep(step - 1);
+              } else {
+                router.push('/bookings');
+              }
+            }}
+            className="rounded-2xl px-3.5 py-2.5 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0 transition-all hover:-translate-x-0.5"
+            title={step > 1 ? (language === 'bn' ? 'পূর্ববর্তী ধাপে ফিরে যান' : 'Back to previous step') : (language === 'bn' ? 'বুকিং তালিকায় ফিরে যান' : 'Back to bookings list')}
+          >
+            <ArrowLeft className="w-4 h-4 text-slate-700 dark:text-slate-300" />
+            <span className="font-bold">{step > 1 ? (language === 'bn' ? 'পূর্ববর্তী ধাপ' : 'Back') : (language === 'bn' ? 'বুকিং তালিকা' : 'Back')}</span>
+          </Button>
+
+          <div suppressHydrationWarning>
+            <div className="flex items-center gap-2" suppressHydrationWarning>
+              <Badge variant="primary" suppressHydrationWarning className="text-xs px-3 py-1 font-bold">
+                {targetUniversity}
+              </Badge>
+              <span suppressHydrationWarning className="text-xs font-mono font-bold text-slate-500">
+                {activeCapacity} {language === 'bn' ? 'সিট কোচ' : 'Seat Coach'}
+              </span>
+            </div>
+            <h1 suppressHydrationWarning className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight mt-1 flex items-center gap-2.5">
+              <Armchair suppressHydrationWarning className="w-7 h-7" style={{ color: currentColor?.primaryHex || 'var(--primary-color)' }} />
+              {language === 'bn' ? 'নতুন সিট বুকিং ও টিকিট ইস্যু' : 'New Seat Booking & Ticket Issue'}
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              {language === 'bn'
+                ? 'কাস্টম সিট বিল্ডার ফরম্যাটে যে বিশ্ববিদ্যালয়ের জন্য যেমন সিট প্ল্যান ও ভাড়া কনফিগার করা হয়েছে, ঠিক সেভাবে বুকিং করুন।'
+                : 'Select your university admission trip and pick seats matching the exact custom seat builder configuration.'}
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight mt-1 flex items-center gap-2.5">
-            <Armchair suppressHydrationWarning className="w-7 h-7" style={{ color: currentColor?.primaryHex || 'var(--primary-color)' }} />
-            {language === 'bn' ? 'নতুন সিট বুকিং ও টিকিট ইস্যু' : 'New Seat Booking & Ticket Issue'}
-          </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {language === 'bn'
-              ? 'কাস্টম সিট বিল্ডার ফরম্যাটে যে বিশ্ববিদ্যালয়ের জন্য যেমন সিট প্ল্যান ও ভাড়া কনফিগার করা হয়েছে, ঠিক সেভাবে বুকিং করুন।'
-              : 'Select your university admission trip and pick seats matching the exact custom seat builder configuration.'}
-          </p>
         </div>
 
         <StepIndicator currentStep={step} maxReachableStep={maxReachableStep} onNavigate={handleNavigate} />
@@ -862,6 +1025,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         discountAmount={discountAmount}
         paidAmount={paidAmount}
         stepLabel={stepLabel ? (language === 'bn' ? stepLabel.labelBn : stepLabel.labelEn) : ''}
+        busNumber={selectedTrip?.bus?.busNumber || selectedTrip?.bus?.bus_number}
       />
 
       {/* Error banner */}
@@ -881,6 +1045,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           activeSegments={activeSegments}
           currentUser={currentUser}
           onSelectTrip={handleSelectTrip}
+          onBack={() => router.push('/bookings')}
         />
       )}
 
@@ -907,7 +1072,11 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           passengers={passengers}
           allCurrentSeats={allCurrentSeats}
           targetUniversity={targetUniversity}
+          selectedTrip={selectedTrip}
+          allTrips={trips}
+          allBookings={allBookings}
           suggestedPassengerMap={suggestedPassengerMap}
+          errorMessage={errorMessage}
           onUpdatePassenger={handleUpdatePassenger}
           onSetErrorMessage={setErrorMessage}
           onGoBack={() => setStep(2)}
@@ -961,6 +1130,8 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           isSubmitting={isSubmitting}
           isStaffCouponModalOpen={isStaffCouponModalOpen}
           customLogos={customLogos}
+          errorMessage={errorMessage}
+          onSetErrorMessage={setErrorMessage}
           onDiscountChange={(partial) => setDiscountState((prev) => ({ ...prev, ...partial }))}
           onCouponApply={handleApplyCoupon}
           onCouponRemove={handleRemoveCoupon}
@@ -973,40 +1144,35 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           onTransactionIdChange={setTransactionId}
           onSenderRefChange={setSenderRef}
           onGoBack={() => setStep(4)}
+          onGoToStep={(target) => setStep(target)}
           onConfirm={handleFinalSubmit}
         />
       )}
 
-      {/* Gender violation modal */}
-      {genderWarningModal && (
-        <Modal
-          isOpen={genderWarningModal.isOpen}
-          onClose={() => setGenderWarningModal(null)}
-          size="md"
-        >
-          <div className="p-6 text-center space-y-4">
-            <div className="w-16 h-16 rounded-3xl bg-rose-100 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto shadow-inner border-2 border-rose-300 dark:border-rose-700">
-              <Shield className="w-8 h-8 stroke-[2.5]" />
-            </div>
+      {/* Floating Bottom Error Notification - Always visible regardless of scroll position, cleared from bottom-right AI tab */}
+      {errorMessage && (
+        <div className="fixed bottom-24 left-4 right-4 sm:left-auto sm:right-36 sm:max-w-xl z-50 bg-rose-600 dark:bg-rose-700 text-white p-4 rounded-2xl shadow-2xl border-2 border-rose-300 dark:border-rose-500 flex items-start justify-between gap-3 animate-bounce">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-200 shrink-0 mt-0.5" />
             <div>
-              <h3 className="text-lg font-black text-slate-900 dark:text-white">{genderWarningModal.title}</h3>
-              <p className="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed font-medium">{genderWarningModal.message}</p>
+              <span className="block font-black text-xs uppercase tracking-wider text-rose-200">
+                {language === 'bn' ? '⚠️ ত্রুটি / মনোযোগ দিন:' : 'Attention Required:'}
+              </span>
+              <span className="text-sm font-bold mt-0.5 block text-white">{errorMessage}</span>
             </div>
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-2xl text-xs text-amber-900 dark:text-amber-200 font-bold">
-              {language === 'bn'
-                ? '💡 পরামর্শ: পুরুষ অভিভাবক হিসেবে সাথে যেতে চাইলে "যাত্রীর ধরন" ড্রপডাউন থেকে "অভিভাবক" (Guardian) এবং সম্পর্ক নির্বাচন করুন।'
-                : 'Tip: If accompanying as a male guardian, select Passenger Type as "Guardian" and specify the relationship.'}
-            </div>
-            <Button
-              variant="primary"
-              onClick={() => setGenderWarningModal(null)}
-              className="w-full rounded-xl font-black py-3 bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/30"
-            >
-              {language === 'bn' ? 'বুঝেছি / নিয়ম মেনে নিচ্ছি' : 'Understood / Accept Rule'}
-            </Button>
           </div>
-        </Modal>
+          <button
+            type="button"
+            onClick={() => setErrorMessage(null)}
+            className="w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 text-white font-black text-sm flex items-center justify-center shrink-0 cursor-pointer"
+            title={language === 'bn' ? 'বন্ধ করুন' : 'Close'}
+          >
+            ✕
+          </button>
+        </div>
       )}
+
+
 
       {/* Receipt modal */}
       {confirmedBookingForReceipt && (

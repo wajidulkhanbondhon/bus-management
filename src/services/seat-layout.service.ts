@@ -21,6 +21,7 @@ export interface CustomLayoutInput {
   totalCols: number;
   layoutGrid: LayoutGridCell[][];
   extraSeats?: any[];
+  activeSegments?: any[];
 }
 
 // In-memory persistent store for custom layouts
@@ -41,7 +42,31 @@ export async function getAllLayouts() {
 
     for (const l of apiLayouts) {
       if (!l || !l.id) continue;
+
+      // Unpack layout_json if present
+      if (l.layout_json && typeof l.layout_json === 'string') {
+        try {
+          const parsed = JSON.parse(l.layout_json);
+          if (parsed.layoutGrid && !l.layoutGrid) l.layoutGrid = parsed.layoutGrid;
+          if (parsed.extraSeats && !l.extraSeats) l.extraSeats = parsed.extraSeats;
+          if (parsed.activeSegments && !l.activeSegments) l.activeSegments = parsed.activeSegments;
+          if (parsed.university && !l.university) l.university = parsed.university;
+          if (parsed.unit && !l.unit) l.unit = parsed.unit;
+          if (parsed.examName && !l.examName) l.examName = parsed.examName;
+        } catch {}
+      }
+
       const normName = (l.name || '').trim().toLowerCase();
+      // Check if localCustomLayouts has fresher in-memory grid
+      const localMatch = localCustomLayouts.find(
+        loc => loc.id === l.id || (normName && (loc.name || '').trim().toLowerCase() === normName)
+      );
+      if (localMatch) {
+        if (localMatch.layoutGrid) l.layoutGrid = localMatch.layoutGrid;
+        if (localMatch.extraSeats) l.extraSeats = localMatch.extraSeats;
+        if (localMatch.activeSegments) l.activeSegments = localMatch.activeSegments;
+      }
+
       if (!seenIds.has(l.id) && (!normName || !seenNames.has(normName))) {
         seenIds.add(l.id);
         if (normName) seenNames.add(normName);
@@ -119,6 +144,7 @@ export async function saveCustomLayout(input: CustomLayoutInput, _userId?: strin
   const layoutJson = JSON.stringify({
     layoutGrid: input.layoutGrid,
     extraSeats: input.extraSeats || [],
+    activeSegments: input.activeSegments || [],
     university: input.university || '',
     unit: input.unit || '',
     examName: input.examName || ''
@@ -143,6 +169,7 @@ export async function saveCustomLayout(input: CustomLayoutInput, _userId?: strin
         examName: input.examName || '',
         layoutGrid: input.layoutGrid,
         extraSeats: input.extraSeats || [],
+        activeSegments: input.activeSegments || [],
         layout_json: layoutJson
       };
 
@@ -179,6 +206,7 @@ export async function saveCustomLayout(input: CustomLayoutInput, _userId?: strin
     total_seats: seatCount,
     layoutGrid: input.layoutGrid,
     extraSeats: input.extraSeats || [],
+    activeSegments: input.activeSegments || [],
     layout_json: layoutJson,
     createdAt: new Date().toISOString()
   };

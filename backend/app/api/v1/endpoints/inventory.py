@@ -16,6 +16,9 @@ from app.services.inventory_service import (
     clean_all_expired
 )
 from app.models.user import User
+from app.models.trip import Trip
+from app.models.booking import Booking, BookingPassenger
+from app.models.bus import Bus
 
 router = APIRouter()
 
@@ -31,6 +34,94 @@ class LockSeatRequest(BaseModel):
     lockedUntil: Optional[str] = None
 
 
+@router.get("/check-exam-duplicate-phone")
+async def check_exam_duplicate_phone(
+    phone: str = Query(..., min_length=6),
+    trip_id: Optional[str] = None,
+    db: WrappedAsyncSession = Depends(get_db)
+) -> Dict[str, Any]:
+    clean_phone = phone.replace("+88", "").replace(" ", "").replace("-", "").strip()
+    if len(clean_phone) > 11:
+        clean_phone = clean_phone[-11:]
+
+    matches = []
+    if not clean_phone:
+        return {"has_duplicate": False, "matches": []}
+
+    target_trip = None
+    if trip_id:
+        target_trip = await db.query(Trip).filter(Trip.id == trip_id).first()
+
+    exam_trip_ids = set()
+    if target_trip and target_trip.departure_date:
+        t_date = target_trip.departure_date.date()
+        date_start = datetime.combine(t_date, datetime.min.time())
+        date_end = datetime.combine(t_date, datetime.max.time())
+        same_date_trips = await db.query(Trip).filter(
+            Trip.departure_date >= date_start,
+            Trip.departure_date <= date_end,
+            Trip.status != "CANCELLED"
+        ).all()
+        for st in same_date_trips:
+            exam_trip_ids.add(st.id)
+
+    if trip_id:
+        exam_trip_ids.add(trip_id)
+
+    b_query = db.query(Booking).filter(
+        Booking.booking_status.in_(["CONFIRMED", "HELD", "PRE_BOOKED", "PAYMENT_TIMER_ACTIVE"])
+    )
+    if exam_trip_ids:
+        b_query = b_query.filter(Booking.trip_id.in_(list(exam_trip_ids)))
+
+    bookings = await b_query.all()
+
+    seen_key = set()
+    for b in bookings:
+        t = await db.query(Trip).filter(Trip.id == b.trip_id).first()
+        bus_name = "বাস"
+        if t and t.bus:
+            bus_name = t.bus.bus_name or t.bus.bus_number or t.trip_code
+        elif t:
+            bus_name = t.trip_code
+
+        # Check contact phone
+        b_contact = (b.contact_phone or "").replace("+88", "").replace(" ", "").replace("-", "").strip()
+        if b_contact and (b_contact == clean_phone or b_contact.endswith(clean_phone)):
+            k = f"{b.trip_id}-contact"
+            if k not in seen_key:
+                seen_key.add(k)
+                matches.append({
+                    "trip_id": b.trip_id,
+                    "bus_name": bus_name,
+                    "seat_number": "বুকিং",
+                    "passenger_name": b.contact_name or "যাত্রী",
+                    "is_current_bus": b.trip_id == trip_id
+                })
+
+        # Check passenger records
+        passengers = await db.query(BookingPassenger).filter(BookingPassenger.booking_id == b.id).all()
+        for p in passengers:
+            p_phone = (p.passenger_phone or "").replace("+88", "").replace(" ", "").replace("-", "").strip()
+            if p_phone and (p_phone == clean_phone or p_phone.endswith(clean_phone)):
+                k = f"{b.trip_id}-{p.seat_number}"
+                if k not in seen_key:
+                    seen_key.add(k)
+                    matches.append({
+                        "trip_id": b.trip_id,
+                        "bus_name": bus_name,
+                        "seat_number": p.seat_number,
+                        "passenger_name": p.passenger_name,
+                        "is_current_bus": b.trip_id == trip_id
+                    })
+
+    return {
+        "has_duplicate": len(matches) > 0,
+        "clean_phone": clean_phone,
+        "matches": matches
+    }
+
+
 @router.get("/{trip_id}/seat-map")
 async def get_seat_map(
     trip_id: str,
@@ -39,7 +130,7 @@ async def get_seat_map(
 ) -> Dict[str, Any]:
     try:
         staff_id = current_user.id if current_user else None
-        return get_trip_seat_inventory(db, trip_id, staff_id)
+        return await get_trip_seat_inventory(db, trip_id, staff_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -53,7 +144,7 @@ async def hold_single_seat(
     current_user: User = Depends(get_current_user)
 ):
     try:
-        return hold_seat(db, trip_id, seat_id, current_user.id, duration_minutes)
+        return await hold_seat(db, trip_id, seat_id, current_user.id, duration_minutes)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -80,7 +171,7 @@ async def lock_single_seat(
             pass
 
     try:
-        lock = lock_seat(
+        lock = await lock_seat(
             db=db,
             trip_id=trip_id,
             seat_id=target_seat_id,
@@ -105,7 +196,7 @@ async def unlock_single_seat(
     if not seat_id:
         raise HTTPException(status_code=400, detail="seat_id query parameter is required")
     try:
-        unlock_seat(db, trip_id, seat_id, current_user.id)
+        await unlock_seat(db, trip_id, seat_id, current_user.id)
         return {"success": True, "seat_id": seat_id, "status": "AVAILABLE"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

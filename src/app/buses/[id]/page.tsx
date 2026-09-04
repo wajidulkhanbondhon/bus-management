@@ -113,10 +113,11 @@ export default async function BusDetailsPage({ params }: BusDetailsPageProps) {
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
                 {bus.busName || bus.bus_name}
               </h1>
-              <Badge variant="outline" className="font-mono text-xs font-bold">
-                {bus.busNumber || bus.bus_number}
-              </Badge>
-              <Badge variant="default" className="bg-indigo-600 text-white text-xs font-bold">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-400 text-slate-950 font-black font-mono text-base sm:text-lg rounded-xl shadow-xs border border-amber-300">
+                <BusIcon className="w-4 h-4" />
+                <span>{bus.busNumber || bus.bus_number}</span>
+              </span>
+              <Badge variant="default" className="bg-indigo-600 text-white text-xs font-bold py-1">
                 {capacity} টি সিট
               </Badge>
             </div>
