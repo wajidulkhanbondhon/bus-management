@@ -327,13 +327,14 @@ export function PaymentReceiptCard({ booking, showControls = true }: PaymentRece
             print-color-adjust: exact !important;
           }
           #printable-payment-receipt {
-            max-height: 284mm !important;
+            zoom: 0.88;
             height: auto !important;
+            max-height: none !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
-            overflow: hidden !important;
+            overflow: visible !important;
             border: 1px solid #cbd5e1 !important;
-            border-radius: 12px !important;
+            border-radius: 8px !important;
             box-shadow: none !important;
             margin: 0 auto !important;
             width: 100% !important;
@@ -577,9 +578,9 @@ export function PaymentReceiptCard({ booking, showControls = true }: PaymentRece
             </div>
 
             {/* Main Receipt Content */}
-            <div className="p-6 sm:p-8 space-y-6">
+            <div className="p-6 sm:p-8 space-y-6 print:p-3 print:space-y-2.5">
               {/* Trip & Schedule Card */}
-              <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-4">
+              <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-4 print:p-2.5 print:space-y-1.5 print:rounded-xl">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
@@ -737,9 +738,9 @@ export function PaymentReceiptCard({ booking, showControls = true }: PaymentRece
               </div>
 
               {/* Financial Computation & QR Code Verification Section */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 print:gap-3 pt-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 print:gap-2 pt-2 print:pt-1">
                 {/* 1. Payment Channel / Challan Details */}
-                <div className="p-4 sm:p-5 print:p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-2.5">
+                <div className="p-4 sm:p-5 print:p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-2.5 print:space-y-1.5">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
                     পেমেন্ট চ্যানেল ও ট্রানজেকশন বিবরণ
                   </span>
@@ -795,7 +796,7 @@ export function PaymentReceiptCard({ booking, showControls = true }: PaymentRece
                 </div>
 
                 {/* 2. Fare Breakdown Summary */}
-                <div className="p-4 sm:p-5 print:p-3 bg-gradient-to-br from-blue-50/70 to-indigo-50/70 dark:from-slate-800 dark:to-slate-850 rounded-2xl border-2 border-blue-200 dark:border-blue-900/60 space-y-2">
+                <div className="p-4 sm:p-5 print:p-2.5 bg-gradient-to-br from-blue-50/70 to-indigo-50/70 dark:from-slate-800 dark:to-slate-850 rounded-2xl border-2 border-blue-200 dark:border-blue-900/60 space-y-2 print:space-y-1">
                   <span className="text-[10px] font-black uppercase tracking-wider text-blue-900 dark:text-blue-300 font-mono block">
                     ভাড়ার বিস্তারিত হিসাব (Fare Computation)
                   </span>
@@ -843,7 +844,7 @@ export function PaymentReceiptCard({ booking, showControls = true }: PaymentRece
                 </div>
 
                 {/* 3. Official QR Code & Scan Verification Card */}
-                <div className="p-4 sm:p-5 print:p-3 bg-white dark:bg-slate-900 rounded-2xl border-2 border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center space-y-1.5 shadow-xs">
+                <div className="p-4 sm:p-5 print:p-2.5 bg-white dark:bg-slate-900 rounded-2xl border-2 border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center space-y-1.5 print:space-y-1 shadow-xs">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
                     ডিজিটাল ভেরিফিকেশন কিউআর কোড
                   </span>
@@ -860,7 +861,7 @@ export function PaymentReceiptCard({ booking, showControls = true }: PaymentRece
               </div>
 
               {/* Official Terms & Counter Signatures */}
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs print:pt-1.5 print:gap-2">
                 {/* Guidelines */}
                 <div className="space-y-0.5 max-w-md text-slate-500 dark:text-slate-400 text-[10px] sm:text-[11px] leading-relaxed">
                   <p>
@@ -982,12 +983,14 @@ export function PaymentReceiptModal({
   booking,
   isOpen,
   onClose,
-  onNewBooking
+  onNewBooking,
+  autoPrint
 }: {
   booking: any;
   isOpen: boolean;
   onClose: () => void;
   onNewBooking?: () => void;
+  autoPrint?: boolean;
 }) {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [orgBrand, setOrgBrand] = useState(() => getStoredOrganizationSettings().organization);
@@ -1005,6 +1008,15 @@ export function PaymentReceiptModal({
     isDispatching: false
   });
   const [hasDispatched, setHasDispatched] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && autoPrint && typeof window !== 'undefined') {
+      const timer = setTimeout(() => {
+        window.print();
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, autoPrint]);
 
   useEffect(() => {
     if (!isOpen || !booking?.id || hasDispatched) return;

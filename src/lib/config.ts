@@ -17,10 +17,11 @@ export const PROXY_BASE = '/api/backend';
 export const WEBSOCKET_BASE = FASTAPI_BASE.replace(/^http/, 'ws');
 
 export function proxyUrl(endpoint: string): string {
-  const cleanEndpoint = endpoint.replace(/^\/api\/backend/, '');
+  const cleanEndpoint = endpoint.replace(/^\/api\/backend/, '').replace(/\/+$/, '');
   const path = cleanEndpoint.startsWith('/') ? cleanEndpoint : `/${cleanEndpoint}`;
   if (typeof window === 'undefined') {
     return `${FASTAPI_BASE}${path}`;
   }
   return `${PROXY_BASE}${path}`;
 }
+

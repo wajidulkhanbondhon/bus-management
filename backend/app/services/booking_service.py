@@ -204,7 +204,10 @@ async def create_counter_booking(
             raise SeatAlreadyBookedException(f"Seat {already_booked_p.seat_number} is already booked or held by another transaction.")
 
     if already_booked:
-        raise SeatAlreadyBookedException(f"Seat {already_booked.seat_id} is already booked or held by another transaction.")
+        lbl = next((n["seat_number"] for n in normalized if n.get("seat_id") == already_booked.seat_id), None)
+        if not lbl:
+            lbl = already_booked.seat_id.split('-')[-1] if '-' in already_booked.seat_id else already_booked.seat_id
+        raise SeatAlreadyBookedException(f"Seat {lbl} is already booked or held by another transaction.")
 
     # Final serialized conflict guard (inside trip-locked transaction).
     conflict = await find_active_conflict(db, trip, seat_labels, resolve_seat_id=True)

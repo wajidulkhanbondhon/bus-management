@@ -54,6 +54,13 @@ import {
   LogIn,
   Building2,
   Globe,
+  WifiOff,
+  ArrowLeftRight,
+  QrCode,
+  TrendingUp,
+  Database,
+  Clock,
+  ArrowRightLeft,
   LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -117,19 +124,27 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       colorClass: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/20',
       items: [
         { href: '/dashboard', label: language === 'bn' ? 'ড্যাশবোর্ড ওভারভিউ' : 'Dashboard Overview', icon: LayoutGrid },
+        { href: '/dashboard/reminders', label: language === 'bn' ? 'ডিপার্চার রিমাইন্ডার সেন্টার' : 'Departure Reminders', icon: BellRing, badge: 'SMS', highlight: true },
         { href: '/admin/dashboard', label: language === 'bn' ? 'রিয়েল-টাইম ড্যাশবোর্ড' : 'Real-time Dashboard', icon: Activity, badge: 'Live', highlight: true }
       ]
     },
     {
       id: 'bookings',
       title: language === 'bn' ? 'বুকিং' : 'Bookings',
-      subtitle: language === 'bn' ? 'কাউন্টার টিকিট' : 'Counter & Online',
+      subtitle: language === 'bn' ? 'কাউন্টার টিকিট ও অপারেশন' : 'Counter & Online Suite',
       icon: Ticket,
       colorClass: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
       items: [
-        { href: '/bookings/new', label: t.newBooking, icon: TicketPlus, highlight: true },
-        { href: '/dashboard/booking-approvals', label: language === 'bn' ? 'অনলাইন প্রি-বুকিং ভেরিফিকেশন' : 'Online Pre-Bookings', icon: PhoneIncoming, badge: 'Live' },
-        { href: '/bookings', label: t.allBookings, icon: Ticket }
+        { href: '/bookings/quick', label: language === 'bn' ? 'কুইক কাউন্টার বুকিং' : 'Quick Counter Booking', icon: Zap, badge: 'Fast', highlight: true },
+        { href: '/bookings/shift', label: language === 'bn' ? 'সিট শিফট বা পরিবর্তন' : 'Seat Shift / Swap', icon: ArrowLeftRight, badge: 'New', highlight: true },
+        { href: '/bookings/group', label: language === 'bn' ? 'কোচিং ও গ্রুপ বুকিং' : 'Group & Coaching Booking', icon: Building2, badge: 'Bulk' },
+        { href: '/bookings/waiting-list', label: language === 'bn' ? 'ওয়েটিং লিস্ট ও অ্যালার্ট' : 'Waiting List & Alert', icon: Clock },
+        { href: '/bookings/new', label: language === 'bn' ? 'নতুন টিকিট বুকিং (উইজার্ড)' : 'New Booking (Wizard)', icon: TicketPlus },
+        { href: '/bookings/online-requests', label: language === 'bn' ? 'অনলাইন প্রি-বুকিং ভেরিফিকেশন' : 'Online Pre-Bookings', icon: PhoneIncoming, badge: 'Live' },
+        { href: '/bookings', label: language === 'bn' ? 'সব বুকিং ও টিকিট হিস্ট্রি' : 'All Bookings History', icon: Ticket },
+        { href: '/bookings/holds', label: language === 'bn' ? 'হোল্ড ও লক সিট ম্যানেজার' : 'Seat Holds & Locks', icon: LockKeyhole, badge: 'Seats' },
+        { href: '/bookings/search', label: language === 'bn' ? 'টিকিট অনুসন্ধান ও রি-প্রিন্ট' : 'Search & Print Ticket', icon: Search },
+        { href: '/bookings/offline', label: language === 'bn' ? 'অফলাইন সিঙ্ক কিউ' : 'Offline Queue & Sync', icon: WifiOff }
       ]
     },
     {
@@ -162,6 +177,7 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       icon: UserCheck,
       colorClass: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
       items: [
+        { href: '/conductor/scan', label: language === 'bn' ? 'কন্ডাক্টর QR বোর্ডিং স্ক্যানার' : 'QR Boarding Scanner', icon: QrCode, badge: 'Scan', highlight: true },
         { href: '/supervisor', label: language === 'bn' ? 'সুপারভাইজার পোর্টাল' : 'Supervisor Portal', icon: UserCheck, highlight: true },
         { href: '/ai/supervisor', label: language === 'bn' ? 'সুপারভাইজার এআই কো-পাইলট' : 'Supervisor AI Copilot', icon: Bot, badge: 'AI' },
         { href: '/supervisor/login', label: language === 'bn' ? 'সুপারভাইজার লগইন' : 'Supervisor Login', icon: LogIn }
@@ -213,8 +229,10 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       icon: Scale,
       colorClass: 'text-orange-600 dark:text-orange-400 bg-orange-500/10 border-orange-500/20',
       items: [
-        { href: '/dashboard/cash-calculator', label: language === 'bn' ? 'ক্যাশ ক্যালকুলেটর' : 'Cash Calculator', icon: Calculator, highlight: true },
-        { href: '/day-closing', label: t.dayClosing, icon: LockKeyhole, highlight: true },
+        { href: '/day-closing/handover', label: language === 'bn' ? 'কাউন্টারম্যান শিফট হস্তান্তর' : 'Cashier Shift Handover', icon: ArrowRightLeft, highlight: true },
+        { href: '/finance/trip-expenses', label: language === 'bn' ? 'ট্রিপ খরচ ও প্রফিট/লস (P&L)' : 'Trip Expenses & P&L', icon: TrendingUp, highlight: true },
+        { href: '/dashboard/cash-calculator', label: language === 'bn' ? 'ক্যাশ ক্যালকুলেটর' : 'Cash Calculator', icon: Calculator },
+        { href: '/day-closing', label: t.dayClosing, icon: LockKeyhole },
         { href: '/reports/financial-ledger', label: t.financialLedger, icon: Scale }
       ]
     },
@@ -261,6 +279,7 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       icon: ShieldCheck,
       colorClass: 'text-red-600 dark:text-red-400 bg-red-500/10 border-red-500/20',
       items: [
+        { href: '/dashboard/backup', label: language === 'bn' ? 'ডেটাবেজ ব্যাকআপ ও রিস্টোর' : 'Database Backups', icon: Database, badge: 'Cloud', highlight: true },
         { href: '/settings/security', label: language === 'bn' ? 'সিকিউরিটি (2FA)' : 'Security & 2FA', icon: ShieldAlert },
         { href: '/dashboard/security', label: language === 'bn' ? 'ফায়ারওয়াল ও থ্রেট' : 'Firewall & Threats', icon: ShieldAlert, alertBadge: 'New' }
       ]

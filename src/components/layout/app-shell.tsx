@@ -39,7 +39,7 @@ export function AppShell({ children, currentUser }: AppShellProps) {
     return (
       <div suppressHydrationWarning className="min-h-screen flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200 selection:bg-blue-600 selection:text-white">
         {/* Streamlined Public Passenger Header */}
-        <header className="sticky top-0 z-50 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-xs dark:shadow-md transition-colors duration-200">
+        <header className="sticky top-0 z-50 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-xs dark:shadow-md transition-colors duration-200 print:hidden">
           <div className="w-full px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-3 group">
@@ -141,17 +141,9 @@ export function AppShell({ children, currentUser }: AppShellProps) {
             </div>
 
             {/* Discreet Staff Links */}
-            <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-400 dark:text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-900">
-              <Link href="/passenger" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                {language === 'bn' ? 'শিক্ষার্থী টিকিট পোর্টাল' : 'Passenger Portal'}
-              </Link>
-              <span>•</span>
-              <Link href="/track" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                {language === 'bn' ? 'বুকিং যাচাই' : 'Track Booking'}
-              </Link>
-              <span>•</span>
-              <Link href="/login" className="hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
-                {language === 'bn' ? 'অফিস স্টাফ লগইন' : 'Staff Login'}
+            <div className="flex items-center justify-center gap-4 text-xs text-slate-500 dark:text-slate-400">
+              <Link href="/track" className="hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+                {language === 'bn' ? 'টিকিট ট্র্যাকিং' : 'Ticket Tracking'}
               </Link>
               <span>•</span>
               <Link href="/supervisor/login" className="hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
@@ -166,27 +158,29 @@ export function AppShell({ children, currentUser }: AppShellProps) {
         </footer>
 
         {/* Global Floating AI Trigger visible on all public & student views */}
-        <AIFloatingTrigger />
+        <div className="print:hidden">
+          <AIFloatingTrigger />
+        </div>
       </div>
     );
   }
 
   // Internal ERP Layout for staff
   return (
-    <div suppressHydrationWarning className="flex w-full min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <div suppressHydrationWarning className="flex w-full min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 print:bg-white print:text-black print:min-h-0 print:h-auto">
 
       {/* ── Mobile Sidebar Overlay ── */}
       {mobileSidebarOpen && (
         <>
           {/* Dark backdrop */}
           <div
-            className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm md:hidden print:hidden"
             onClick={() => setMobileSidebarOpen(false)}
             aria-hidden="true"
           />
           {/* Slide-in sidebar panel */}
           <div className={cn(
-            'fixed inset-y-0 left-0 z-50 md:hidden',
+            'fixed inset-y-0 left-0 z-50 md:hidden print:hidden',
             'transform transition-transform duration-300 ease-out',
             mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
           )}>
@@ -206,20 +200,22 @@ export function AppShell({ children, currentUser }: AppShellProps) {
       )}
 
       {/* ── Desktop Sidebar ── */}
-      <div className="hidden md:flex flex-shrink-0">
+      <div className="hidden md:flex flex-shrink-0 print:hidden">
         <Sidebar />
       </div>
 
       {/* ── Main Content Area ── */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden h-screen" suppressHydrationWarning>
-        <Header
-          currentUser={currentUser}
-          onMobileMenuToggle={() => setMobileSidebarOpen(prev => !prev)}
-        />
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden h-screen print:h-auto print:overflow-visible print:block" suppressHydrationWarning>
+        <div className="print:hidden">
+          <Header
+            currentUser={currentUser}
+            onMobileMenuToggle={() => setMobileSidebarOpen(prev => !prev)}
+          />
+        </div>
         <main
           suppressHydrationWarning
           className={cn(
-            'flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pb-20 md:pb-8',
+            'flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pb-20 md:pb-8 print:p-0 print:m-0 print:overflow-visible print:bg-transparent',
             'bg-slate-100/60 dark:bg-slate-950/60',
             'transition-all duration-150',
             contentFontClass

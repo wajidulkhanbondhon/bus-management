@@ -82,11 +82,17 @@ async def pre_book(
     req: CreatePreBookingRequest,
     tenant_id: Optional[str] = Depends(get_current_tenant_id),
     db: WrappedAsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     try:
         # Non-super-admin staff are always scoped to their own tenant.
-        effective_tenant = current_user.tenant_id if (current_user.role and current_user.role.name != "SUPER_ADMIN") else (tenant_id or current_user.tenant_id)
+        # Anonymous public students use the request tenant or default.
+        effective_tenant = None
+        if current_user:
+            effective_tenant = current_user.tenant_id if (current_user.role and current_user.role.name != "SUPER_ADMIN") else (tenant_id or current_user.tenant_id)
+        else:
+            effective_tenant = tenant_id
+
         return await create_pre_booking(db, req, effective_tenant)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -149,20 +155,21 @@ async def track_booking(
     db: WrappedAsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user)
 ):
+    clean_query = query_str.strip()
     booking = await db.query(Booking).filter(
-        (Booking.booking_number == query_str.strip()) |
-        (Booking.contact_phone == query_str.strip()) |
-        (Booking.id == query_str.strip())
+        (Booking.booking_number == clean_query) |
+        (Booking.contact_phone == clean_query) |
+        (Booking.id == clean_query)
     ).order_by(Booking.created_at.desc()).first()
 
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
     # Staff may track any booking within their tenant scope; anonymous callers
-    # may only retrieve their own booking via its public booking number.
+    # may retrieve their own booking via its booking number or phone number.
     if current_user is None:
-        if query_str.strip() != booking.booking_number:
-            raise HTTPException(status_code=403, detail="Tracking by phone/ID requires authentication")
+        if clean_query != booking.booking_number and clean_query != booking.contact_phone:
+            raise HTTPException(status_code=403, detail="Tracking by internal ID requires authentication")
     else:
         if current_user.role and current_user.role.name != "SUPER_ADMIN":
             if booking.tenant_id != current_user.tenant_id:

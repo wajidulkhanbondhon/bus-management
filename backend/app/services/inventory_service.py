@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, delete, update
-from app.models.trip import Trip, SeatHold, SeatLock
+from app.models.trip import Trip, BusRoute, SeatHold, SeatLock
 from app.models.bus import Bus, SeatLayout, Seat
 from app.models.booking import Booking, BookingSeat, BookingPassenger
 from app.core.redis_client import hold_seat_redis, release_seat_redis, get_seat_hold_status_redis
@@ -279,10 +279,25 @@ async def get_trip_seat_inventory(
     total_seats = len(seat_details)
     occupancy_percent = round((booked_count / total_seats) * 100) if total_seats > 0 else 0
 
+    route_obj = None
+    if trip.route_id:
+        route_obj = await db.query(BusRoute).filter(BusRoute.id == trip.route_id).first()
+
     return {
         "trip_id": trip.id,
         "trip_code": trip.trip_code,
         "bus_name": bus.bus_name,
+        "bus_number": bus.bus_number,
+        "trip_bus_type": trip.trip_bus_type or bus.bus_type or "MIXED",
+        "departure_date": trip.departure_date.isoformat() if trip.departure_date else None,
+        "departure_time": trip.departure_time.isoformat() if trip.departure_time else None,
+        "route": {
+            "origin": route_obj.origin if route_obj else "ঢাকা",
+            "destination": route_obj.destination if route_obj else "বিশ্ববিদ্যালয়",
+            "route_name": route_obj.route_name if route_obj else "ঢাকা ➔ বিশ্ববিদ্যালয়",
+            "distance_km": route_obj.distance_km if route_obj else 250,
+            "est_duration": route_obj.est_duration if route_obj else "5h 30m"
+        },
         "total_seats": total_seats,
         "available_seats": available_count,
         "booked_seats": booked_count,

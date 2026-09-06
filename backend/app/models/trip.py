@@ -21,7 +21,7 @@ class BusRoute(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="routes")
-    stops = relationship("TripStop", back_populates="route", cascade="all, delete-orphan")
+    stops = relationship("TripStop", back_populates="route", cascade="all, delete-orphan", lazy="selectin")
     trips = relationship("Trip", back_populates="route")
 
 

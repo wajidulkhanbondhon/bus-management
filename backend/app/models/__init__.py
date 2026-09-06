@@ -14,6 +14,8 @@ from app.models.knowledge import KnowledgeRule
 from app.models.security import BlockedIP, SecurityEvent
 from app.models.analytics import DailyAnalytics
 from app.models.passenger_pin import PassengerPin
+from app.models.communication import MessageLog
+from app.models.portal import LandingConfig, UniversityCircular
 __all__ = [
     "Base",
     "Tenant",
@@ -54,4 +56,7 @@ __all__ = [
     "SecurityEvent",
     "DailyAnalytics",
     "PassengerPin",
+    "MessageLog",
+    "LandingConfig",
+    "UniversityCircular",
 ]

@@ -8,3 +8,4 @@ export * from './payment-brand-icons';
 export * from './payment-receipt';
 export * from './print-ticket-button';
 export * from './student-seat-booking-view';
+export * from './booking-summary-sidebar';

@@ -21,6 +21,7 @@ import { BusDetailsView } from './bus-details-view';
 import { TripExpenseManager, TripExpenseItem } from './trip-expense-manager';
 import { SupervisorAIAssistant } from '@/components/ai/supervisor-ai-assistant';
 import { useToast } from '@/components/ui/toast';
+import { fastApiClient } from '@/lib/api-client';
 
 // Initial realistic assigned bus info
 const INITIAL_BUS_INFO: AssignedBusInfo = {
@@ -238,6 +239,98 @@ export function SupervisorPortalClient() {
   const [passengers, setPassengers] = useState<PassengerRecord[]>(INITIAL_PASSENGERS);
   const [expenses, setExpenses] = useState<TripExpenseItem[]>(INITIAL_EXPENSES);
   const [collectedDuesTotal, setCollectedDuesTotal] = useState(500);
+  const [availableTrips, setAvailableTrips] = useState<any[]>([]);
+  const [selectedTripId, setSelectedTripId] = useState<string>('');
+  const [loadingData, setLoadingData] = useState<boolean>(false);
+
+  const loadDynamicTripData = async (targetTripId?: string) => {
+    try {
+      setLoadingData(true);
+      const tripsRes = await fastApiClient.getTrips();
+      const tripsList = Array.isArray(tripsRes) ? tripsRes : [];
+      setAvailableTrips(tripsList);
+
+      const activeTrip = (targetTripId ? tripsList.find((t: any) => t.id === targetTripId) : null) || tripsList[0];
+      if (activeTrip) {
+        setSelectedTripId(activeTrip.id);
+        const depD = activeTrip.departure_date ? (typeof activeTrip.departure_date === 'string' ? activeTrip.departure_date.slice(0, 10) : '2026-08-29') : '2026-08-29';
+        const depT = activeTrip.departure_time ? (typeof activeTrip.departure_time === 'string' && activeTrip.departure_time.includes('T') ? activeTrip.departure_time.slice(11, 16) : String(activeTrip.departure_time).slice(0, 5)) : '22:30';
+        setBusInfo((prev) => ({
+          ...prev,
+          id: activeTrip.id,
+          tripCode: activeTrip.trip_code || activeTrip.tripCode || prev.tripCode,
+          busName: activeTrip.bus?.bus_name || activeTrip.bus_name || prev.busName,
+          busNumber: activeTrip.bus?.bus_number || activeTrip.bus_number || prev.busNumber,
+          coachType: activeTrip.trip_bus_type || activeTrip.bus?.bus_type || prev.coachType,
+          origin: activeTrip.route?.origin || prev.origin,
+          destination: activeTrip.route?.destination || prev.destination,
+          departureDate: depD,
+          departureTime: depT,
+          totalSeats: activeTrip.bus?.capacity || prev.totalSeats,
+        }));
+
+        try {
+          const bookingsRes = await fastApiClient.getBookings();
+          const allBookings = Array.isArray(bookingsRes) ? bookingsRes : [];
+          const tripBookings = allBookings.filter((b: any) => b.trip_id === activeTrip.id || b.tripId === activeTrip.id);
+
+          if (tripBookings.length > 0) {
+            const mappedPassengers: PassengerRecord[] = tripBookings.flatMap((b: any, bIdx: number) => {
+              if (b.passengers && b.passengers.length > 0) {
+                return b.passengers.map((p: any, pIdx: number) => ({
+                  id: `${b.id}-${pIdx}`,
+                  bookingRef: b.booking_number || b.bookingNumber || `BK-${bIdx + 1}`,
+                  name: p.passenger_name || p.passengerName || b.contact_name || b.contactName || 'যাত্রী',
+                  phone: p.passenger_phone || p.passengerPhone || b.contact_phone || b.contactPhone || '01700000000',
+                  seatNumbers: [p.seat_number || p.seatNumber || `Seat ${pIdx + 1}`],
+                  gender: (p.gender === 'FEMALE' ? 'FEMALE' : 'MALE') as 'MALE' | 'FEMALE',
+                  userType: (p.passenger_type === 'GUARDIAN' ? 'GUARDIAN' : 'STUDENT') as 'STUDENT' | 'GUARDIAN',
+                  unitOrExam: p.admission_id ? `Roll: ${p.admission_id}` : 'ভর্তি শিক্ষার্থী',
+                  boardingPoint: b.boarding_point || b.boardingPoint || 'কাউন্টার',
+                  boardingTime: 'সময়মতো',
+                  droppingPoint: b.dropping_point || b.droppingPoint || 'ক্যাম্পাস গেট',
+                  totalAmount: Number(p.fare_snapshot || p.fareSnapshot || 550),
+                  paidAmount: b.payment_status === 'PAID' ? Number(p.fare_snapshot || 550) : 0,
+                  dueAmount: b.payment_status === 'PAID' ? 0 : Number(p.fare_snapshot || 550),
+                  attendanceStatus: 'WAITING' as const,
+                  hasAccommodation: false,
+                }));
+              }
+              return [{
+                id: b.id,
+                bookingRef: b.booking_number || b.bookingNumber || `BK-${bIdx + 1}`,
+                name: b.contact_name || b.contactName || 'যাত্রী',
+                phone: b.contact_phone || b.contactPhone || '01700000000',
+                seatNumbers: (b.seats || []).map((s: any) => s.seat_number || s.seatNumber),
+                gender: 'MALE' as const,
+                userType: 'STUDENT' as const,
+                unitOrExam: b.student_admission_id ? `Roll: ${b.student_admission_id}` : 'ভর্তি শিক্ষার্থী',
+                boardingPoint: b.boarding_point || b.boardingPoint || 'কাউন্টার',
+                boardingTime: 'সময়মতো',
+                droppingPoint: b.dropping_point || b.droppingPoint || 'ক্যাম্পাস গেট',
+                totalAmount: Number(b.total_fare || b.totalFare || 550),
+                paidAmount: Number(b.paid_amount || b.paidAmount || 0),
+                dueAmount: Number((b.total_fare || b.totalFare || 550) - (b.paid_amount || b.paidAmount || 0)),
+                attendanceStatus: 'WAITING' as const,
+                hasAccommodation: false,
+              }];
+            });
+            setPassengers(mappedPassengers);
+          }
+        } catch {
+          // ignore booking query error
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDynamicTripData();
+  }, []);
 
   // Authentication & persistence setup
   useEffect(() => {
@@ -360,6 +453,38 @@ export function SupervisorPortalClient() {
         remainingCash={remainingCash}
         onLogout={handleLogout}
       />
+
+      {/* Live Assigned Bus / Trip Selector Bar */}
+      {availableTrips.length > 0 && (
+        <div className="bg-emerald-950 text-white px-4 py-2.5 border-b border-emerald-800/60 shadow-inner">
+          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <Bus className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="font-bold text-emerald-200">সুপারভাইজার ট্রিপ সুইচ:</span>
+              <select
+                value={selectedTripId}
+                onChange={(e) => loadDynamicTripData(e.target.value)}
+                className="bg-emerald-900 border border-emerald-700 text-white font-bold rounded-xl px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer shadow-sm"
+              >
+                {availableTrips.map((t: any) => (
+                  <option key={t.id} value={t.id}>
+                    {t.trip_code} — {t.bus?.bus_name || t.bus_name || 'Coach'} ({t.route?.origin || 'ঢাকা'} ➔ {t.route?.destination || 'ক্যাম্পাস'})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadDynamicTripData(selectedTripId)}
+              disabled={loadingData}
+              className="flex items-center gap-1.5 text-emerald-300 hover:text-white transition-colors cursor-pointer bg-emerald-900/60 hover:bg-emerald-900 px-3 py-1 rounded-lg border border-emerald-700"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingData ? 'animate-spin' : ''}`} />
+              <span>{loadingData ? 'ডাটা লোড হচ্ছে...' : 'ডাটা রিফ্রেশ'}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 2. Sticky Tab Navigation Bar */}
       <div className="sticky top-[168px] sm:top-[160px] z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm">

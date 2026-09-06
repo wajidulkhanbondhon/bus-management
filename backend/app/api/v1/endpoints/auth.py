@@ -219,8 +219,6 @@ async def passenger_register(
 ):
     clean_phone = req.phone.strip()
     existing_booking = await db.query(Booking).filter(Booking.contact_phone == clean_phone).first()
-    if not existing_booking:
-        raise HTTPException(status_code=404, detail="No booking found for this phone number")
 
     record = await db.query(PassengerPin).filter(PassengerPin.phone == clean_phone).first()
     if record:
@@ -231,7 +229,7 @@ async def passenger_register(
         record = PassengerPin(
             phone=clean_phone,
             pin_hash=hash_passenger_pin(clean_phone, req.pin),
-            full_name=req.name.strip() if req.name else existing_booking.contact_name,
+            full_name=req.name.strip() if req.name else (existing_booking.contact_name if existing_booking else "Student Passenger"),
         )
         db.add(record)
     await db.commit()

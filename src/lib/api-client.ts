@@ -226,13 +226,13 @@ export const fastApiClient = {
   saveLandingSettings: (data: any) => apiRequest('/settings/landing-control', { method: 'POST', body: JSON.stringify(data) }),
 
   // Generic helpers
-  get: <T = any>(endpoint: string) => apiRequest<T>(endpoint),
-  post: <T = any>(endpoint: string, data?: any) =>
-    apiRequest<T>(endpoint, { method: 'POST', body: data ? JSON.stringify(data) : undefined }),
-  put: <T = any>(endpoint: string, data?: any) =>
-    apiRequest<T>(endpoint, { method: 'PUT', body: data ? JSON.stringify(data) : undefined }),
-  delete: <T = any>(endpoint: string) =>
-    apiRequest<T>(endpoint, { method: 'DELETE' }),
+  get: <T = any>(endpoint: string, options?: RequestInit) => apiRequest<T>(endpoint, { method: 'GET', ...options }),
+  post: <T = any>(endpoint: string, data?: any, options?: RequestInit) =>
+    apiRequest<T>(endpoint, { method: 'POST', body: data instanceof FormData ? data : (data ? JSON.stringify(data) : undefined), ...options }),
+  put: <T = any>(endpoint: string, data?: any, options?: RequestInit) =>
+    apiRequest<T>(endpoint, { method: 'PUT', body: data instanceof FormData ? data : (data ? JSON.stringify(data) : undefined), ...options }),
+  delete: <T = any>(endpoint: string, options?: RequestInit) =>
+    apiRequest<T>(endpoint, { method: 'DELETE', ...options }),
 
   // Database Backup & Migration
   getDbStats: () => apiRequest('/backup/stats'),

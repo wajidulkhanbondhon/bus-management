@@ -6,7 +6,7 @@ export async function getSalesReport(filters?: any) {
 
   try {
     const [bookRes, kpiRes] = await Promise.all([
-      fastApiClient.get('/bookings/'),
+      fastApiClient.getBookings(),
       fastApiClient.getDashboardKpi()
     ]);
     if (bookRes.success && Array.isArray(bookRes.data)) bookings = bookRes.data;

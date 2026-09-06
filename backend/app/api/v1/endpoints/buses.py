@@ -143,7 +143,27 @@ async def create_seat_layout(
     db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
-    layout = SeatLayout(**req.model_dump())
+    layout_data = req.model_dump()
+    existing = None
+    if "id" in layout_data and layout_data["id"]:
+        existing = await db.query(SeatLayout).filter(SeatLayout.id == layout_data["id"]).first()
+    if not existing and req.name:
+        existing = await db.query(SeatLayout).filter(SeatLayout.name == req.name.strip()).first()
+
+    if existing:
+        existing.name = req.name
+        existing.total_rows = req.total_rows
+        existing.total_cols = req.total_cols
+        existing.total_seats = req.total_seats
+        existing.layout_json = req.layout_json
+        existing.description = req.description
+        await db.flush()
+        await sync_seat_rows_from_layout(db, existing)
+        await db.commit()
+        await db.refresh(existing)
+        return existing
+
+    layout = SeatLayout(**layout_data)
     db.add(layout)
     await db.flush()
     # Materialize Seat rows for this layout immediately so the fleet/seat-map

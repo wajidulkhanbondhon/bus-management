@@ -11,7 +11,7 @@ export const revalidate = 0;
 export default async function DuePaymentsPage() {
   let dueBookings: any[] = [];
   try {
-    const res = await fastApiClient.get('/bookings/?has_due=true');
+    const res = await fastApiClient.getBookings({ has_due: true });
     if (res.success && res.data) {
       dueBookings = res.data.map((b: any) => ({
         id: b.id,

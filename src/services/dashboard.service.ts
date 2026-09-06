@@ -28,7 +28,7 @@ export async function getLiveDashboardData(dateInput?: string | Date) {
   try {
     const [kpiRes, bookRes, payRes, tripRes] = await Promise.all([
       fastApiClient.getDashboardKpi(),
-      fastApiClient.get('/bookings/'),
+      fastApiClient.getBookings(),
       fastApiClient.getPayments(),
       fastApiClient.getTrips()
     ]);

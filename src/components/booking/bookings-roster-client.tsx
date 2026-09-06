@@ -18,14 +18,20 @@ import {
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  XCircle,
+  Trash2,
+  Loader2
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Modal } from '@/components/ui/modal';
 import { formatDate, formatTime, formatCurrency } from '@/lib/utils';
 import { useApp } from '@/lib/context';
+import { cancelBookingAction } from '@/actions/booking.actions';
+import { fastApiClient } from '@/lib/api-client';
 
 interface Props {
   initialBookings: any[];
@@ -33,12 +39,60 @@ interface Props {
 
 export function BookingsRosterClient({ initialBookings }: Props) {
   const { language, t } = useApp();
+  const [bookings, setBookings] = useState(initialBookings);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'CONFIRMED' | 'HOLD' | 'CANCELLED'>('ALL');
   const [paymentFilter, setPaymentFilter] = useState<'ALL' | 'PAID' | 'PARTIALLY_PAID' | 'UNPAID'>('ALL');
+  const [cancelModalBooking, setCancelModalBooking] = useState<any | null>(null);
+  const [cancelReason, setCancelReason] = useState('Customer Request / সিট অবমুক্ত');
+  const [cancelling, setCancelling] = useState(false);
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleConfirmCancel = async () => {
+    if (!cancelModalBooking) return;
+    setCancelling(true);
+    setActionMessage(null);
+    try {
+      const res = await cancelBookingAction(cancelModalBooking.id, cancelReason);
+      if (res.success) {
+        setBookings((prev) =>
+          prev.map((b) => (b.id === cancelModalBooking.id ? { ...b, booking_status: 'CANCELLED', bookingStatus: 'CANCELLED' } : b))
+        );
+        setActionMessage({
+          type: 'success',
+          text: language === 'bn' ? 'বুকিংটি সফলভাবে বাতিল করা হয়েছে এবং আসন অবমুক্ত (Free) করা হয়েছে!' : 'Booking cancelled and seats released!'
+        });
+        setCancelModalBooking(null);
+      } else {
+        const apiRes = await fastApiClient.cancelBooking(cancelModalBooking.id, cancelReason);
+        if (apiRes.data) {
+          setBookings((prev) =>
+            prev.map((b) => (b.id === cancelModalBooking.id ? { ...b, booking_status: 'CANCELLED', bookingStatus: 'CANCELLED' } : b))
+          );
+          setActionMessage({
+            type: 'success',
+            text: language === 'bn' ? 'বুকিংটি সফলভাবে বাতিল করা হয়েছে এবং আসন অবমুক্ত (Free) করা হয়েছে!' : 'Booking cancelled and seats released!'
+          });
+          setCancelModalBooking(null);
+        } else {
+          setActionMessage({
+            type: 'error',
+            text: res.error || apiRes.error || 'Failed to cancel booking'
+          });
+        }
+      }
+    } catch (err: any) {
+      setActionMessage({
+        type: 'error',
+        text: err.message || 'Error occurred while cancelling booking'
+      });
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const filteredBookings = useMemo(() => {
-    return initialBookings.filter((b) => {
+    return bookings.filter((b) => {
       const q = searchQuery.toLowerCase().trim();
       const bNum = (b.booking_number || b.bookingNumber || '').toLowerCase();
       const name = (b.contact_name || b.contactName || b.passengers?.[0]?.passengerName || '').toLowerCase();
@@ -191,6 +245,7 @@ export function BookingsRosterClient({ initialBookings }: Props) {
                   const candidateName = b.contact_name || b.contactName || b.passengers?.[0]?.passengerName || 'Candidate';
                   const candidatePhone = b.contact_phone || b.contactPhone || b.passengers?.[0]?.passengerPhone || '—';
                   const pStatus = b.payment_status || b.paymentStatus || 'PAID';
+                  const bStatus = b.booking_status || b.bookingStatus || 'CONFIRMED';
                   const isPaid = pStatus === 'PAID';
                   const isDue = pStatus === 'PARTIALLY_PAID' || pStatus === 'UNPAID';
                   const netAmt = b.net_amount ?? b.netAmount ?? 0;
@@ -289,6 +344,21 @@ export function BookingsRosterClient({ initialBookings }: Props) {
                               {language === 'bn' ? 'বিস্তারিত' : 'View'}
                             </Button>
                           </Link>
+                          {bStatus !== 'CANCELLED' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setCancelModalBooking(b);
+                                setCancelReason('Customer Request / সিট পরিবর্তন বা যাত্রা বাতিল');
+                              }}
+                              className="font-bold text-xs rounded-xl px-2 py-1 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-900/40"
+                              title={language === 'bn' ? 'বুকিং বাতিল ও আসন অবমুক্ত করুন' : 'Cancel booking and release seats'}
+                            >
+                              <XCircle className="w-3.5 h-3.5 mr-1" />
+                              {language === 'bn' ? 'বাতিল' : 'Cancel'}
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -299,6 +369,28 @@ export function BookingsRosterClient({ initialBookings }: Props) {
           )}
         </CardContent>
       </Card>
+
+      {/* Notification banner */}
+      {actionMessage && (
+        <div
+          className={`p-4 rounded-2xl flex items-center justify-between gap-3 text-sm font-bold border ${
+            actionMessage.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+              : 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {actionMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+            <span>{actionMessage.text}</span>
+          </div>
+          <button
+            onClick={() => setActionMessage(null)}
+            className="text-xs px-2 py-1 bg-black/10 hover:bg-black/20 rounded-lg"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Mobile Card List View (md:hidden) */}
       <div className="grid grid-cols-1 gap-3 md:hidden">
@@ -317,6 +409,7 @@ export function BookingsRosterClient({ initialBookings }: Props) {
             const bNum = b.booking_number || b.bookingNumber || 'BK-2026';
             const candidateName = b.contact_name || b.contactName || b.passengers?.[0]?.passengerName || 'Candidate';
             const candidatePhone = b.contact_phone || b.contactPhone || b.passengers?.[0]?.passengerPhone || '—';
+            const bStatus = b.booking_status || b.bookingStatus || 'CONFIRMED';
             const pStatus = b.payment_status || b.paymentStatus || 'PAID';
             const isPaid = pStatus === 'PAID';
             const isDue = pStatus === 'PARTIALLY_PAID' || pStatus === 'UNPAID';
@@ -363,12 +456,92 @@ export function BookingsRosterClient({ initialBookings }: Props) {
                       বিস্তারিত
                     </Button>
                   </Link>
+                  {bStatus !== 'CANCELLED' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setCancelModalBooking(b);
+                        setCancelReason('Customer Request / সিট অবমুক্ত');
+                      }}
+                      className="text-xs h-8 text-rose-600 border-rose-200 hover:bg-rose-50"
+                    >
+                      <XCircle className="w-3 h-3 mr-1" />
+                      বাতিল
+                    </Button>
+                  )}
                 </div>
               </div>
             );
           })
         )}
       </div>
+
+      {/* Confirmation Modal for Booking Cancellation & Seat Release */}
+      {cancelModalBooking && (
+        <Modal
+          isOpen={!!cancelModalBooking}
+          onClose={() => !cancelling && setCancelModalBooking(null)}
+          title={language === 'bn' ? 'বুকিং বাতিল ও আসন অবমুক্ত নিশ্চিতকরণ' : 'Confirm Booking Cancellation'}
+          description={
+            language === 'bn'
+              ? `টিকিট নম্বর ${cancelModalBooking.booking_number || cancelModalBooking.bookingNumber} বাতিল করা হবে এবং লক/বুকড আসনগুলো অবমুক্ত করা হবে।`
+              : `Booking ${cancelModalBooking.booking_number || cancelModalBooking.bookingNumber} will be cancelled and booked seats will be freed.`
+          }
+        >
+          <div className="space-y-4 py-2">
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
+                {language === 'bn'
+                  ? 'সতর্কতা: এই বুকিংটি বাতিল করলে সংশ্লিষ্ট আসনগুলো অন্যান্য যাত্রীদের জন্য পুনরায় উন্মুক্ত হয়ে যাবে।'
+                  : 'Warning: Cancelling this booking will immediately release the seats back to available inventory.'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                {language === 'bn' ? 'বাতিলের কারণ' : 'Cancellation Reason'}
+              </label>
+              <input
+                type="text"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="বাতিলের কারণ লিখুন..."
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <Button
+                variant="outline"
+                onClick={() => setCancelModalBooking(null)}
+                disabled={cancelling}
+              >
+                {language === 'bn' ? 'ফিরে যান' : 'Cancel'}
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleConfirmCancel}
+                disabled={cancelling}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold"
+              >
+                {cancelling ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {language === 'bn' ? 'বাতিল হচ্ছে...' : 'Cancelling...'}
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    {language === 'bn' ? 'নিশ্চিত বাতিল ও সিট রিলিজ' : 'Confirm Cancel & Release'}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

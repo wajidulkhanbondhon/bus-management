@@ -70,6 +70,7 @@ import {
 import { StudentAIAssistant } from '@/components/ai/student-ai-assistant';
 import { AIAvatar } from '@/components/ai/ai-avatar';
 import { StudentDashboard } from '@/components/passenger/StudentDashboard';
+import { PaymentReceiptModal } from '@/components/booking/payment-receipt';
 
 // ═══════════════════════════════════════════════════════════════
 // 1. OFFICIAL BRAND SVG ICONS (WHATSAPP, SMS, ROCKET)
@@ -495,9 +496,9 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
   // Handle Direct SMS Ticket Download (No Dashboard Access)
   const handleDirectTicketFetch = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanCode = ticketCodeInput.trim().toUpperCase();
+    const cleanCode = ticketCodeInput.trim();
     if (!cleanCode || cleanCode.length < 4) {
-      error(language === 'bn' ? 'সঠিক টিকিট কোড দিন' : 'Invalid Code', language === 'bn' ? 'পেমেন্ট মেসেজের কোডটি লিখুন।' : 'Enter valid ticket code.');
+      error(language === 'bn' ? 'সঠিক টিকিট কোড দিন' : 'Invalid Code', language === 'bn' ? 'পেমেন্ট মেসেজের কোড বা মোবাইল নম্বরটি লিখুন।' : 'Enter valid ticket code or phone.');
       return;
     }
 
@@ -505,9 +506,13 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
     try {
       const data = await getBookingByTrackingNumber(cleanCode);
       const ticketResult = data || getMockPassengerData(cleanCode);
-      setDirectTicketData(ticketResult);
-      setTicketModalOpen(true);
-      success(language === 'bn' ? 'টিকিট পাওয়া গেছে' : 'Ticket Found', language === 'bn' ? 'অফিসিয়াল ই-টিকিট ডাউনলোড করুন।' : 'Ready to download verified ticket.');
+      if (ticketResult) {
+        setDirectTicketData(ticketResult);
+        setTicketModalOpen(true);
+        success(language === 'bn' ? 'টিকিট পাওয়া গেছে' : 'Ticket Found', language === 'bn' ? 'অফিসিয়াল ই-টিকিট ও মানি রিসিট প্রস্তুত।' : 'Ready to view verified ticket.');
+      } else {
+        error(language === 'bn' ? 'টিকিট পাওয়া যায়নি' : 'Ticket Not Found', language === 'bn' ? 'পেমেন্ট মেসেজের কোড বা মোবাইল নম্বরটি সঠিকভাবে লিখুন।' : 'Check payment SMS ticket code or phone.');
+      }
     } catch {
       error(language === 'bn' ? 'টিকিট পাওয়া যায়নি' : 'Ticket Not Found', language === 'bn' ? 'পেমেন্ট মেসেজের কোডটি সঠিকভাবে লিখুন।' : 'Check payment SMS ticket code.');
     } finally {
@@ -1423,6 +1428,21 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
                         </div>
                       </div>
                     </div>
+
+                    <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
+                      <Button
+                        type="button"
+                        variant="primary"
+                        onClick={() => {
+                          setDirectTicketData(bookingData);
+                          setTicketModalOpen(true);
+                        }}
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs py-3 rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Printer className="w-4 h-4" />
+                        {language === 'bn' ? 'অফিসিয়াল এ৪ ডিজিটাল টিকিট ও মানি রিসিট দেখুন / প্রিন্ট করুন' : 'View / Print Official A4 Ticket & Money Receipt'}
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -2000,91 +2020,14 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
         )}
       </AnimatePresence>
 
-      {/* ═══════ 6. DIGITAL TICKET MODAL ═══════ */}
-      <AnimatePresence>
-        {ticketModalOpen && directTicketData && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative space-y-6"
-            >
-              <button
-                onClick={() => setTicketModalOpen(false)}
-                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
-              >
-                ✕
-              </button>
-
-              <div className="text-center space-y-1">
-                <div className="font-black text-xl text-blue-600 dark:text-blue-400 tracking-tight">
-                  ATOMS ADMISSION TRANSIT
-                </div>
-                <div className="text-xs text-slate-500 font-mono">
-                  {language === 'bn' ? 'অফিসিয়াল ই-টিকিট ও যাত্রী বোর্ডিং পাস' : 'Official E-Ticket & Boarding Pass'}
-                </div>
-              </div>
-
-              {/* Printable Ticket Area */}
-              <div className="p-4 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/80 space-y-4">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800 text-xs">
-                  <span className="font-mono font-bold text-blue-600">{directTicketData.booking_number}</span>
-                  <span className="font-mono font-bold text-emerald-600">PAID & VERIFIED</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">{language === 'bn' ? 'যাত্রী:' : 'Passenger:'}</span>
-                    <span className="font-bold text-slate-900 dark:text-white">{directTicketData.contact_name}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">{language === 'bn' ? 'মোবাইল:' : 'Phone:'}</span>
-                    <span className="font-mono font-bold text-slate-900 dark:text-white">{directTicketData.contact_phone}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">{language === 'bn' ? 'তারিখ ও সময়:' : 'Date & Time:'}</span>
-                    <span className="font-bold text-slate-900 dark:text-white">
-                      {formatDate(directTicketData.trip?.departure_date)} ({formatTime(directTicketData.trip?.departure_time)})
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">{language === 'bn' ? 'আসন নম্বর:' : 'Seat Numbers:'}</span>
-                    <span className="font-mono font-black text-sm text-blue-600 dark:text-blue-400">
-                      {(directTicketData.seats || []).map((s: any) => s.seat_number).join(', ')}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="pt-2 flex items-center justify-center">
-                  <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col items-center gap-1">
-                    <QrCode className="w-24 h-24 text-slate-900" />
-                    <span className="text-[9px] font-mono text-slate-500">QR VERIFIED PASS</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button
-                  variant="primary"
-                  onClick={handlePrintTicket}
-                  className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs py-3"
-                >
-                  <Printer className="w-4 h-4 mr-1.5" />
-                  {language === 'bn' ? 'প্রিন্ট / PDF ডাউনলোড' : 'Print / Download PDF'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setTicketModalOpen(false)}
-                  className="px-5 border-slate-300 dark:border-slate-700 text-xs font-bold"
-                >
-                  {language === 'bn' ? 'বন্ধ করুন' : 'Close'}
-                </Button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* ═══════ 6. OFFICIAL DIGITAL TICKET & A4 RECEIPT MODAL ═══════ */}
+      {ticketModalOpen && (directTicketData || bookingData) && (
+        <PaymentReceiptModal
+          isOpen={ticketModalOpen}
+          onClose={() => setTicketModalOpen(false)}
+          booking={directTicketData || bookingData}
+        />
+      )}
     </div>
   );
 }

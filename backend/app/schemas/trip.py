@@ -8,6 +8,9 @@ class TripStopSchema(BaseModel):
     sequence_no: int
     fare_offset: float = 0.0
 
+    class Config:
+        from_attributes = True
+
 
 class BusRouteBase(BaseModel):
     route_name: str
@@ -40,7 +43,7 @@ class BusRouteOut(BusRouteBase):
 
 class TripBase(BaseModel):
     trip_code: Optional[str] = None
-    bus_id: str
+    bus_id: Optional[str] = None
     route_id: str
     departure_date: datetime
     departure_time: datetime

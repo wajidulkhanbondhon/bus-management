@@ -74,3 +74,4 @@ backend/uploads/documents/*
 !backend/uploads/images/.gitkeep
 !backend/uploads/documents/.gitkeep
 !backend/backups/.gitkeep
+.commandcode/
