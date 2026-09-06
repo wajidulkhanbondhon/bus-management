@@ -917,3 +917,64 @@ export function saveStoredPlatformSettings(settings: PlatformSuperAdminState): b
     return false;
   }
 }
+
+export async function fetchOrganizationSettingsFromBackend(): Promise<OrganizationSettingsState> {
+  const local = getStoredOrganizationSettings();
+  if (typeof window === 'undefined') return local;
+  try {
+    const res = await fetch('/api/backend/settings/organization', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      const updatedOrg = {
+        ...local.organization,
+        name: data.name || local.organization.name,
+        legalName: data.legal_name || local.organization.legalName,
+        description: data.tagline || local.organization.description,
+        logoUrl: data.logo_url !== undefined ? data.logo_url : local.organization.logoUrl,
+        faviconUrl: data.favicon_url !== undefined ? data.favicon_url : local.organization.faviconUrl,
+        phone: data.phone || local.organization.phone,
+        altPhone: data.alt_phone || local.organization.altPhone,
+        emergencyContact: data.emergency_contact || local.organization.emergencyContact,
+        email: data.email || local.organization.email,
+        address: data.address || local.organization.address,
+        website: data.website || local.organization.website
+      };
+      const merged = { ...local, organization: updatedOrg };
+      saveStoredOrganizationSettings(merged);
+      return merged;
+    }
+  } catch (err) {
+    console.warn('Could not fetch backend org settings:', err);
+  }
+  return local;
+}
+
+export async function saveOrganizationSettingsToBackend(settings: OrganizationSettingsState): Promise<boolean> {
+  saveStoredOrganizationSettings(settings);
+  if (typeof window === 'undefined') return true;
+  try {
+    const payload = {
+      name: settings.organization.name,
+      legal_name: settings.organization.legalName,
+      tagline: settings.organization.description,
+      logo_url: settings.organization.logoUrl || '',
+      favicon_url: settings.organization.faviconUrl || '',
+      phone: settings.organization.phone,
+      alt_phone: settings.organization.altPhone,
+      emergency_contact: settings.organization.emergencyContact,
+      email: settings.organization.email,
+      address: settings.organization.address,
+      website: settings.organization.website
+    };
+    const res = await fetch('/api/backend/settings/organization', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('Could not save org settings to backend:', err);
+    return false;
+  }
+}
+

@@ -14,25 +14,77 @@ export interface RuleValidationResult {
 }
 
 /**
- * Returns the adjacent seat partner in standard 2+2 luxury coach configuration
- * e.g. A1 <-> A2, A3 <-> A4, K1 <-> K2, K4 <-> K5, K3 <-> K2/K4
+ * Row letters supported by seat numbering. Kept in sync with the backend
+ * seat_layout_service.ROW_LETTERS — single expansion point for coach geometry.
  */
-export function getAdjacentSeatNumber(seatNumber: string): string | null {
-  if (!seatNumber) return null;
+export const SEAT_ROW_LETTERS = 'ABCDEFGHIJKLMN';
+
+// Standard 2+2 pairs; the rear 5-seat bench is rendered (K1 K2 [K3] K4 K5).
+const STANDARD_PAIRS: Array<[string, string]> = [
+  ['1', '2'],
+  ['3', '4'],
+];
+
+export interface SeatRowGeometry {
+  rowLetter: string;
+  seatNumber: number;
+}
+
+/**
+ * Returns the physical neighbor labels of a seat on a 2+2 (or 5-seat rear-row)
+ * coach.
+ *   - Standard rows: A1<->A2, A3<->A4
+ *   - Rear 5-seat bench (rendered K1 K2 [K3] K4 K5) — the row letter must be in
+ *     `fiveSeatRows`:
+ *       K3 center sits between K2 and K4;
+ *       K4 neighbors K3 and K5;
+ *       K5 neighbors K4.
+ */
+export function adjacentPartners(
+  seatNumber: string,
+  opts?: { fiveSeatRows?: string[] }
+): string[] {
+  if (!seatNumber) return [];
   const match = seatNumber.trim().toUpperCase().match(/^([A-Z]+)(\d+)$/);
-  if (!match) return null;
+  if (!match) return [];
 
   const row = match[1];
-  const num = parseInt(match[2], 10);
+  const num = match[2];
+  const isFiveRow = !!opts?.fiveSeatRows?.includes(row);
 
-  // Row K or 5-seat rear row
-  if (num === 5) return `${row}4`;
-  if (num === 4) return `${row}3` || `${row}5`;
-  if (num === 3) return `${row}4` || `${row}2`;
-  if (num === 2) return `${row}1`;
-  if (num === 1) return `${row}2`;
+  if (isFiveRow) {
+    if (num === '3') return [`${row}2`, `${row}4`];
+    if (num === '5') return [`${row}4`];
+    if (num === '4') return [`${row}3`, `${row}5`];
+  }
 
-  return null;
+  for (const [a, b] of STANDARD_PAIRS) {
+    if (num === a) return [`${row}${b}`];
+    if (num === b) return [`${row}${a}`];
+  }
+  return [];
+}
+
+/**
+ * Returns the adjacent seat partner in standard 2+2 luxury coach configuration
+ * e.g. A1 <-> A2, A3 <-> A4, K1 <-> K2, K4 <-> K5, K3 <-> K2/K4
+ * (kept for callers that need exactly one partner; use adjacentPartners for
+ * the full physical neighbour set).
+ */
+export function getAdjacentSeatNumber(seatNumber: string): string | null {
+  const partners = adjacentPartners(seatNumber);
+  if (partners.length === 0) return null;
+  // For a 5-seat row prefer the "pair" reading: K3's pair-partner is K4/K2,
+  // K4's is K3, K5's is K4.
+  const m = seatNumber.trim().toUpperCase().match(/^([A-Z]+)(\d+)$/);
+  if (m) {
+    const row = m[1];
+    const num = m[2];
+    if (num === '5') return `${row}4`;
+    if (num === '4') return `${row}3`;
+    if (num === '3') return `${row}4`;
+  }
+  return partners[0];
 }
 
 /**
@@ -44,12 +96,10 @@ export function getAdjacentSeatPair(seatNumber: string): string[] {
   if (!match) return [];
 
   const row = match[1];
-  const num = parseInt(match[2], 10);
+  const num = match[2];
 
-  if (num === 1 || num === 2) return [`${row}1`, `${row}2`];
-  if (num === 3 || num === 4) return [`${row}3`, `${row}4`];
-  if (num === 5) return [`${row}4`, `${row}5`];
-
+  if (num === '1' || num === '2') return [`${row}1`, `${row}2`];
+  if (num === '3' || num === '4' || num === '5') return [`${row}3`, `${row}4`, `${row}5`];
   return [];
 }
 
@@ -75,6 +125,9 @@ export function calculateDynamicAdjacentSeatLocks(
 ): Map<string, { genderAllowed: 'FEMALE_ONLY' | 'MALE_ONLY' | 'ANY'; reason: string; adjacentBookedSeat: string }> {
   const lockMap = new Map<string, { genderAllowed: 'FEMALE_ONLY' | 'MALE_ONLY' | 'ANY'; reason: string; adjacentBookedSeat: string }>();
 
+  // A row is a 5-seat rear bench if any seat in it has a number 5.
+  const fiveSeatRows = detectFiveSeatRows(seats.map(s => (s?.seatNumber || (s as any)?.seat_number || (s as any)?.label || '')).join(' '));
+
   // Map of booked seats and their genders
   const bookedSeatInfo = new Map<string, { gender: string; bookingId?: string }>();
   (seats || []).forEach(s => {
@@ -95,8 +148,8 @@ export function calculateDynamicAdjacentSeatLocks(
     const seatNum = (seat?.seatNumber || (seat as any)?.seat_number || (seat as any)?.label || (seat as any)?.seatId || '').trim().toUpperCase();
     if (!seatNum) return;
 
-    const pair = getAdjacentSeatPair(seatNum);
-    const adjacentSeatNum = pair.find(num => num !== seatNum);
+    const neighbours = adjacentPartners(seatNum, { fiveSeatRows });
+    const adjacentSeatNum = neighbours.find(n => bookedSeatInfo.has(n));
 
     if (adjacentSeatNum && bookedSeatInfo.has(adjacentSeatNum)) {
       const adjacentInfo = bookedSeatInfo.get(adjacentSeatNum)!;
@@ -117,6 +170,17 @@ export function calculateDynamicAdjacentSeatLocks(
   });
 
   return lockMap;
+}
+
+/** Detect row letters that contain a 5th seat (rear bench) from seat labels. */
+export function detectFiveSeatRows(labels: string): string[] {
+  const rows = new Set<string>();
+  const re = /([A-Z]+)5\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(labels.toUpperCase())) !== null) {
+    rows.add(m[1]);
+  }
+  return Array.from(rows);
 }
 
 export function validatePassengerRules(context: ValidationContext): RuleValidationResult {
@@ -225,58 +289,63 @@ export function validateMultiSeatBookingPairRules(
   }>,
   allTripSeats: Array<{ seatId: string; seatNumber: string; status: string; booking?: any }>
 ): RuleValidationResult {
+  const fiveSeatRows = detectFiveSeatRows(
+    allTripSeats.map(s => (s?.seatNumber || (s as any)?.seat_number || (s as any)?.label || '')).join(' ')
+  );
   for (const p of passengers) {
     const sObj = allTripSeats.find(s => s.seatId === p.seatId);
     const seatNum = p.seatNumber || sObj?.seatNumber;
     if (!seatNum) continue;
 
-    const pair = getAdjacentSeatPair(seatNum);
-    const adjacentSeatNum = pair.find(num => num !== seatNum);
-    if (!adjacentSeatNum) continue;
+    const neighbourNums = adjacentPartners(seatNum, { fiveSeatRows });
+    if (neighbourNums.length === 0) continue;
 
-    // Check if adjacent seat is booked in THIS same transaction
-    const coPassenger = passengers.find(cp => {
-      const cpObj = allTripSeats.find(s => s.seatId === cp.seatId);
-      const cpSeatNum = cp.seatNumber || cpObj?.seatNumber;
-      return cpSeatNum === adjacentSeatNum;
-    });
+    // Check each physically adjacent seat for a co-passenger in THIS
+    // transaction (or an already-booked neighbour of the opposite gender).
+    for (const adjacentSeatNum of neighbourNums) {
+      const coPassenger = passengers.find(cp => {
+        const cpObj = allTripSeats.find(s => s.seatId === cp.seatId);
+        const cpSeatNum = cp.seatNumber || cpObj?.seatNumber;
+        return cpSeatNum === adjacentSeatNum;
+      });
 
-    if (coPassenger) {
-      // Both seats are booked together
-      const isOppositeGender = p.gender.toUpperCase() !== coPassenger.gender.toUpperCase();
-      if (isOppositeGender) {
-        // Must be Student + Guardian with valid relationship (বাপ, মা, ভাই, বোন, দাদা, নানা, দাদি, নানি, স্বামী/স্ত্রী)
-        const hasStudent = p.passengerType === 'STUDENT' || coPassenger.passengerType === 'STUDENT';
-        const guardian = p.passengerType === 'GUARDIAN' ? p : (coPassenger.passengerType === 'GUARDIAN' ? coPassenger : null);
+      if (coPassenger) {
+        // Both seats are booked together
+        const isOppositeGender = p.gender.toUpperCase() !== coPassenger.gender.toUpperCase();
+        if (isOppositeGender) {
+          // Must be Student + Guardian with valid relationship (বাপ, মা, ভাই, বোন, দাদা, নানা, দাদি, নানি, স্বামী/স্ত্রী)
+          const hasStudent = p.passengerType === 'STUDENT' || coPassenger.passengerType === 'STUDENT';
+          const guardian = p.passengerType === 'GUARDIAN' ? p : (coPassenger.passengerType === 'GUARDIAN' ? coPassenger : null);
 
-        if (!hasStudent || !guardian) {
-          return {
-            isValid: false,
-            code: 'OPPOSITE_GENDER_ADJACENT_NO_GUARDIAN',
-            message: `সিট ${seatNum} এবং ${adjacentSeatNum} বিপরীত জেন্ডারের ক্ষেত্রে শুধুমাত্র শিক্ষার্থী এবং অভিভাবক (বাপ, মা, ভাই, বোন, দাদা, নানা, দাদি, নানি বা স্বামী/স্ত্রী) একসাথে বুক করতে পারবেন।`
-          };
+          if (!hasStudent || !guardian) {
+            return {
+              isValid: false,
+              code: 'OPPOSITE_GENDER_ADJACENT_NO_GUARDIAN',
+              message: `সিট ${seatNum} এবং ${adjacentSeatNum} বিপরীত জেন্ডারের ক্ষেত্রে শুধুমাত্র শিক্ষার্থী এবং অভিভাবক (বাপ, মা, ভাই, বোন, দাদা, নানা, দাদি, নানি বা স্বামী/স্ত্রী) একসাথে বুক করতে পারবেন।`
+            };
+          }
+
+          const rel = guardian.guardianRelationship?.toUpperCase();
+          if (!rel || !STRICT_ALLOWED_GUARDIAN_RELATIONSHIPS.includes(rel)) {
+            return {
+              isValid: false,
+              code: 'INVALID_GUARDIAN_RELATIONSHIP',
+              message: `অভিভাবকের সাথে অনুমোদিত বৈধ সম্পর্ক (বাপ, মা, ভাই, বোন, দাদা, নানা, দাদি, নানি বা স্বামী/স্ত্রী) নির্বাচন করা আবশ্যক।`
+            };
+          }
         }
-
-        const rel = guardian.guardianRelationship?.toUpperCase();
-        if (!rel || !STRICT_ALLOWED_GUARDIAN_RELATIONSHIPS.includes(rel)) {
-          return {
-            isValid: false,
-            code: 'INVALID_GUARDIAN_RELATIONSHIP',
-            message: `অভিভাবকের সাথে অনুমোদিত বৈধ সম্পর্ক (বাপ, মা, ভাই, বোন, দাদা, নানা, দাদি, নানি বা স্বামী/স্ত্রী) নির্বাচন করা আবশ্যক।`
-          };
-        }
-      }
-    } else {
-      // Adjacent seat is already booked on the bus
-      const adjacentExistingSeat = allTripSeats.find(s => s.seatNumber === adjacentSeatNum);
-      if (adjacentExistingSeat && (adjacentExistingSeat.status === 'BOOKED' || adjacentExistingSeat.status === 'HELD')) {
-        const existingGender = adjacentExistingSeat.booking?.passengerGender?.toUpperCase();
-        if (existingGender && existingGender !== p.gender.toUpperCase()) {
-          return {
-            isValid: false,
-            code: 'ADJACENT_GENDER_MISMATCH',
-            message: `সিট ${seatNum}-এর সংলগ্ন সিট (${adjacentSeatNum}) একজন ${existingGender === 'FEMALE' ? 'নারী' : 'পুরুষ'} যাত্রী বুক করেছেন। এই সিটটি শুধুমাত্র ${existingGender === 'FEMALE' ? 'নারী' : 'পুরুষ'} যাত্রীদের জন্য প্রযোজ্য।`
-          };
+      } else {
+        // Adjacent seat is already booked on the bus
+        const adjacentExistingSeat = allTripSeats.find(s => s.seatNumber === adjacentSeatNum);
+        if (adjacentExistingSeat && (adjacentExistingSeat.status === 'BOOKED' || adjacentExistingSeat.status === 'HELD')) {
+          const existingGender = adjacentExistingSeat.booking?.passengerGender?.toUpperCase();
+          if (existingGender && existingGender !== p.gender.toUpperCase()) {
+            return {
+              isValid: false,
+              code: 'ADJACENT_GENDER_MISMATCH',
+              message: `সিট ${seatNum}-এর সংলগ্ন সিট (${adjacentSeatNum}) একজন ${existingGender === 'FEMALE' ? 'নারী' : 'পুরুষ'} যাত্রী বুক করেছেন। এই সিটটি শুধুমাত্র ${existingGender === 'FEMALE' ? 'নারী' : 'পুরুষ'} যাত্রীদের জন্য প্রযোজ্য।`
+            };
+          }
         }
       }
     }

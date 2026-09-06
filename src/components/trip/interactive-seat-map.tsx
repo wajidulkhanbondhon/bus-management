@@ -167,17 +167,27 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
     return () => { cancelled = true; };
   }, [contactPhone]);
 
-  // Default Fare Segments
-  const defaultSegments: FareRangeSegment[] = [
-    { id: 'seg-1', name: 'Front VIP (A–E)', startRow: 'A', endRow: 'E', fare: 650, color: 'emerald' },
-    { id: 'seg-2', name: 'Standard Middle (F–H)', startRow: 'F', endRow: 'H', fare: 550, color: 'blue' },
-    { id: 'seg-3', name: 'Rear Economy (I–J)', startRow: 'I', endRow: 'J', fare: 500, color: 'purple' },
-    { id: 'seg-4', name: 'Last Row Bench (K)', startRow: 'K', endRow: 'K', fare: 450, color: 'amber' }
-  ];
+  // Dynamic Fare Segments derived from trip layout or trip basePrice
+  const activeSegments: FareRangeSegment[] = useMemo(() => {
+    const layoutSegments = trip?.seatLayout?.activeSegments || trip?.bus?.seatLayout?.activeSegments;
+    if (Array.isArray(layoutSegments) && layoutSegments.length > 0) {
+      return layoutSegments;
+    }
+    const baseFare = Number(trip?.basePrice) || 550;
+    const maxFare = Number(trip?.maxPrice) || (baseFare >= 600 ? baseFare + 100 : baseFare + 50);
+    const capacity = Number(trip?.bus?.capacity) || 45;
+
+    return [
+      { id: 'seg-1', name: 'Front VIP (A–E)', startRow: 'A', endRow: 'E', fare: maxFare, color: 'emerald' },
+      { id: 'seg-2', name: 'Standard Middle (F–H)', startRow: 'F', endRow: 'H', fare: baseFare, color: 'blue' },
+      { id: 'seg-3', name: 'Rear Economy (I–J)', startRow: 'I', endRow: 'J', fare: Math.max(300, baseFare - 50), color: 'purple' },
+      ...(capacity === 45 || capacity === 42 ? [{ id: 'seg-4', name: 'Last Row Bench (K)', startRow: 'K', endRow: 'K', fare: Math.max(300, baseFare - 100), color: 'amber' as const }] : [])
+    ];
+  }, [trip]);
 
   const getSegmentForRow = (rowChar: string): FareRangeSegment | undefined => {
     if (!rowChar || typeof rowChar !== 'string') return undefined;
-    return defaultSegments.find(seg => {
+    return activeSegments.find(seg => {
       if (!seg?.startRow || !seg?.endRow) return false;
       const startIdx = rowLetters.indexOf(seg.startRow.toUpperCase());
       const endIdx = rowLetters.indexOf(seg.endRow.toUpperCase());
@@ -223,8 +233,8 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
     if (selectedSeatIds.includes(seat.seatId)) {
       setSelectedSeatIds(selectedSeatIds.filter(id => id !== seat.seatId));
     } else {
-      if (selectedSeatIds.length >= 4) {
-        alert(language === 'bn' ? 'অনলাইনে একসাথে সর্বোচ্চ ৪টি সিট বুকিং করা যাবে।' : 'Maximum 4 seats can be requested at once.');
+      if (selectedSeatIds.length >= 6) {
+        alert(language === 'bn' ? 'একসাথে সর্বোচ্চ ৬টি সিট বুকিং করা যাবে (A4 সিঙ্গেল-পেজ প্রিন্ট নীতি অনুযায়ী)।' : 'Maximum 6 seats can be requested at once to fit single-page ticket.');
         return;
       }
       setSelectedSeatIds([...selectedSeatIds, seat.seatId]);
@@ -238,6 +248,15 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
 
     if (selectedSeatIds.length === 0) {
       setBookingError(language === 'bn' ? 'অনুগ্রহ করে বাসের সিট ম্যাপ থেকে অন্তত একটি সিট নির্বাচন করুন।' : 'Please select at least one seat from the map.');
+      return;
+    }
+
+    const nonAvail = selectedSeatIds.filter(id => {
+      const s = seats.find(seat => seat.seatId === id);
+      return !s || s.status !== 'AVAILABLE';
+    });
+    if (nonAvail.length > 0) {
+      setBookingError(language === 'bn' ? '⚠️ আপনার নির্বাচিত কিছু আসন ইতিমধ্যে অন্য বুকিং দ্বারা বুকড বা হোল্ডে রয়েছে। অনুগ্রহ করে কেবল খালি আসন নির্বাচন করুন।' : 'Some selected seats are already booked or held.');
       return;
     }
 
@@ -389,7 +408,7 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
     }
   };
 
-  function renderRealisticSeatButton(seat?: SeatStatusDetail, isMiddleSeat = false, segment?: FareRangeSegment) {
+  function renderRealisticSeatButton(seat?: SeatStatusDetail, isMiddleSeat = false, segment?: FareRangeSegment, positionType?: 'WINDOW' | 'AISLE' | 'MIDDLE') {
     if (!seat) return <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0" />;
 
     const isSelected = selectedSeatIds.includes(seat.seatId);
@@ -406,6 +425,14 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
 
     const seatPrice = seat.fare || segment?.fare || trip.basePrice || 550;
 
+    const positionLabel = positionType === 'WINDOW'
+      ? '🪟 জানালা (Window)'
+      : positionType === 'AISLE'
+      ? '🚶 আইল (Aisle)'
+      : isMiddleSeat || positionType === 'MIDDLE'
+      ? 'মিডল সিট'
+      : '';
+
     return (
       <motion.button
         whileHover={{ scale: isAvailable ? 1.05 : 1 }}
@@ -415,7 +442,7 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
         type="button"
         onClick={() => handleSeatClick(seat)}
         disabled={!isAvailable && !currentUserId}
-        title={dynamicLock ? `${dynamicLock.reason} (${dynamicLock.genderAllowed === 'FEMALE_ONLY' ? 'শুধুমাত্র নারী' : 'শুধুমাত্র পুরুষ'})` : `সিট: ${seatNum || 'Seat'} | ভাড়া: ৳${seatPrice}`}
+        title={dynamicLock ? `${dynamicLock.reason} (${dynamicLock.genderAllowed === 'FEMALE_ONLY' ? 'শুধুমাত্র নারী' : 'শুধুমাত্র পুরুষ'})` : `সিট: ${seatNum || 'Seat'} ${positionLabel ? `• ${positionLabel}` : ''} | ভাড়া: ৳${seatPrice}`}
         className={`w-14 h-14 sm:w-16 sm:h-16 shrink-0 p-1.5 rounded-2xl flex flex-col items-center justify-between font-black transition-all duration-200 ease-out relative select-none cursor-pointer ${
           isBooked
             ? 'bg-gradient-to-b from-rose-50 via-rose-100 to-rose-200 dark:from-rose-950/70 dark:to-rose-900/70 text-rose-950 dark:text-rose-200 border-2 border-rose-300 dark:border-rose-700 opacity-60 shadow-xs cursor-not-allowed'
@@ -451,10 +478,17 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
           }`}
         />
 
-        {/* Crisp Seat Number */}
-        <span className={`text-base sm:text-lg font-black tracking-tight leading-none font-mono ${isSelected ? 'text-white' : ''}`}>
-          {seat.seatNumber}
-        </span>
+        {/* Crisp Seat Number & Window Indicator */}
+        <div className="flex items-center justify-center gap-1 my-auto">
+          <span className={`text-base sm:text-lg font-black tracking-tight leading-none font-mono ${isSelected ? 'text-white' : ''}`}>
+            {seat.seatNumber}
+          </span>
+          {positionType === 'WINDOW' && (
+            <span className="text-[10px] opacity-75 select-none" title="জানালা (Window)">
+              🪟
+            </span>
+          )}
+        </div>
 
         {/* Fare / Status Pill */}
         <div
@@ -700,16 +734,16 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
 
                   return (
                     <div key={`row-${r}-${rowLabel}`} className="flex items-center justify-between gap-3">
-                      {/* Left Seats: Slot 1 & Slot 2 */}
+                      {/* Left Seats: Slot 1 (Window) & Slot 2 (Aisle) */}
                       <div className="flex items-center gap-2.5">
-                        {renderRealisticSeatButton(left1, false, rowSegment)}
-                        {renderRealisticSeatButton(left2, false, rowSegment)}
+                        {renderRealisticSeatButton(left1, false, rowSegment, 'WINDOW')}
+                        {renderRealisticSeatButton(left2, false, rowSegment, 'AISLE')}
                       </div>
 
                       {/* Middle Aisle Walkway OR 45-Seat Middle Seat (K3 on Row K) */}
                       <div className="flex-1 text-center font-mono flex items-center justify-center">
                         {center ? (
-                          renderRealisticSeatButton(center, true, rowSegment)
+                          renderRealisticSeatButton(center, true, rowSegment, 'MIDDLE')
                         ) : (
                           <div className="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 min-w-[3.75rem]">
                             <span className="text-sm sm:text-base font-black tracking-wider text-slate-800 dark:text-slate-100 leading-none">
@@ -724,10 +758,10 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
                         )}
                       </div>
 
-                      {/* Right Seats: Slot 3 & Slot 4 */}
+                      {/* Right Seats: Slot 3 (Aisle) & Slot 4 (Window) */}
                       <div className="flex items-center gap-2.5">
-                        {renderRealisticSeatButton(right1, false, rowSegment)}
-                        {renderRealisticSeatButton(right2, false, rowSegment)}
+                        {renderRealisticSeatButton(right1, false, rowSegment, 'AISLE')}
+                        {renderRealisticSeatButton(right2, false, rowSegment, 'WINDOW')}
                       </div>
                     </div>
                   );

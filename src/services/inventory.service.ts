@@ -1,6 +1,22 @@
 import { fastApiClient } from '@/lib/api-client';
 import { proxyUrl } from '@/lib/config';
 
+export interface SeatHoldInfo {
+  holdToken: string;
+  heldBy: string;
+  isMyHold: boolean;
+  expiresAt: string;
+  remainingSeconds: number;
+}
+
+export interface SeatLockInfo {
+  lockType: string;
+  reason: 'COUNTER_QUOTA' | 'STUDENT_BLOCKED' | 'VIP' | 'MAINTENANCE' | 'OTHER' | string;
+  notes?: string | null;
+  lockedUntil?: string | null;
+  lockedBy?: string | null;
+}
+
 export interface SeatStatusDetail {
   seatId: string;
   seatNumber: string;
@@ -37,9 +53,11 @@ export interface SeatStatusDetail {
     notes: string | null;
     lockedUntil: Date | null;
   } | null;
+  hold_info?: SeatHoldInfo | null;
+  lock_info?: SeatLockInfo | null;
 }
 
-export async function getTripSeatInventory(tripId: string, currentStaffId?: string): Promise<{
+export async function getTripSeatInventory(tripId: string, currentStaffId?: string, clientId?: string): Promise<{
   trip: any;
   seats: SeatStatusDetail[];
   summary: {
@@ -54,7 +72,7 @@ export async function getTripSeatInventory(tripId: string, currentStaffId?: stri
 }> {
   let rawData: any = null;
   try {
-    const res = await fastApiClient.getSeatMap(tripId);
+    const res = await fastApiClient.getSeatMap(tripId, clientId);
     if (res.success && res.data) {
       rawData = res.data;
     } else {
@@ -62,7 +80,7 @@ export async function getTripSeatInventory(tripId: string, currentStaffId?: stri
       const tripsRes = await fastApiClient.getTrips();
       if (tripsRes.success && tripsRes.data && tripsRes.data.length > 0) {
         const fallbackTrip = tripsRes.data[0];
-        const fbSeatMap = await fastApiClient.getSeatMap(fallbackTrip.id);
+        const fbSeatMap = await fastApiClient.getSeatMap(fallbackTrip.id, clientId);
         if (fbSeatMap.success && fbSeatMap.data) {
           rawData = fbSeatMap.data;
         }
@@ -115,6 +133,20 @@ export async function getTripSeatInventory(tripId: string, currentStaffId?: stri
         } : null),
         hold: s.hold || null,
         lock: s.lock || null,
+        hold_info: s.hold_info ? {
+          holdToken: s.hold_info.hold_token || 'HOLD',
+          heldBy: s.hold_info.held_by,
+          isMyHold: Boolean(s.hold_info.is_my_hold),
+          expiresAt: s.hold_info.expires_at,
+          remainingSeconds: Number(s.hold_info.remaining_seconds) || 0
+        } : null,
+        lock_info: s.lock_info ? {
+          lockType: s.lock_info.lock_type,
+          reason: s.lock_info.reason,
+          notes: s.lock_info.notes,
+          lockedUntil: s.lock_info.locked_until,
+          lockedBy: s.lock_info.locked_by
+        } : null,
       };
     });
 
@@ -214,17 +246,59 @@ export async function getTripSeatInventory(tripId: string, currentStaffId?: stri
   };
 }
 
-export async function holdSeat(tripId: string, seatId: string, staffId: string, durationMinutes: number = 10) {
-  const res = await fetch(proxyUrl(`/inventory/${tripId}/hold-seat?seat_id=${seatId}&duration_minutes=${durationMinutes}`), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    cache: 'no-store'
-  }).catch(() => null);
-  return res && res.ok ? { success: true } : { success: false };
+export async function acquireSeatHold(
+  tripId: string,
+  seatId: string,
+  clientId: string,
+  durationMinutes: number = 10
+): Promise<{ success: boolean; data?: any; error?: string }> {
+  try {
+    const res = await fetch(proxyUrl(`/inventory/${tripId}/acquire-seat-hold`), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Id': clientId
+      },
+      body: JSON.stringify({
+        seat_id: seatId,
+        client_id: clientId,
+        duration_minutes: durationMinutes
+      }),
+      cache: 'no-store'
+    });
+
+    const body = await res.json();
+    if (!res.ok) {
+      return { success: false, error: body.detail || 'সিটটি এইমাত্র অন্য একজন যাত্রী নির্বাচন করেছেন।' };
+    }
+    return { success: true, data: body };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'সিট হোল্ড সংযোগ ত্রুটি' };
+  }
 }
 
-export async function releaseSeatHold(tripId: string, seatId: string, staffId: string) {
-  const res = await fetch(proxyUrl(`/inventory/${tripId}/unlock-seat?seat_id=${seatId}`), {
+export async function releaseSeatHold(tripId: string, seatId: string, clientId?: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(proxyUrl(`/inventory/${tripId}/release-seat-hold`), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(clientId ? { 'X-Client-Id': clientId } : {})
+      },
+      body: JSON.stringify({
+        seat_id: seatId,
+        client_id: clientId
+      }),
+      cache: 'no-store'
+    });
+    return { success: res.ok };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function holdSeat(tripId: string, seatId: string, staffId: string, durationMinutes: number = 10) {
+  const res = await fetch(proxyUrl(`/inventory/${tripId}/hold-seat?seat_id=${seatId}&duration_minutes=${durationMinutes}`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     cache: 'no-store'

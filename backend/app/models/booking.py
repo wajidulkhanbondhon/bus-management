@@ -22,6 +22,7 @@ class Booking(Base):
     source = Column(String, default="COUNTER")  # "ONLINE", "COUNTER"
     contact_name = Column(String, nullable=True)
     contact_phone = Column(String, index=True, nullable=True)
+    contact_email = Column(String, index=True, nullable=True)
     passenger_gender = Column(String, nullable=True)
     is_student = Column(Boolean, default=False)
     student_admission_id = Column(String, nullable=True)
@@ -93,6 +94,7 @@ class BookingPassenger(Base):
     guardian_id = Column(String, ForeignKey("guardians.id"), nullable=True)
     passenger_name = Column(String, nullable=False)
     passenger_phone = Column(String, nullable=False)
+    passenger_email = Column(String, nullable=True)
     passenger_type = Column(String, nullable=False)  # "STUDENT", "GUARDIAN", "GUEST"
     gender = Column(String, nullable=False)          # "MALE", "FEMALE"
     seat_number = Column(String, nullable=False)

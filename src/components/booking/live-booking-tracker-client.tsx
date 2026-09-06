@@ -31,6 +31,7 @@ import { PrintTicketButton } from './print-ticket-button';
 import { PaymentReceiptModal } from './payment-receipt';
 import { PaymentGatewayModal } from './payment-gateway-modal';
 import { LiveBusMapModal } from './live-bus-map-modal';
+import { QRCodeView } from '@/components/common/qr-code';
 
 interface Props {
   initialBooking: any;
@@ -161,13 +162,12 @@ export function LiveBookingTrackerClient({ initialBooking }: Props) {
                     <span className="text-xs font-black text-slate-800 uppercase">ATOMS PASS</span>
                     <QrCode className="w-4 h-4 text-slate-400" />
                   </div>
-                  <Image
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(booking.bookingNumber)}&margin=10`}
-                    alt="Digital Ticket QR"
-                    width={128}
-                    height={128}
-                    className="w-32 h-32 rounded-lg"
-                  />
+                  <div className="p-1.5 bg-white rounded-lg border border-slate-200">
+                    <QRCodeView
+                      value={`${typeof window !== 'undefined' ? window.location.origin : ''}/track/${encodeURIComponent(booking.bookingNumber)}`}
+                      size={128}
+                    />
+                  </div>
                   <div className="mt-3 text-center">
                     <div className="text-xs text-slate-500 font-medium">Tracking Number</div>
                     <div className="text-sm font-black font-mono text-slate-900 mt-0.5">{booking.bookingNumber}</div>

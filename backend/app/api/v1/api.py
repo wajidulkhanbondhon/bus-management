@@ -20,7 +20,8 @@ from app.api.v1.endpoints import (
     honeypot,
     analytics,
     uploads,
-    recycle_bin
+    recycle_bin,
+    notifications
 )
 
 api_router = APIRouter()
@@ -45,6 +46,7 @@ api_router.include_router(ai_dashboard.router, prefix="/ai-dashboard", tags=["AI
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics & WebSockets"])
 api_router.include_router(uploads.router, prefix="/uploads", tags=["File & Media Uploads"])
 api_router.include_router(recycle_bin.router, prefix="/recycle-bin", tags=["Recycle Bin & Data Restore"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications & Message Logs"])
 
 # -----------------------------------------------------------------------------
 # HONEYPOT - FAKE ROUTES FOR SECURITY (MUST BE AT THE END OR SPECIFIC PATH)

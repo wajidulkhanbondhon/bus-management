@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -11,12 +11,18 @@ import { PaymentReceiptModal } from './payment-receipt';
 import {
   calculateDynamicAdjacentSeatLocks,
   validateMultiSeatBookingPairRules,
-  getAdjacentSeatNumber
 } from '@/services/rules.service';
 import { validateAndCalculateCoupon } from '@/services/coupon.service';
 import { recordPassengerInDirectory, lookupPassengerByPhone } from '@/services/passenger-directory.service';
+import {
+  isNetworkOnline,
+  enqueueOfflineBooking,
+  getPendingOfflineCount,
+  syncOfflineBookingsToServer,
+  initAutoOfflineSync
+} from '@/services/offline-sync.service';
 import { useApp } from '@/lib/context';
-import { Armchair, AlertCircle, Shield, ArrowLeft } from 'lucide-react';
+import { Armchair, AlertCircle, Shield, ArrowLeft, Wifi, WifiOff, RefreshCw, AlertTriangle } from 'lucide-react';
 import { StepIndicator, BookingSummaryBar, BOOKING_STEPS } from './step-indicator';
 import { TripSelectionStep } from './trip-selection-step';
 import { SeatSelectionStep } from './seat-selection-step';
@@ -151,6 +157,15 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
   const [extraSeats, setExtraSeats] = useState<any[]>([]);
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>(initialSeatId ? [initialSeatId] : []);
   const [isLoadingSeats, setIsLoadingSeats] = useState(false);
+  // Bumped to force a fresh seat-map fetch (e.g. when re-entering the seat
+  // step) so availability shown matches the server.
+  const [seatRefreshNonce, setSeatRefreshNonce] = useState(0);
+
+  // Refresh the seat map whenever the user lands back on the seat step.
+  useEffect(() => {
+    if (step === 2) setSeatRefreshNonce((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   const [passengers, setPassengers] = useState<PassengerInput[]>([]);
   const [suggestedPassengerMap, setSuggestedPassengerMap] = useState<Record<string, any>>({});
@@ -173,19 +188,99 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
   const [couponApplying, setCouponApplying] = useState(false);
   const [isStaffCouponModalOpen, setIsStaffCouponModalOpen] = useState(false);
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('BKASH');
-  const [senderSourceType, setSenderSourceType] = useState<SenderSourceType>('MFS_WALLET');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('HAND_CASH');
+  const [senderSourceType, setSenderSourceType] = useState<SenderSourceType>('CASH_RECEIPT');
   const [selectedBankName, setSelectedBankName] = useState<string>('');
   const [paidAmount, setPaidAmount] = useState<number>(0);
   const [transactionId, setTransactionId] = useState<string>('');
   const [senderRef, setSenderRef] = useState<string>('');
   const [bookingNotes, setBookingNotes] = useState<string>('');
+  const [duePromiseDate, setDuePromiseDate] = useState<string>('যাত্রার দিন বোর্ডিং কাউন্টারে');
+  const [dueNote, setDueNote] = useState<string>('');
   const [confirmedBookingForReceipt, setConfirmedBookingForReceipt] = useState<any | null>(null);
+
+  const selectedTrip = trips.find((t) => t.id === selectedTripId) || trips[0];
+
+  // Sync default due date with trip departure date
+  useEffect(() => {
+    if (selectedTrip?.departureDate) {
+      setDuePromiseDate(selectedTrip.departureDate);
+    }
+  }, [selectedTrip?.departureDate]);
+
+  // Pre-fill passenger phone for cash payments
+  useEffect(() => {
+    if (paymentMethod === 'HAND_CASH') {
+      const pPhone = passengers[0]?.passengerPhone?.trim();
+      if (pPhone && (!senderRef || senderRef === 'কাউন্টার নগদ ক্যাশ' || senderRef === 'CASH-COUNTER' || senderRef === 'CASH-COUNTER-OFFICE')) {
+        setSenderRef(pPhone);
+      }
+    }
+  }, [paymentMethod, passengers, senderRef]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const selectedTrip = trips.find((t) => t.id === selectedTripId) || trips[0];
+  // ── Offline Booking & Auto-Sync State ──────────────────────
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(0);
+  const [isSyncingOffline, setIsSyncingOffline] = useState<boolean>(false);
+  const [offlineSyncMessage, setOfflineSyncMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsOnline(navigator.onLine);
+      setPendingOfflineCount(getPendingOfflineCount());
+
+      const handleOnline = () => {
+        setIsOnline(true);
+        setPendingOfflineCount(getPendingOfflineCount());
+      };
+      const handleOffline = () => {
+        setIsOnline(false);
+        setPendingOfflineCount(getPendingOfflineCount());
+      };
+
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+
+      const cleanup = initAutoOfflineSync((res) => {
+        setPendingOfflineCount(getPendingOfflineCount());
+        if (res.syncedCount > 0) {
+          setOfflineSyncMessage(`${res.syncedCount}টি অফলাইন বুকিং স্বয়ংক্রিয়ভাবে সার্ভারে সিঙ্ক হয়েছে!`);
+          setTimeout(() => setOfflineSyncMessage(null), 5000);
+        }
+      });
+
+      return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+        if (cleanup) cleanup();
+      };
+    }
+  }, []);
+
+  const handleManualSync = async () => {
+    if (isSyncingOffline) return;
+    setIsSyncingOffline(true);
+    try {
+      const res = await syncOfflineBookingsToServer();
+      setPendingOfflineCount(getPendingOfflineCount());
+      if (res.syncedCount > 0) {
+        setOfflineSyncMessage(`সফলভাবে ${res.syncedCount}টি বুকিং সিঙ্ক সম্পন্ন হয়েছে!`);
+      } else if (res.conflictCount > 0) {
+        setOfflineSyncMessage(`${res.conflictCount}টি বুকিংয়ে সিট কনফ্লিক্ট হয়েছে।`);
+      } else {
+        setOfflineSyncMessage('কোনো নতুন অফলাইন রেকর্ড সিঙ্কের বাকি নেই।');
+      }
+      setTimeout(() => setOfflineSyncMessage(null), 5000);
+    } catch (e: any) {
+      setOfflineSyncMessage('সিঙ্ক করতে সমস্যা হয়েছে।');
+      setTimeout(() => setOfflineSyncMessage(null), 5000);
+    } finally {
+      setIsSyncingOffline(false);
+    }
+  };
 
   const [liveLayouts, setLiveLayouts] = useState<any[]>(savedLayouts || []);
 
@@ -233,7 +328,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
     []
   );
 
-  // ── Layout auto-detection from trip ─────────────────────────
+  // ── Layout auto-detection from trip (100% Dynamic) ─────────────────────────
   useEffect(() => {
     if (!selectedTrip) return;
     const matchedLayout = resolveLayout(selectedTrip, liveLayouts);
@@ -246,31 +341,34 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
       const layoutGrid = matchedLayout.layoutGrid || parsedJson?.layoutGrid;
       const layoutExtraSeats = matchedLayout.extraSeats || parsedJson?.extraSeats || [];
       const layoutSegments = matchedLayout.activeSegments || parsedJson?.activeSegments;
-      const layoutUni = matchedLayout.university || parsedJson?.university || selectedTrip.targetUniversity || '';
+      const layoutUni = matchedLayout.university || parsedJson?.university || selectedTrip.targetUniversity || selectedTrip.bus?.targetUniversity || '';
       const layoutCapacity = matchedLayout.totalSeats || matchedLayout.seatCount || matchedLayout.capacity || (Array.isArray(layoutGrid) ? layoutGrid.flat().filter((c: any) => c && (c.type === 'SEAT' || c.seatType === 'SEAT')).length + layoutExtraSeats.length : undefined) || selectedTrip.bus?.capacity || 45;
 
       if (layoutUni) setTargetUniversity(layoutUni);
       if (layoutCapacity) setActiveCapacity(layoutCapacity);
       if (layoutSegments && Array.isArray(layoutSegments) && layoutSegments.length > 0) {
         setActiveSegments(layoutSegments);
+        return;
       }
-      return;
     }
 
-    const dest = (selectedTrip.route?.destination || selectedTrip.route?.routeName || selectedTrip.bus?.busName || selectedTrip.bus?.targetUniversity || '').toLowerCase();
+    // Dynamic resolution for trips without pre-configured custom segment records
+    const targetUni = selectedTrip.targetUniversity || selectedTrip.bus?.targetUniversity || selectedTrip.route?.destination || 'বিশ্ববিদ্যালয় ভর্তি কেন্দ্র';
+    const tripCap = Number(selectedTrip.bus?.capacity) || 45;
+    const baseFare = Number(selectedTrip.basePrice) || 550;
+    const maxFare = Number(selectedTrip.maxPrice) || (baseFare >= 600 ? baseFare + 100 : baseFare + 50);
 
-    let matchedPreset = universityPresets[0];
-    if (dest.includes('rajshahi') || dest.includes('ru')) matchedPreset = universityPresets.find((u) => u.id === 'RU') || universityPresets[0];
-    else if (dest.includes('chittagong') || dest.includes('cu')) matchedPreset = universityPresets.find((u) => u.id === 'CU') || universityPresets[1];
-    else if (dest.includes('dhaka') || dest.includes('du')) matchedPreset = universityPresets.find((u) => u.id === 'DU') || universityPresets[2];
-    else if (dest.includes('gst') || dest.includes('cluster') || dest.includes('গুচ্ছ')) matchedPreset = universityPresets.find((u) => u.id === 'GST') || universityPresets[3];
-    else if (dest.includes('jahangirnagar') || dest.includes('ju')) matchedPreset = universityPresets.find((u) => u.id === 'JU') || universityPresets[4];
-    else if (dest.includes('kuet') || dest.includes('khulna')) matchedPreset = universityPresets.find((u) => u.id === 'KUET') || universityPresets[5];
-    else if (dest.includes('sust') || dest.includes('sylhet')) matchedPreset = universityPresets.find((u) => u.id === 'SUST') || universityPresets[6];
+    // Build dynamic segments tailored to the trip's actual pricing and fleet capacity
+    const dynamicSegments: FareRangeSegment[] = [
+      { id: 'seg-1', name: 'Front VIP (A–E)', startRow: 'A', endRow: 'E', fare: maxFare, color: 'emerald' },
+      { id: 'seg-2', name: 'Standard Middle (F–H)', startRow: 'F', endRow: 'H', fare: baseFare, color: 'blue' },
+      { id: 'seg-3', name: 'Rear Economy (I–J)', startRow: 'I', endRow: 'J', fare: Math.max(300, baseFare - 50), color: 'purple' },
+      ...(tripCap === 45 || tripCap === 42 ? [{ id: 'seg-4', name: 'Last Row Bench (K)', startRow: 'K', endRow: 'K', fare: Math.max(300, baseFare - 100), color: 'amber' as const }] : [])
+    ];
 
-    setTargetUniversity(matchedPreset.name);
-    setActiveCapacity(matchedPreset.capacity);
-    setActiveSegments(matchedPreset.segments);
+    setTargetUniversity(targetUni);
+    setActiveCapacity(tripCap);
+    setActiveSegments(dynamicSegments);
   }, [selectedTripId, selectedTrip, liveLayouts, resolveLayout]);
 
   // ── Seat inventory fetch ────────────────────────────────────
@@ -443,64 +541,207 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         let finalSeats = baseInventory.seats;
         let finalExtras = baseInventory.extras;
 
+        // Extract active booked seats from allBookings as a fail-safe against stale inventory caches
+        const activeTripBookings = (allBookings || []).filter((b: any) => {
+          const bTripId = b.tripId || b.trip_id;
+          const status = (b.bookingStatus || b.booking_status || b.status || '').toUpperCase();
+          const isTrip = bTripId === selectedTripId;
+          const isActive = ['CONFIRMED', 'COMPLETED', 'PAYMENT_TIMER_ACTIVE', 'PRE_BOOKED', 'HELD'].includes(status);
+          return isTrip && isActive;
+        });
+
+        const bookedSeatsFromBookings = new Map<string, any>();
+        activeTripBookings.forEach((b: any) => {
+          const pName = b.contactName || b.contact_name || b.passengerName || b.passenger_name;
+          const pPhone = b.contactPhone || b.contact_phone || b.passengerPhone || b.passenger_phone;
+          const pGender = b.passengerGender || b.passenger_gender || b.gender;
+          const dataObj = { booking: b, passengerName: pName, passengerPhone: pPhone, passengerGender: pGender };
+
+          if (Array.isArray(b.seats)) {
+            b.seats.forEach((st: any) => {
+              const num = (st.seatNumber || st.seat_number || '').toString().trim().toUpperCase();
+              const sId = (st.seatId || st.seat_id || '').toString().trim().toUpperCase();
+              const sSuffix = sId ? sId.split('-').pop() || '' : '';
+              if (num) bookedSeatsFromBookings.set(num, dataObj);
+              if (sId) bookedSeatsFromBookings.set(sId, dataObj);
+              if (sSuffix) bookedSeatsFromBookings.set(sSuffix, dataObj);
+            });
+          }
+          if (Array.isArray(b.passengers)) {
+            b.passengers.forEach((ps: any) => {
+              const num = (ps.seatNumber || ps.seat_number || '').toString().trim().toUpperCase();
+              const sId = (ps.seatId || ps.seat_id || '').toString().trim().toUpperCase();
+              const sSuffix = sId ? sId.split('-').pop() || '' : '';
+              const pObj = {
+                booking: b,
+                passengerName: ps.passengerName || ps.passenger_name || pName,
+                passengerPhone: ps.passengerPhone || ps.passenger_phone || pPhone,
+                passengerGender: ps.gender || pGender
+              };
+              if (num) bookedSeatsFromBookings.set(num, pObj);
+              if (sId) bookedSeatsFromBookings.set(sId, pObj);
+              if (sSuffix) bookedSeatsFromBookings.set(sSuffix, pObj);
+            });
+          }
+        });
+
+        const seatDataMap = new Map<string, any>();
         if (data && data.seats && Array.isArray(data.seats) && data.seats.length > 0) {
-          const seatDataMap = new Map<string, any>();
           data.seats.forEach((s: any) => {
-            const raw = (s.seatNumber || s.seat_number || s.label || s.seatId || '').toString().trim().toUpperCase();
-            if (raw) seatDataMap.set(raw, s);
-          });
-
-          finalSeats = finalSeats.map((s: any) => {
-            const bSeat = seatDataMap.get(s.seatNumber);
-            if (!bSeat) return s;
-            const phone = bSeat.passenger_phone || bSeat.contact_phone || bSeat.passengerPhone || bSeat.booking?.contactPhone || bSeat.booking?.passengerPhone;
-            const gender = bSeat.gender || bSeat.passengerGender || bSeat.booking?.passengerGender;
-            return {
-              ...s,
-              status: (bSeat.status || 'AVAILABLE').toUpperCase(),
-              passengerPhone: phone,
-              passenger_phone: phone,
-              passengerGender: gender,
-              booking: {
-                ...s.booking,
-                passengerPhone: phone,
-                contactPhone: phone,
-                passengerGender: gender
-              }
-            };
-          });
-
-          finalExtras = finalExtras.map((s: any) => {
-            const bSeat = seatDataMap.get(s.seatNumber);
-            if (!bSeat) return s;
-            const phone = bSeat.passenger_phone || bSeat.contact_phone || bSeat.passengerPhone || bSeat.booking?.contactPhone || bSeat.booking?.passengerPhone;
-            const gender = bSeat.gender || bSeat.passengerGender || bSeat.booking?.passengerGender;
-            return {
-              ...s,
-              status: (bSeat.status || 'AVAILABLE').toUpperCase(),
-              passengerPhone: phone,
-              passenger_phone: phone,
-              passengerGender: gender,
-              booking: {
-                ...s.booking,
-                passengerPhone: phone,
-                contactPhone: phone,
-                passengerGender: gender
-              }
-            };
+            const num = (s.seatNumber || s.seat_number || s.label || '').toString().trim().toUpperCase();
+            const sId = (s.seatId || s.seat_id || s.id || '').toString().trim().toUpperCase();
+            const sSuffix = sId ? sId.split('-').pop() || '' : '';
+            if (num) seatDataMap.set(num, s);
+            if (sId) seatDataMap.set(sId, s);
+            if (sSuffix) seatDataMap.set(sSuffix, s);
           });
         }
 
+        finalSeats = finalSeats.map((s: any) => {
+          const sNum = (s.seatNumber || s.seat_number || '').toString().trim().toUpperCase();
+          const sId = (s.seatId || s.seat_id || s.id || '').toString().trim().toUpperCase();
+          const sSuffix = sId ? sId.split('-').pop() || '' : '';
+
+          const bSeat = (sNum ? seatDataMap.get(sNum) : null)
+            || (sId ? seatDataMap.get(sId) : null)
+            || (sSuffix ? seatDataMap.get(sSuffix) : null);
+
+          const bProp = (sNum ? bookedSeatsFromBookings.get(sNum) : null)
+            || (sId ? bookedSeatsFromBookings.get(sId) : null)
+            || (sSuffix ? bookedSeatsFromBookings.get(sSuffix) : null);
+
+          if (!bSeat && !bProp) return s;
+
+          const phone = bSeat?.passenger_phone || bSeat?.contact_phone || bSeat?.passengerPhone || bSeat?.booking?.contactPhone || bSeat?.booking?.passengerPhone || bProp?.passengerPhone;
+          const gender = bSeat?.gender || bSeat?.passengerGender || bSeat?.booking?.passengerGender || bProp?.passengerGender;
+          const name = bSeat?.passenger_name || bSeat?.contact_name || bSeat?.passengerName || bSeat?.booking?.contactName || bProp?.passengerName;
+
+          let finalStatus = (bSeat?.status || (bProp ? 'BOOKED' : 'AVAILABLE')).toUpperCase();
+          if (bProp && finalStatus === 'AVAILABLE') {
+            finalStatus = 'BOOKED';
+          }
+
+          return {
+            ...s,
+            status: finalStatus,
+            passengerName: name,
+            passenger_name: name,
+            passengerPhone: phone,
+            passenger_phone: phone,
+            passengerGender: gender,
+            booking: {
+              ...(s.booking || {}),
+              ...(bSeat?.booking || bProp?.booking || {}),
+              passengerName: name,
+              passengerPhone: phone,
+              contactPhone: phone,
+              passengerGender: gender
+            }
+          };
+        });
+
+        finalExtras = finalExtras.map((s: any) => {
+          const sNum = (s.seatNumber || s.seat_number || '').toString().trim().toUpperCase();
+          const sId = (s.seatId || s.seat_id || s.id || '').toString().trim().toUpperCase();
+          const sSuffix = sId ? sId.split('-').pop() || '' : '';
+
+          const bSeat = (sNum ? seatDataMap.get(sNum) : null)
+            || (sId ? seatDataMap.get(sId) : null)
+            || (sSuffix ? seatDataMap.get(sSuffix) : null);
+
+          const bProp = (sNum ? bookedSeatsFromBookings.get(sNum) : null)
+            || (sId ? bookedSeatsFromBookings.get(sId) : null)
+            || (sSuffix ? bookedSeatsFromBookings.get(sSuffix) : null);
+
+          if (!bSeat && !bProp) return s;
+
+          const phone = bSeat?.passenger_phone || bSeat?.contact_phone || bSeat?.passengerPhone || bSeat?.booking?.contactPhone || bSeat?.booking?.passengerPhone || bProp?.passengerPhone;
+          const gender = bSeat?.gender || bSeat?.passengerGender || bSeat?.booking?.passengerGender || bProp?.passengerGender;
+          const name = bSeat?.passenger_name || bSeat?.contact_name || bSeat?.passengerName || bSeat?.booking?.contactName || bProp?.passengerName;
+
+          let finalStatus = (bSeat?.status || (bProp ? 'BOOKED' : 'AVAILABLE')).toUpperCase();
+          if (bProp && finalStatus === 'AVAILABLE') {
+            finalStatus = 'BOOKED';
+          }
+
+          return {
+            ...s,
+            status: finalStatus,
+            passengerName: name,
+            passenger_name: name,
+            passengerPhone: phone,
+            passenger_phone: phone,
+            passengerGender: gender,
+            booking: {
+              ...(s.booking || {}),
+              ...(bSeat?.booking || bProp?.booking || {}),
+              passengerName: name,
+              passengerPhone: phone,
+              contactPhone: phone,
+              passengerGender: gender
+            }
+          };
+        });
+
         setTripSeats(finalSeats);
         setExtraSeats(finalExtras);
+
+        // Filter out any already-booked or held seats from current selection
+        const allLoaded = [...finalSeats, ...finalExtras];
+        setSelectedSeatIds((prev) => {
+          return prev.filter((id) => {
+            const st = allLoaded.find((s: any) => s.seatId === id);
+            return st && st.status === 'AVAILABLE';
+          });
+        });
+
+        // Normalize and resolve any initial seat tokens from URL / modal
+        const rawInitialSeat = initialParams?.seatId || searchParams.get('seatId') || '';
+        if (rawInitialSeat) {
+          const tokens = rawInitialSeat.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
+          const matchedSeats = allLoaded.filter((s: any) => {
+            const sNum = (s.seatNumber || s.label || '').toUpperCase();
+            const sId = (s.seatId || '').toUpperCase();
+            return tokens.includes(sNum) || tokens.includes(sId);
+          });
+
+          const availableMatched = matchedSeats
+            .filter((s: any) => s.status === 'AVAILABLE')
+            .map((s: any) => s.seatId);
+
+          const alreadyBooked = matchedSeats.filter((s: any) => s.status !== 'AVAILABLE');
+          if (alreadyBooked.length > 0) {
+            const bookedNames = alreadyBooked.map((s: any) => s.seatNumber || s.seatId).join(', ');
+            setErrorMessage(`⚠️ সিট ${bookedNames} ইতিমধ্যে বুকড বা সংরক্ষিত রয়েছে। অনুগ্রহ করে অন্য কোনো খালি আসন নির্বাচন করুন।`);
+          }
+
+          if (availableMatched.length > 0) {
+            setSelectedSeatIds((prev) => Array.from(new Set([...prev, ...availableMatched])).slice(0, 6));
+          }
+        }
       })
       .catch(() => {
         const baseInventory = hasCustomLayoutGrid ? generateFromLayout() : generateFallbackSeats();
         setTripSeats(baseInventory.seats);
         setExtraSeats(baseInventory.extras);
+
+        const rawInitialSeat = initialParams?.seatId || searchParams.get('seatId') || '';
+        if (rawInitialSeat) {
+          const tokens = rawInitialSeat.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
+          const allLoaded = [...baseInventory.seats, ...baseInventory.extras];
+          const matchedSeats = allLoaded.filter((s: any) => {
+            const sNum = (s.seatNumber || s.label || '').toUpperCase();
+            const sId = (s.seatId || '').toUpperCase();
+            return tokens.includes(sNum) || tokens.includes(sId);
+          });
+          const availableMatched = matchedSeats.filter((s: any) => s.status === 'AVAILABLE').map((s: any) => s.seatId);
+          if (availableMatched.length > 0) {
+            setSelectedSeatIds((prev) => Array.from(new Set([...prev, ...availableMatched])).slice(0, 6));
+          }
+        }
       })
       .finally(() => setIsLoadingSeats(false));
-  }, [selectedTripId, activeCapacity, activeSegments, getSegmentForRow, parseSeatPosition, trips, rowLetters, liveLayouts, resolveLayout]);
+  }, [selectedTripId, activeCapacity, activeSegments, getSegmentForRow, parseSeatPosition, trips, rowLetters, liveLayouts, resolveLayout, allBookings, initialParams?.seatId, searchParams, seatRefreshNonce]);
 
   // ── Passenger list sync with selected seats ────────────────
   useEffect(() => {
@@ -537,6 +778,32 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
 
   const dynamicAdjacentLocks = useMemo(() => calculateDynamicAdjacentSeatLocks(allCurrentSeats), [allCurrentSeats]);
 
+  // Drop any selection whose seat is no longer AVAILABLE (e.g. it became
+  // booked/held after a seat-map refresh) so the user can't continue on a
+  // seat that is gone. Skips runs where the map is still loading/empty so a
+  // URL-preselected seat is not dropped before seats arrive.
+  const removedSeatCountRef = useRef(0);
+  useEffect(() => {
+    if (isLoadingSeats) return;
+    if (allCurrentSeats.length === 0) return;
+    const unavailable = new Set(
+      allCurrentSeats
+        .filter((s) => (s.status || '').toUpperCase() !== 'AVAILABLE')
+        .map((s) => s.seatId)
+    );
+    const stillSelected = selectedSeatIds.filter((id) => !unavailable.has(id));
+    if (stillSelected.length !== selectedSeatIds.length) {
+      removedSeatCountRef.current += selectedSeatIds.length - stillSelected.length;
+      setSelectedSeatIds(stillSelected);
+      setErrorMessage(
+        language === 'bn'
+          ? `আপনার নির্বাচিত ${removedSeatCountRef.current}টি সিট এইমাত্র অন্য কারো বুকিং/হোল্ড হয়ে গেছে। অনুগ্রহ করে নতুন সিট নির্বাচন করুন।`
+          : `${removedSeatCountRef.current} of your selected seat(s) were just booked/held. Please choose again.`
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripSeats, extraSeats, isLoadingSeats]);
+
   // ── Financial calculations ──────────────────────────────────
   const hasHotelPackageOption = useMemo(() => {
     const notes = selectedTrip?.bus?.notes || selectedTrip?.notes || '';
@@ -568,13 +835,19 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
   const netAmount = Math.max(0, grossAmount - discountAmount);
   const dueAmount = Math.max(0, netAmount - paidAmount);
 
+  const hasInitializedPaidStep5 = useRef(false);
   useEffect(() => {
-    if (step === 5 && paidAmount === 0) {
-      setPaidAmount(netAmount);
+    if (step === 5) {
+      if (!hasInitializedPaidStep5.current) {
+        setPaidAmount(netAmount);
+        hasInitializedPaidStep5.current = true;
+      }
+    } else {
+      hasInitializedPaidStep5.current = false;
     }
-  }, [step, netAmount, paidAmount]);
+  }, [step, netAmount]);
 
-  // ── Seat selection toggle ───────────────────────────────────
+  // ── Seat selection toggle with Optimistic Live Hold ─────────────────────────
   const toggleSeatSelection = useCallback(
     (seatId: string, status: string) => {
       if (status !== 'AVAILABLE') return;
@@ -594,14 +867,47 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
 
       if (selectedSeatIds.includes(seatId)) {
         setSelectedSeatIds((prev) => prev.filter((id) => id !== seatId));
+        // Release live hold on server
+        if (selectedTripId && seatNum && isOnline) {
+          fetch(`/api/backend/inventory/${selectedTripId}/seat-hold`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ seatIds: [seatNum] })
+          }).catch(() => {});
+        }
       } else {
+        if (selectedSeatIds.length >= 6) {
+          setErrorMessage(
+            language === 'bn'
+              ? '⚠️ এক সাথে সর্বোচ্চ ৬টির বেশি টিকিট বুকিং করা যাবে না (A4 সিঙ্গেল-পেজ প্রিন্ট নীতি অনুযায়ী)।'
+              : 'Maximum 6 seats per booking allowed to ensure single-page A4 ticket fit.'
+          );
+          return;
+        }
+
         setSelectedSeatIds((prev) => [...prev, seatId]);
+        // Acquire live hold on server for 10 minutes
+        if (selectedTripId && seatNum && isOnline) {
+          fetch(`/api/backend/inventory/${selectedTripId}/seat-hold`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ seatIds: [seatNum], durationSeconds: 600 })
+          }).catch(() => {});
+        }
       }
     },
-    [allCurrentSeats, dynamicAdjacentLocks, language, selectedSeatIds]
+    [allCurrentSeats, dynamicAdjacentLocks, language, selectedSeatIds, selectedTripId, isOnline]
   );
 
   const handleAddExtraSeat = useCallback(() => {
+    if (selectedSeatIds.length >= 6) {
+      setErrorMessage(
+        language === 'bn'
+          ? '⚠️ এক সাথে সর্বোচ্চ ৬টির বেশি টিকিট বুকিং করা যাবে না (A4 সিঙ্গেল-পেজ প্রিন্ট নীতি অনুযায়ী)।'
+          : 'Maximum 6 seats per booking allowed.'
+      );
+      return;
+    }
     const nextIdx = extraSeats.length + 1;
     const newExtra = {
       seatId: `seat-${selectedTrip?.id || 'trip'}-EX-${nextIdx}`,
@@ -711,6 +1017,29 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
     setIsSubmitting(true);
     setErrorMessage(null);
 
+    // Revalidate that every still-selected seat is currently AVAILABLE on the
+    // latest seat map before allowing the server call (guards against a seat
+    // being taken while the wizard sat on a later step).
+    const staleIds = selectedSeatIds.filter((sId) => {
+      const s = allCurrentSeats.find((c) => c.seatId === sId);
+      if (!s) return true; // no longer on the map
+      return (s.status || '').toUpperCase() !== 'AVAILABLE';
+    });
+    if (staleIds.length > 0) {
+      const staleLabels = staleIds
+        .map((id) => allCurrentSeats.find((c) => c.seatId === id)?.seatNumber || id)
+        .join(', ');
+      setSelectedSeatIds((prev) => prev.filter((id) => !staleIds.includes(id)));
+      setErrorMessage(
+        language === 'bn'
+          ? `সিট ${staleLabels} এইমাত্র অন্য কারো বুকিং/হোল্ড হয়ে গেছে। অনুগ্রহ করে অন্য সিট নির্বাচন করুন।`
+          : `Seat(s) ${staleLabels} were just booked/held by someone else. Please pick another seat.`
+      );
+      setIsSubmitting(false);
+      setStep(2);
+      return;
+    }
+
     const bdPhoneRegex = /^01[3-9]\d{8}$/;
     for (let i = 0; i < passengers.length; i++) {
       const p = passengers[i];
@@ -814,35 +1143,156 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         ? `${selectedBankName} [${effectiveSenderRef}]`
         : effectiveSenderRef;
 
-      const res = await createBookingAction({
-        tripId: selectedTripId,
-        seats: seatsPayload,
-        passengers,
-        journeyType,
-        boardingPoint: boardingPoint || undefined,
-        droppingPoint: droppingPoint || undefined,
-        passengerLegsJson: journeyType === 'ASYMMETRIC' ? JSON.stringify(seatLegs) : undefined,
-        isDiscountApplied: discountState.isDiscountApplied,
-        discountType: discountState.isDiscountApplied && discountAmount > 0 ? discountState.discountType : undefined,
-        discountRate: discountState.isDiscountApplied && discountAmount > 0 ? discountState.discountRate : undefined,
-        discountReason: discountState.isDiscountApplied && discountAmount > 0 ? discountState.discountReason : undefined,
-        discountReference: discountState.isDiscountApplied && discountAmount > 0 ? discountState.discountReference : undefined,
-        paymentMethod,
-        paidAmount,
-        transactionId: transactionId.trim() || undefined,
-        senderReference: finalSenderRef,
-        notes: bookingNotes || `যাত্রার ধরণ: ${
-          journeyType === 'ROUND_TRIP'
-            ? 'উভয়মুখী (যাওয়া ও আসা)'
-            : journeyType === 'OUTBOUND_ONLY'
-            ? 'শুধুমাত্র যাওয়া'
-            : journeyType === 'RETURN_ONLY'
-            ? 'শুধুমাত্র আসা'
-            : 'অভিভাবক সহ স্প্লিট'
-        } | বোর্ডিং: ${boardingPoint} | ড্রপিং: ${droppingPoint}`
-      });
+      const calcDue = Math.max(0, netAmount - paidAmount);
+      const effectiveDueDate = duePromiseDate || selectedTrip?.departureDate || 'যাত্রার দিন কাউন্টারে';
+      const dueNoteStr = calcDue > 0
+        ? ` | বকেয়া: ৳${calcDue} (পরিশোধের শেষ সময়: ${effectiveDueDate}${dueNote ? `, নোট: ${dueNote}` : ''})`
+        : '';
 
-      if (res.success && res.booking) {
+      const generatedNotes = bookingNotes || `যাত্রার ধরণ: ${
+        journeyType === 'ROUND_TRIP'
+          ? 'উভয়মুখী (যাওয়া ও আসা)'
+          : journeyType === 'OUTBOUND_ONLY'
+          ? 'শুধুমাত্র যাওয়া'
+          : journeyType === 'RETURN_ONLY'
+          ? 'শুধুমাত্র আসা'
+          : 'অভিভাবক সহ স্প্লিট'
+      } | বোর্ডিং: ${boardingPoint} | ড্রপিং: ${droppingPoint}`;
+
+      const finalNotes = `${generatedNotes}${dueNoteStr}`;
+
+      let isOffline = !isNetworkOnline();
+      let res: any = null;
+
+      if (!isOffline) {
+        try {
+          res = await createBookingAction({
+            tripId: selectedTripId,
+            seats: seatsPayload,
+            passengers,
+            contactName: passengers[0]?.passengerName || undefined,
+            contactPhone: passengers[0]?.passengerPhone || undefined,
+            contactEmail: passengers[0]?.email || undefined,
+            journeyType,
+            boardingPoint: boardingPoint || undefined,
+            droppingPoint: droppingPoint || undefined,
+            passengerLegsJson: journeyType === 'ASYMMETRIC' ? JSON.stringify(seatLegs) : undefined,
+            isDiscountApplied: discountState.isDiscountApplied,
+            discountType: discountState.isDiscountApplied && discountAmount > 0 ? discountState.discountType : undefined,
+            discountRate: discountState.isDiscountApplied && discountAmount > 0 ? discountState.discountRate : undefined,
+            discountReason: discountState.isDiscountApplied && discountAmount > 0 ? discountState.discountReason : undefined,
+            discountReference: discountState.isDiscountApplied && discountAmount > 0 ? discountState.discountReference : undefined,
+            paymentMethod,
+            paidAmount,
+            transactionId: transactionId.trim() || undefined,
+            senderReference: finalSenderRef,
+            notes: finalNotes
+          });
+        } catch (netErr: any) {
+          isOffline = true;
+        }
+      }
+
+      // Offline Fallback: Seamlessly save booking locally when network drops
+      if (
+        isOffline ||
+        (res &&
+          !res.success &&
+          typeof res.error === 'string' &&
+          (res.error.toLowerCase().includes('fetch failed') ||
+            res.error.toLowerCase().includes('network') ||
+            res.error.toLowerCase().includes('failed to fetch') ||
+            res.error.toLowerCase().includes('offline')))
+      ) {
+        const offlineRecord = enqueueOfflineBooking({
+          tripId: selectedTripId,
+          tripCode: selectedTrip?.tripCode,
+          busNumber: selectedTrip?.bus?.busNumber,
+          seats: seatsPayload.map((s) => ({
+            seat_id: s.seatId,
+            seat_number: allCurrentSeats.find((cs) => cs.seatId === s.seatId)?.seatNumber || s.seatId,
+            fare: s.fare
+          })),
+          passengers: passengers.map((p) => ({
+            passenger_name: p.passengerName,
+            passenger_phone: p.passengerPhone,
+            seat_id: p.seatId,
+            seat_number: allCurrentSeats.find((cs) => cs.seatId === p.seatId)?.seatNumber || p.seatId,
+            gender: p.gender,
+            passenger_type: p.passengerType,
+            admission_id: p.admissionId,
+            guardian_phone: p.guardianPhone,
+            guardian_relationship: p.guardianRelationship,
+            has_whatsapp: p.hasWhatsapp
+          })),
+          journey_type: journeyType,
+          boarding_point: boardingPoint,
+          dropping_point: droppingPoint,
+          payment_method: paymentMethod,
+          paid_amount: paidAmount,
+          due_amount: Math.max(0, netAmount - paidAmount),
+          notes: finalNotes
+        });
+
+        setPendingOfflineCount(getPendingOfflineCount());
+
+        passengers.forEach((p) => {
+          if (p.passengerName && p.passengerPhone) {
+            recordPassengerInDirectory({
+              name: p.passengerName.trim(),
+              phone: p.passengerPhone.trim(),
+              gender: p.gender,
+              passengerType: p.passengerType,
+              admissionId: p.admissionId,
+              institution: p.institution,
+              guardianPhone: p.guardianPhone,
+              guardianRelationship: p.guardianRelationship
+            });
+          }
+        });
+
+        const fullBookingData = {
+          id: offlineRecord.localId,
+          bookingNumber: offlineRecord.localId,
+          isOffline: true,
+          offlineRefId: offlineRecord.localId,
+          syncStatus: 'PENDING',
+          trip: selectedTrip,
+          duePromiseDate: effectiveDueDate,
+          dueNote: dueNote,
+          notes: `[অফলাইন মোড] ${finalNotes}`,
+          passengers: passengers.map((p) => ({
+            ...p,
+            seatNumber: allCurrentSeats.find((s) => s.seatId === p.seatId)?.seatNumber || p.seatId,
+            fareSnapshot: allCurrentSeats.find((s) => s.seatId === p.seatId)?.fare || selectedTrip?.basePrice || 550
+          })),
+          payments: [
+            {
+              id: 'pmt-receipt-offline',
+              receiptNumber: generateReceiptNumber(Math.floor(Math.random() * 9000) + 1000),
+              amount: paidAmount,
+              method: paymentMethod,
+              createdAt: new Date(),
+              transactions: [
+                {
+                  transactionId: transactionId.trim() || finalSenderRef || 'OFFLINE-CASH-RECEIPT',
+                  verificationStatus: 'OFFLINE_SAVED'
+                }
+              ]
+            }
+          ],
+          grossAmount,
+          discountAmount,
+          netAmount,
+          paidAmount,
+          dueAmount: Math.max(0, netAmount - paidAmount),
+          paymentStatus: paidAmount >= netAmount ? 'PAID' : paidAmount > 0 ? 'PARTIAL' : 'UNPAID'
+        };
+        setConfirmedBookingForReceipt(fullBookingData);
+        return;
+      }
+
+      if (res && res.success && res.booking) {
         passengers.forEach((p) => {
           if (p.passengerName && p.passengerPhone) {
             recordPassengerInDirectory({
@@ -860,6 +1310,9 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         const fullBookingData = {
           ...res.booking,
           trip: selectedTrip,
+          duePromiseDate: effectiveDueDate,
+          dueNote: dueNote,
+          notes: finalNotes,
           passengers: passengers.map((p) => ({
             ...p,
             seatNumber: allCurrentSeats.find((s) => s.seatId === p.seatId)?.seatNumber || p.seatId,
@@ -889,7 +1342,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         };
         setConfirmedBookingForReceipt(fullBookingData);
       } else {
-        setErrorMessage(res.error || 'Failed to create booking.');
+        setErrorMessage(res?.error || 'Failed to create booking.');
       }
     } catch (e: any) {
       setErrorMessage(e.message || 'An unexpected error occurred.');
@@ -963,6 +1416,36 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
     setStep(2);
   };
 
+  // ── Keyboard shortcuts for high-speed counter operators ──────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isTyping = target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+
+      if ((e.ctrlKey && e.key === 'Enter') || (e.altKey && (e.key === 'n' || e.key === 'N'))) {
+        e.preventDefault();
+        if (step === 1 && selectedTripId) setStep(2);
+        else if (step === 2 && selectedSeatIds.length > 0) setStep(3);
+        else if (step === 3 && isPassengersStepValid) setStep(4);
+        else if (step === 4 && isBoardingStepValid) setStep(5);
+        else if (step === 5 && !isSubmitting) handleFinalSubmit();
+      } else if (e.altKey && (e.key === 'b' || e.key === 'B')) {
+        e.preventDefault();
+        if (step > 1) setStep((s) => s - 1);
+      } else if (e.altKey && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        if (selectedTripId) setStep(2);
+      } else if (e.key === 'Escape') {
+        if (confirmedBookingForReceipt) {
+          setConfirmedBookingForReceipt(null);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [step, selectedTripId, selectedSeatIds, isPassengersStepValid, isBoardingStepValid, isSubmitting, confirmedBookingForReceipt]);
+
   const stepLabel = BOOKING_STEPS.find((s) => s.id === step);
   const seatLabels = selectedSeatIds
     .map((id) => allCurrentSeats.find((s) => s.seatId === id)?.seatNumber)
@@ -993,13 +1476,35 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           </Button>
 
           <div suppressHydrationWarning>
-            <div className="flex items-center gap-2" suppressHydrationWarning>
+            <div className="flex items-center gap-2 flex-wrap" suppressHydrationWarning>
               <Badge variant="primary" suppressHydrationWarning className="text-xs px-3 py-1 font-bold">
                 {targetUniversity}
               </Badge>
               <span suppressHydrationWarning className="text-xs font-mono font-bold text-slate-500">
                 {activeCapacity} {language === 'bn' ? 'সিট কোচ' : 'Seat Coach'}
               </span>
+
+              {!isOnline && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 text-xs font-bold border border-rose-300 dark:border-rose-800 animate-pulse">
+                  <WifiOff className="w-3 h-3 text-rose-600" />
+                  <span>{language === 'bn' ? 'অফলাইন মোড (লোকাল সেভ)' : 'Offline Mode (Local Save)'}</span>
+                </span>
+              )}
+
+              {isOnline && pendingOfflineCount > 0 && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-200 text-xs font-bold border border-amber-300 dark:border-amber-700">
+                  <RefreshCw className={`w-3 h-3 text-amber-700 ${isSyncingOffline ? 'animate-spin' : ''}`} />
+                  <span>{pendingOfflineCount} {language === 'bn' ? 'সিঙ্ক বাকি' : 'Pending Sync'}</span>
+                  <button
+                    type="button"
+                    onClick={handleManualSync}
+                    disabled={isSyncingOffline}
+                    className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                  >
+                    {isSyncingOffline ? 'সিঙ্ক হচ্ছে...' : 'এখনই সিঙ্ক'}
+                  </button>
+                </div>
+              )}
             </div>
             <h1 suppressHydrationWarning className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight mt-1 flex items-center gap-2.5">
               <Armchair suppressHydrationWarning className="w-7 h-7" style={{ color: currentColor?.primaryHex || 'var(--primary-color)' }} />
@@ -1015,6 +1520,23 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
 
         <StepIndicator currentStep={step} maxReachableStep={maxReachableStep} onNavigate={handleNavigate} />
       </div>
+
+      {/* Offline Sync Banner Notification */}
+      {offlineSyncMessage && (
+        <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-900 dark:bg-emerald-950/70 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 text-xs font-bold flex items-center justify-between gap-2 shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+            <span>✓ {offlineSyncMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOfflineSyncMessage(null)}
+            className="text-emerald-700 hover:text-emerald-900 font-black text-xs cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Sticky summary bar */}
       <BookingSummaryBar
@@ -1063,7 +1585,21 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           onAddExtraSeat={handleAddExtraSeat}
           onRemoveExtraSeat={handleRemoveExtraSeat}
           onGoBack={() => setStep(1)}
-          onContinue={() => setStep(3)}
+          onContinue={() => {
+            if (selectedSeatIds.length === 0) {
+              setErrorMessage('অনুগ্রহ করে অন্তত একটি খালি আসন নির্বাচন করুন।');
+              return;
+            }
+            const nonAvailable = selectedSeatIds.filter((id) => {
+              const sObj = allCurrentSeats.find((s) => s.seatId === id);
+              return !sObj || sObj.status !== 'AVAILABLE';
+            });
+            if (nonAvailable.length > 0) {
+              setErrorMessage('⚠️ আপনার নির্বাচিত কিছু আসন ইতিমধ্যে বুকড হয়ে গেছে। অনুগ্রহ করে খালি আসন নির্বাচন করুন।');
+              return;
+            }
+            setStep(3);
+          }}
         />
       )}
 
@@ -1143,6 +1679,10 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           onPaidAmountChange={setPaidAmount}
           onTransactionIdChange={setTransactionId}
           onSenderRefChange={setSenderRef}
+          duePromiseDate={duePromiseDate}
+          dueNote={dueNote}
+          onDuePromiseDateChange={setDuePromiseDate}
+          onDueNoteChange={setDueNote}
           onGoBack={() => setStep(4)}
           onGoToStep={(target) => setStep(target)}
           onConfirm={handleFinalSubmit}

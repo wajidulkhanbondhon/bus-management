@@ -4,6 +4,7 @@ import { proxyUrl } from '@/lib/config';
 export interface PassengerInput {
   passengerName: string;
   passengerPhone: string;
+  email?: string | null;
   phoneType?: 'WHATSAPP' | 'NORMAL';
   hasWhatsapp?: boolean;
   whatsappNumber?: string;
@@ -25,6 +26,9 @@ export interface CreateBookingInput {
   tripId: string;
   seats: { seatId: string; fare: number }[];
   passengers: PassengerInput[];
+  contactName?: string;
+  contactPhone?: string;
+  contactEmail?: string | null;
   journeyType?: 'ROUND_TRIP' | 'OUTBOUND_ONLY' | 'RETURN_ONLY' | 'ASYMMETRIC';
   boardingPoint?: string | null;
   droppingPoint?: string | null;
@@ -47,6 +51,7 @@ export interface CreatePreBookingInput {
   seatIds: string[];
   contactName: string;
   contactPhone: string;
+  contactEmail?: string | null;
   passengerGender: 'MALE' | 'FEMALE';
   isStudent?: boolean;
   studentAdmissionId?: string;
@@ -79,25 +84,46 @@ export interface ConfirmPreBookingPaymentInput {
   notes?: string;
 }
 
-export async function getAllBookings(filters?: any) {
-  const res = await fetch(proxyUrl('/bookings/'), { cache: 'no-store' }).catch(() => null);
-  if (res && res.ok) {
-    return res.json();
+export async function getAllBookings(filters?: { status?: string; payment_status?: string; paymentStatus?: string; has_due?: boolean; search?: string }) {
+  const params = {
+    status: filters?.status,
+    payment_status: filters?.payment_status || filters?.paymentStatus,
+    has_due: filters?.has_due,
+    search: filters?.search
+  };
+  const res = await fastApiClient.getBookings(params);
+  if (res.success && Array.isArray(res.data)) {
+    return res.data;
+  }
+  const fallback = await fetch(proxyUrl('/bookings/'), { cache: 'no-store' }).catch(() => null);
+  if (fallback && fallback.ok) {
+    return fallback.json();
   }
   return [];
 }
 
-export async function getOnlinePreBookings(filters?: any) {
+export async function getOnlinePreBookings(filterOrStatus?: string | { status?: string; search?: string }) {
+  const status = typeof filterOrStatus === 'string' ? filterOrStatus : filterOrStatus?.status;
+  const res = await fastApiClient.getOnlineRequests(status);
+  if (res.success && Array.isArray(res.data)) {
+    return res.data;
+  }
   const all = await getAllBookings();
   return all.filter((b: any) => b.booking_status === 'PRE_BOOKED' || b.booking_status === 'PAYMENT_TIMER_ACTIVE' || b.source === 'ONLINE');
 }
 
-export async function getBookingById(id: string) {
+export async function getBookingById(id: string, options?: RequestInit) {
+  if (!id) return null;
+  const res = await fastApiClient.getBookingById(id, options);
+  if (res.success && res.data) {
+    return res.data;
+  }
   const all = await getAllBookings();
   return all.find((b: any) => b.id === id) || null;
 }
 
 export async function getBookingByTrackingNumber(trackingNumber: string) {
+  if (!trackingNumber) return null;
   const res = await fastApiClient.trackBooking(trackingNumber);
   if (res.success && res.data) {
     return res.data;
@@ -110,18 +136,28 @@ export async function createBooking(input: CreateBookingInput, options?: Request
   const res = await fastApiClient.createCounterBooking({
     trip_id: input.tripId,
     seats: input.seats.map(s => ({ seat_id: s.seatId, fare: s.fare })),
-    passengers: input.passengers.map(p => ({
-      passenger_name: p.passengerName,
-      passenger_phone: p.passengerPhone,
-      passenger_type: p.passengerType,
-      gender: p.gender,
-      seat_id: p.seatId,
-      student_admission_id: p.admissionId,
-      admission_id: p.admissionId,
-      phone_type: p.phoneType || (p.hasWhatsapp !== false ? 'WHATSAPP' : 'NORMAL'),
-      has_whatsapp: p.hasWhatsapp ?? (p.phoneType === 'WHATSAPP'),
-      whatsapp_number: p.whatsappNumber || (p.phoneType === 'WHATSAPP' ? p.passengerPhone : undefined)
-    })),
+    contact_name: input.passengers?.[0]?.passengerName,
+    contact_phone: input.passengers?.[0]?.passengerPhone,
+    contact_email: input.contactEmail || input.passengers?.[0]?.email || undefined,
+    passengers: input.passengers.map(p => {
+      const sNum = (p as any).seatNumber || (p as any).seat_number || (p.seatId?.includes('-') ? p.seatId.split('-').pop() : p.seatId);
+      return {
+        passenger_name: p.passengerName,
+        passenger_phone: p.passengerPhone,
+        passenger_email: p.email || undefined,
+        email: p.email || undefined,
+        passenger_type: p.passengerType,
+        gender: p.gender,
+        seat_id: p.seatId,
+        seat_number: sNum,
+        student_admission_id: p.admissionId,
+        admission_id: p.admissionId,
+        guardian_phone: p.guardianPhone,
+        phone_type: p.phoneType || (p.hasWhatsapp !== false ? 'WHATSAPP' : 'NORMAL'),
+        has_whatsapp: p.hasWhatsapp ?? (p.phoneType === 'WHATSAPP'),
+        whatsapp_number: p.whatsappNumber || (p.phoneType === 'WHATSAPP' ? p.passengerPhone : undefined)
+      };
+    }),
     journey_type: input.journeyType || 'ROUND_TRIP',
     boarding_point: input.boardingPoint,
     dropping_point: input.droppingPoint,
@@ -148,6 +184,7 @@ export async function createPreBooking(input: CreatePreBookingInput, options?: R
     seat_ids: input.seatIds,
     contact_name: input.contactName,
     contact_phone: input.contactPhone,
+    contact_email: input.contactEmail || undefined,
     passenger_gender: input.passengerGender,
     is_student: input.isStudent,
     student_admission_id: input.studentAdmissionId,

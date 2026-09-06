@@ -11,6 +11,7 @@ from app.models.trip import Trip, SeatLock
 from app.models.booking import BookingSeat
 from app.models.user import User
 from app.schemas.bus import BusCreate, BusUpdate, BusOut, SeatLayoutCreate, SeatLayoutOut
+from app.services.seat_layout_service import sync_seat_rows_from_layout
 
 
 router = APIRouter()
@@ -62,6 +63,10 @@ async def create_bus(
             existing_bus_id = existing_bus.id
             if tenant_id:
                 existing_bus.tenant_id = tenant_id
+            await db.flush()
+            if req.seat_layout_id:
+                layout = await db.query(SeatLayout).filter(SeatLayout.id == req.seat_layout_id).first()
+                await sync_seat_rows_from_layout(db, layout)
             await db.commit()
             return await db.query(Bus).filter(Bus.id == existing_bus_id).first()
 
@@ -82,6 +87,10 @@ async def create_bus(
             existing_reg_id = existing_reg.id
             if tenant_id:
                 existing_reg.tenant_id = tenant_id
+            await db.flush()
+            if req.seat_layout_id:
+                layout = await db.query(SeatLayout).filter(SeatLayout.id == req.seat_layout_id).first()
+                await sync_seat_rows_from_layout(db, layout)
             await db.commit()
             return await db.query(Bus).filter(Bus.id == existing_reg_id).first()
 
@@ -94,6 +103,10 @@ async def create_bus(
     try:
         bus = Bus(**bus_data)
         db.add(bus)
+        await db.flush()
+        if bus.seat_layout_id:
+            layout = await db.query(SeatLayout).filter(SeatLayout.id == bus.seat_layout_id).first()
+            await sync_seat_rows_from_layout(db, layout)
         await db.commit()
         return await db.query(Bus).filter(Bus.id == bus_id).first()
     except Exception as e:
@@ -132,6 +145,10 @@ async def create_seat_layout(
 ):
     layout = SeatLayout(**req.model_dump())
     db.add(layout)
+    await db.flush()
+    # Materialize Seat rows for this layout immediately so the fleet/seat-map
+    # never relies on fabricated or lazily-generated rows.
+    await sync_seat_rows_from_layout(db, layout)
     await db.commit()
     await db.refresh(layout)
     return layout
@@ -172,12 +189,18 @@ async def delete_seat_layout(
         for b in buses:
             b.seat_layout_id = None
 
-        # 2. Clean up seats and any dependent seat locks or booking seats
+        # 2. Guard: never silently destroy booking history that references
+        #    seats of this layout. If any booking references them, refuse.
         seats = await db.query(Seat).filter(Seat.seat_layout_id == layout_id).all()
         seat_ids = [s.id for s in seats]
         if seat_ids:
+            referenced = await db.query(BookingSeat).filter(BookingSeat.seat_id.in_(seat_ids)).first()
+            if referenced:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot permanently delete layout: seats are referenced by existing bookings. Use Recycle Bin (soft delete) instead."
+                )
             await db.execute(delete(SeatLock).where(SeatLock.seat_id.in_(seat_ids)))
-            await db.execute(delete(BookingSeat).where(BookingSeat.seat_id.in_(seat_ids)))
             for s in seats:
                 await db.delete(s)
 
@@ -226,6 +249,9 @@ async def update_bus(
         if value is not None:
             setattr(bus, field, value)
 
+    if bus.seat_layout_id:
+        layout = await db.query(SeatLayout).filter(SeatLayout.id == bus.seat_layout_id).first()
+        await sync_seat_rows_from_layout(db, layout)
     await db.commit()
     return await db.query(Bus).filter(Bus.id == bus.id).first()
 

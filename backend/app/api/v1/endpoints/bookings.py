@@ -12,7 +12,8 @@ from app.schemas.booking import (
     CreatePreBookingRequest,
     VerifyTimerRequest,
     ConfirmPreBookingPaymentRequest,
-    BookingOut
+    BookingOut,
+    OfflineSyncRequest
 )
 from app.services.booking_service import (
     create_counter_booking,
@@ -22,6 +23,7 @@ from app.services.booking_service import (
     cancel_booking_service,
     reject_pre_booking_service,
     SeatAlreadyBookedException,
+    sync_offline_bookings
 )
 
 router = APIRouter()
@@ -103,7 +105,7 @@ async def verify_booking(
         if current_user.role and current_user.role.name != "SUPER_ADMIN":
             if booking.tenant_id != current_user.tenant_id:
                 raise HTTPException(status_code=403, detail="Access denied for this tenant's booking")
-        return verify_and_start_timer(db, req, current_user.id)
+        return await verify_and_start_timer(db, req, current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -197,7 +199,7 @@ async def cancel_booking(
         if booking.tenant_id != current_user.tenant_id:
             raise HTTPException(status_code=403, detail="Access denied for this tenant's booking")
     try:
-        return cancel_booking_service(db, booking_id, current_user.id, reason)
+        return await cancel_booking_service(db, booking_id, current_user.id, reason)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -216,6 +218,21 @@ async def reject_pre_booking(
         if booking.tenant_id != current_user.tenant_id:
             raise HTTPException(status_code=403, detail="Access denied for this tenant's booking")
     try:
-        return reject_pre_booking_service(db, booking_id, current_user.id, reason)
+        return await reject_pre_booking_service(db, booking_id, current_user.id, reason)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/offline-sync")
+async def sync_offline_bookings_endpoint(
+    req: OfflineSyncRequest,
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
+):
+    # Server-side canonical seat/fare validation happens inside
+    # create_counter_booking for each item; staff scoping prevents anonymous
+    # callers from minting CONFIRMED bookings.
+    staff_id = current_user.id if current_user else None
+    results = await sync_offline_bookings(db, req.bookings, staff_id)
+    return {"success": True, "results": results}
+

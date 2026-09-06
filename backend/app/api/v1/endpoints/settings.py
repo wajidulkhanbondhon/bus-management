@@ -7,9 +7,45 @@ from app.db.session import get_db
 from app.core.deps import require_role
 from app.models.audit import SystemSetting
 from app.models.user import User
-from app.schemas.settings import LandingControlSettings, SystemSettingUpdate
+from app.schemas.settings import LandingControlSettings, SystemSettingUpdate, OrganizationSaaSSettings
 
 router = APIRouter()
+
+
+@router.get("/organization", response_model=OrganizationSaaSSettings)
+async def get_org_settings(db: WrappedAsyncSession = Depends(get_db)):
+    setting = await db.query(SystemSetting).filter(SystemSetting.key == "organization_saas_branding").first()
+    if not setting or not setting.value:
+        return OrganizationSaaSSettings()
+
+    try:
+        data = json.loads(setting.value)
+        return OrganizationSaaSSettings(**data)
+    except Exception:
+        return OrganizationSaaSSettings()
+
+
+@router.post("/organization", response_model=OrganizationSaaSSettings)
+async def save_org_settings(
+    req: OrganizationSaaSSettings,
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN"]))
+):
+    setting = await db.query(SystemSetting).filter(SystemSetting.key == "organization_saas_branding").first()
+    json_val = json.dumps(req.model_dump())
+    if setting:
+        setting.value = json_val
+    else:
+        setting = SystemSetting(
+            key="organization_saas_branding",
+            value=json_val,
+            description="Software & Organization SaaS White-Label Brand Settings"
+        )
+        db.add(setting)
+
+    await db.commit()
+    return req
+
 
 
 @router.get("/")

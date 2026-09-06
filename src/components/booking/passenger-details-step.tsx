@@ -28,8 +28,8 @@ import { useApp } from '@/lib/context';
 import { cn, isValidBdMobile, cleanAndLimitPhoneNumber, formatCurrency } from '@/lib/utils';
 import {
   validateMultiSeatBookingPairRules,
-  getAdjacentSeatNumber,
-  getAdjacentSeatPair,
+  adjacentPartners,
+  detectFiveSeatRows,
   STRICT_ALLOWED_GUARDIAN_RELATIONSHIPS
 } from '@/services/rules.service';
 import {
@@ -41,6 +41,7 @@ import { matchTripUniversityCode } from './trip-selection-step';
 export interface PassengerInput {
   passengerName: string;
   passengerPhone: string;
+  email?: string;
   phoneType: 'WHATSAPP' | 'NORMAL';
   hasWhatsapp?: boolean;
   whatsappNumber?: string;
@@ -111,87 +112,95 @@ export function getPassengerPairRuleViolation(
   const seatNum = (sObj?.seatNumber || (sObj as any)?.seat_number || (sObj as any)?.label || '').trim().toUpperCase();
   if (!seatNum) return null;
 
-  const pair = getAdjacentSeatPair(seatNum);
-  const adjacentSeatNum = pair.find((num) => num !== seatNum);
-  if (!adjacentSeatNum) return null;
+  // A row is a 5-seat rear bench if any seat in it has a number 5.
+  const fiveSeatRows = detectFiveSeatRows(
+    allTripSeats.map((s) => (s?.seatNumber || (s as any)?.seat_number || (s as any)?.label || '')).join(' ')
+  );
 
-  // 1. Check if adjacent seat is in THIS same booking
-  const coPassenger = passengers.find((cp) => {
-    const cpObj = allTripSeats.find((s) => s.seatId === cp.seatId);
-    const cpSeatNum = (cpObj?.seatNumber || (cpObj as any)?.seat_number || (cpObj as any)?.label || '').trim().toUpperCase();
-    return cpSeatNum === adjacentSeatNum;
-  });
+  const neighbours = adjacentPartners(seatNum, { fiveSeatRows });
+  if (neighbours.length === 0) return null;
 
-  if (coPassenger) {
-    const isOppositeGender = p.gender.toUpperCase() !== coPassenger.gender.toUpperCase();
-    if (isOppositeGender) {
-      const pIsStudent = p.passengerType === 'STUDENT';
-      const cpIsStudent = coPassenger.passengerType === 'STUDENT';
-      const pIsGuardian = p.passengerType === 'GUARDIAN';
-      const cpIsGuardian = coPassenger.passengerType === 'GUARDIAN';
-
-      // If this passenger is the guardian, validate their relationship
-      if (pIsGuardian) {
-        const rel = p.guardianRelationship?.toUpperCase();
-        if (!rel || !STRICT_ALLOWED_GUARDIAN_RELATIONSHIPS.includes(rel)) {
-          return `শিক্ষার্থীর সাথে রক্তীয় অনুমোদিত সম্পর্ক নির্বাচন করুন।`;
-        }
-      }
-
-      // If co-passenger is the guardian, relationship error belongs to coPassenger, NOT p!
-      if (cpIsGuardian) {
-        return null;
-      }
-
-      // Both are students of opposite gender
-      if (pIsStudent && cpIsStudent) {
-        const pComplete = isPassengerBasicInfoComplete(p);
-        const cpComplete = isPassengerBasicInfoComplete(coPassenger);
-        const pIndex = passengers.findIndex((item) => item.seatId === p.seatId);
-        const cpIndex = passengers.findIndex((item) => item.seatId === coPassenger.seatId);
-
-        // Rule: The passenger that was completed/filled first does NOT show an error; the conflicting subsequent one does!
-        if (pComplete && !cpComplete) {
-          // p is already completed first, so p gets NO error!
-          return null;
-        }
-
-        if (!pComplete && cpComplete) {
-          // coPassenger was completed first, so p gets the violation!
-          return `সিট ${seatNum} (${p.gender === 'MALE' ? 'পুরুষ' : 'নারী'} শিক্ষার্থী) সংলগ্ন সিট ${adjacentSeatNum}-এর সাথে বিপরীত জেন্ডার। রক্তীয় অভিভাবক (Guardian) আবশ্যক।`;
-        }
-
-        // If both are completely filled with names and valid phones, BUT both are opposite gender students:
-        if (pComplete && cpComplete) {
-          return `সিট ${seatNum} এবং ${adjacentSeatNum} বিপরীত জেন্ডারের সাধারণ শিক্ষার্থী। সাথে রক্তীয় অভিভাবক (বাপ, মা, ভাই, বোন, দাদা, নানা, দাদি, নানি, স্বামী/স্ত্রী) থাকলে যাত্রীর ধরন "অভিভাবক" (Guardian) নির্বাচন করুন।`;
-        }
-
-        // If neither is complete: earlier index stays clean, later index shows conflict hint
-        if (pIndex < cpIndex) {
-          return null;
-        }
-
-        return `সিট ${seatNum} এবং ${adjacentSeatNum} বিপরীত জেন্ডারের শিক্ষার্থী। রক্তীয় অভিভাবক ছাড়া একসাথে বসা যাবে না।`;
-      }
-    }
-  } else {
-    // 2. Adjacent seat is already booked on the bus by another passenger
-    const adjacentExistingSeat = allTripSeats.find((s) => {
-      const num = (s?.seatNumber || (s as any)?.seat_number || (s as any)?.label || '').trim().toUpperCase();
-      return num === adjacentSeatNum;
+  // A passenger conflicts if ANY physically adjacent seat is opposite-gender
+  // and not an approved guardian pair.
+  for (const adjacentSeatNum of neighbours) {
+    // 1. Check if adjacent seat is in THIS same booking
+    const coPassenger = passengers.find((cp) => {
+      const cpObj = allTripSeats.find((s) => s.seatId === cp.seatId);
+      const cpSeatNum = (cpObj?.seatNumber || (cpObj as any)?.seat_number || (cpObj as any)?.label || '').trim().toUpperCase();
+      return cpSeatNum === adjacentSeatNum;
     });
 
-    if (
-      adjacentExistingSeat &&
-      (adjacentExistingSeat.status === 'BOOKED' || adjacentExistingSeat.status === 'HELD')
-    ) {
-      const existingGender = adjacentExistingSeat.booking?.passengerGender?.toUpperCase();
-      if (existingGender && existingGender !== p.gender.toUpperCase()) {
-        return `সিট ${seatNum}-এর পাশের সিট (${adjacentSeatNum}) একজন ${
-          existingGender === 'FEMALE' ? 'নারী' : 'পুরুষ'
-        } যাত্রী বুক করেছেন। এই সিটটি শুধুমাত্র ${
-          existingGender === 'FEMALE' ? 'নারী' : 'পুরুষ'
-        } যাত্রীদের জন্য প্রযোজ্য।`;
+    if (coPassenger) {
+      const isOppositeGender = p.gender.toUpperCase() !== coPassenger.gender.toUpperCase();
+      if (isOppositeGender) {
+        const pIsStudent = p.passengerType === 'STUDENT';
+        const cpIsStudent = coPassenger.passengerType === 'STUDENT';
+        const pIsGuardian = p.passengerType === 'GUARDIAN';
+        const cpIsGuardian = coPassenger.passengerType === 'GUARDIAN';
+
+        // If this passenger is the guardian, validate their relationship
+        if (pIsGuardian) {
+          const rel = p.guardianRelationship?.toUpperCase();
+          if (!rel || !STRICT_ALLOWED_GUARDIAN_RELATIONSHIPS.includes(rel)) {
+            return `শিক্ষার্থীর সাথে রক্তীয় অনুমোদিত সম্পর্ক নির্বাচন করুন।`;
+          }
+        }
+
+        // If co-passenger is the guardian, relationship error belongs to coPassenger, NOT p!
+        if (cpIsGuardian) {
+          continue;
+        }
+
+        // Both are students of opposite gender
+        if (pIsStudent && cpIsStudent) {
+          const pComplete = isPassengerBasicInfoComplete(p);
+          const cpComplete = isPassengerBasicInfoComplete(coPassenger);
+          const pIndex = passengers.findIndex((item) => item.seatId === p.seatId);
+          const cpIndex = passengers.findIndex((item) => item.seatId === coPassenger.seatId);
+
+          // Rule: The passenger that was completed/filled first does NOT show an error; the conflicting subsequent one does!
+          if (pComplete && !cpComplete) {
+            // p is already completed first, so p gets NO error!
+            continue;
+          }
+
+          if (!pComplete && cpComplete) {
+            // coPassenger was completed first, so p gets the violation!
+            return `সিট ${seatNum} (${p.gender === 'MALE' ? 'পুরুষ' : 'নারী'} শিক্ষার্থী) সংলগ্ন সিট ${adjacentSeatNum}-এর সাথে বিপরীত জেন্ডার। রক্তীয় অভিভাবক (Guardian) আবশ্যক।`;
+          }
+
+          // If both are completely filled with names and valid phones, BUT both are opposite gender students:
+          if (pComplete && cpComplete) {
+            return `সিট ${seatNum} এবং ${adjacentSeatNum} বিপরীত জেন্ডারের সাধারণ শিক্ষার্থী। সাথে রক্তীয় অভিভাবক (বাপ, মা, ভাই, বোন, দাদা, নানা, দাদি, নানি, স্বামী/স্ত্রী) থাকলে যাত্রীর ধরন "অভিভাবক" (Guardian) নির্বাচন করুন।`;
+          }
+
+          // If neither is complete: earlier index stays clean, later index shows conflict hint
+          if (pIndex < cpIndex) {
+            continue;
+          }
+
+          return `সিট ${seatNum} এবং ${adjacentSeatNum} বিপরীত জেন্ডারের শিক্ষার্থী। রক্তীয় অভিভাবক ছাড়া একসাথে বসা যাবে না।`;
+        }
+      }
+    } else {
+      // 2. Adjacent seat is already booked on the bus by another passenger
+      const adjacentExistingSeat = allTripSeats.find((s) => {
+        const num = (s?.seatNumber || (s as any)?.seat_number || (s as any)?.label || '').trim().toUpperCase();
+        return num === adjacentSeatNum;
+      });
+
+      if (
+        adjacentExistingSeat &&
+        (adjacentExistingSeat.status === 'BOOKED' || adjacentExistingSeat.status === 'HELD')
+      ) {
+        const existingGender = adjacentExistingSeat.booking?.passengerGender?.toUpperCase();
+        if (existingGender && existingGender !== p.gender.toUpperCase()) {
+          return `সিট ${seatNum}-এর পাশের সিট (${adjacentSeatNum}) একজন ${
+            existingGender === 'FEMALE' ? 'নারী' : 'পুরুষ'
+          } যাত্রী বুক করেছেন। এই সিটটি শুধুমাত্র ${
+            existingGender === 'FEMALE' ? 'নারী' : 'পুরুষ'
+          } যাত্রীদের জন্য প্রযোজ্য।`;
+        }
       }
     }
   }
@@ -649,13 +658,21 @@ export function PassengerDetailsStep({
     if (!passengers[0]?.passengerPhone) return;
     const firstP = passengers[0];
     const phoneToCopy = cleanAndLimitPhoneNumber(firstP.passengerPhone);
+    const guardianPhoneToCopy = firstP.guardianPhone ? cleanAndLimitPhoneNumber(firstP.guardianPhone) : undefined;
+
     passengers.forEach((p, idx) => {
       if (idx > 0) {
         onUpdatePassenger(p.seatId, {
           passengerPhone: phoneToCopy,
           phoneType: firstP.phoneType || 'WHATSAPP',
           hasWhatsapp: firstP.hasWhatsapp !== false,
-          whatsappNumber: firstP.whatsappNumber || (firstP.phoneType === 'WHATSAPP' ? phoneToCopy : '')
+          whatsappNumber: firstP.whatsappNumber || (firstP.phoneType === 'WHATSAPP' ? phoneToCopy : ''),
+          guardianPhone: guardianPhoneToCopy || p.guardianPhone,
+          guardianPhoneType: firstP.guardianPhoneType || p.guardianPhoneType,
+          guardianHasWhatsapp: firstP.guardianHasWhatsapp ?? p.guardianHasWhatsapp,
+          guardianWhatsappNumber: firstP.guardianWhatsappNumber || p.guardianWhatsappNumber,
+          guardianRelationship: firstP.guardianRelationship || p.guardianRelationship,
+          institution: firstP.institution || p.institution
         });
       }
     });
@@ -688,8 +705,8 @@ export function PassengerDetailsStep({
       });
     }
 
-    setCopiedNotification(language === 'bn' ? '১ম যাত্রীর নম্বর সবার জন্য যুক্ত হয়েছে' : 'Copied 1st phone to all');
-    setTimeout(() => setCopiedNotification(null), 3000);
+    setCopiedNotification(language === 'bn' ? '১ম যাত্রীর যোগাযোগ ও অভিভাবক তথ্য সবার জন্য যুক্ত হয়েছে' : 'Copied 1st passenger contact to all');
+    setTimeout(() => setCopiedNotification(null), 3500);
     setStepError(null);
     onSetErrorMessage(null);
   };
@@ -904,7 +921,7 @@ export function PassengerDetailsStep({
                 className="text-xs font-black bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 border-indigo-300 hover:bg-indigo-50 rounded-xl shadow-xs py-2 px-3 shrink-0 cursor-pointer"
               >
                 <Copy className="w-3.5 h-3.5 mr-1.5" />
-                {language === 'bn' ? '১ম যাত্রীর নম্বর বাকিদের দিন' : 'Copy 1st Phone to All'}
+                {language === 'bn' ? '১ম যাত্রীর তথ্য বাকি সিটে দিন' : 'Apply 1st Contact to All'}
               </Button>
               {copiedNotification && (
                 <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-200 animate-fade-in">
@@ -1336,6 +1353,18 @@ export function PassengerDetailsStep({
                         </div>
                       )}
                     </div>
+                  </div>
+
+                  {/* Passenger Email (Optional) */}
+                  <div className="space-y-1.5">
+                    <Input
+                      id={`input-email-${p.seatId}`}
+                      type="email"
+                      label={language === 'bn' ? 'ইমেইল এড্রেস (ঐচ্ছিক — ইমেইলে টিকিট ও ইনভয়েস পেতে)' : 'Email Address (Optional — to receive ticket & invoice)'}
+                      value={p.email || ''}
+                      onChange={(e) => handleFieldChange(p.seatId, 'email', e.target.value)}
+                      placeholder="e.g. name@example.com (ঐচ্ছিক)"
+                    />
                   </div>
 
                   {/* Emergency / Guardian Phone */}

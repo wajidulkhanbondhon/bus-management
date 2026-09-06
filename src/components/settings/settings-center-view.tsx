@@ -64,7 +64,9 @@ import {
   OrganizationSettingsState,
   DEFAULT_ORGANIZATION_SETTINGS,
   getStoredOrganizationSettings,
-  saveStoredOrganizationSettings
+  saveStoredOrganizationSettings,
+  fetchOrganizationSettingsFromBackend,
+  saveOrganizationSettingsToBackend
 } from '@/services/settings-storage.service';
 import { DatabaseBackupClient } from './database-backup-client';
 import { AppearanceSettingsClient } from './appearance-settings-client';
@@ -162,18 +164,23 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
 
   useEffect(() => {
     setOrgSettings(getStoredOrganizationSettings());
+    fetchOrganizationSettingsFromBackend().then((fresh) => {
+      if (fresh) setOrgSettings(fresh);
+    });
   }, []);
 
   const triggerAutoSave = (updated: OrganizationSettingsState, message?: string) => {
     setOrgSettings(updated);
     saveStoredOrganizationSettings(updated);
+    saveOrganizationSettingsToBackend(updated).catch(() => {});
     setSaveMessage(message || (language === 'bn' ? '✓ সেটিংস সংরক্ষিত হয়েছে!' : '✓ Settings saved!'));
     setTimeout(() => setSaveMessage(null), 3000);
   };
 
-  const handleSaveAll = () => {
+  const handleSaveAll = async () => {
     saveStoredOrganizationSettings(orgSettings);
-    setSaveMessage(language === 'bn' ? '✓ সকল সেটিংস সফলভাবে সংরক্ষিত হয়েছে!' : '✓ All settings successfully saved!');
+    await saveOrganizationSettingsToBackend(orgSettings);
+    setSaveMessage(language === 'bn' ? '✓ সকল সেটিংস ডাটাবেজে সফলভাবে সংরক্ষিত হয়েছে!' : '✓ All settings successfully saved to database!');
     setTimeout(() => setSaveMessage(null), 3500);
   };
 
@@ -833,56 +840,251 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
             </Card>
           )}
 
-          {/* SECTION 2: Organization Profile */}
+          {/* SECTION 2: SaaS Organization Profile & White-Label Branding */}
           {activeSection === 'organization' && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
-              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Building2 className="w-5 h-5 text-blue-600" />
-                  <span>{language === 'bn' ? '২. প্রতিষ্ঠান পরিচিতি ও হেল্পলাইন' : '2. Organization Profile'}</span>
+                  <span>{language === 'bn' ? '২. সফটওয়্যার ও প্রতিষ্ঠান ব্র্যান্ডিং (SaaS হোয়াইট-লেবেল)' : '2. SaaS Software & Company Branding'}</span>
                 </CardTitle>
+                <Badge variant="primary" className="font-bold text-[11px]">
+                  {language === 'bn' ? 'ডাটাবেজে সংরক্ষিত হবে' : 'Database Persisted'}
+                </Badge>
               </CardHeader>
-              <CardContent className="p-6 space-y-4 text-xs">
+              <CardContent className="p-6 space-y-5 text-xs">
+                {/* Brand Preview Banner */}
+                <div className="p-4 bg-gradient-to-r from-slate-900 to-blue-950 text-white rounded-2xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+                      {orgSettings.organization.logoUrl ? (
+                        <img
+                          src={orgSettings.organization.logoUrl}
+                          alt="Company Logo Preview"
+                          className="w-full h-full object-contain p-1"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <Building2 className="w-7 h-7 text-blue-400" />
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-mono text-blue-300 font-bold uppercase tracking-wider block">
+                        লাইভ প্রিভিউ (Live Preview)
+                      </span>
+                      <h3 className="text-base sm:text-lg font-black text-white">
+                        {orgSettings.organization.name || 'আপনার কোম্পানির নাম'}
+                      </h3>
+                      <p className="text-[11px] text-slate-300 font-medium">
+                        {orgSettings.organization.description || 'বাংলাদেশ বিশ্ববিদ্যালয় ভর্তি স্পেশাল এক্সপ্রেস পরিবহন'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right font-mono text-[11px] text-blue-300 space-y-0.5 border-t sm:border-t-0 sm:border-l border-white/15 pt-2 sm:pt-0 sm:pl-4">
+                    <div>হটলাইন: <strong>{orgSettings.organization.phone || '017XXXXXXXX'}</strong></div>
+                    <div>ইমেইল: <strong>{orgSettings.organization.email || 'support@domain.com'}</strong></div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="sm:col-span-2">
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">প্রতিষ্ঠানের নাম (Display Name)</label>
+                  {/* Company Display Name */}
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      সফটওয়্যার / প্রতিষ্ঠানের নাম (Software / Company Display Name) *
+                    </label>
                     <input
                       type="text"
                       value={orgSettings.organization.name}
                       onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, name: e.target.value } })}
+                      placeholder="e.g. হানিমুন এক্সপ্রেস / ATOMS Transit"
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
                     />
                   </div>
 
+                  {/* Legal Name */}
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">হটলাইন / হেল্পলাইন নম্বর</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      নিবন্ধিত আইনি নাম (Legal / Registered Name)
+                    </label>
+                    <input
+                      type="text"
+                      value={orgSettings.organization.legalName}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, legalName: e.target.value } })}
+                      placeholder="e.g. Express Transit Ltd."
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
+                    />
+                  </div>
+
+                  {/* Logo URL & File Upload */}
+                  <div className="sm:col-span-2 p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-bold text-slate-800 dark:text-slate-200">
+                        কোম্পানি লোগো (Company Logo URL / File Upload)
+                      </label>
+                      <span className="text-[11px] text-slate-500">টিকিট, রসিদ ও হেডার বার এ প্রদর্শিত হবে</span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-3">
+                      <input
+                        type="text"
+                        value={orgSettings.organization.logoUrl || ''}
+                        onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, logoUrl: e.target.value } })}
+                        placeholder="https://example.com/logo.png অথবা নিচের বাটন দিয়ে আপলোড করুন"
+                        className="flex-1 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-xs font-bold"
+                      />
+
+                      <label className="shrink-0 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl cursor-pointer shadow-sm transition-all flex items-center gap-1.5">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>ডিভাইস থেকে ফাইল আপলোড</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              const base64Url = event.target?.result as string;
+                              if (base64Url) {
+                                const updated = {
+                                  ...orgSettings,
+                                  organization: {
+                                    ...orgSettings.organization,
+                                    logoUrl: base64Url
+                                  }
+                                };
+                                triggerAutoSave(updated, language === 'bn' ? '✓ লোগো সফলভাবে আপলোড হয়েছে!' : '✓ Logo uploaded successfully!');
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Slogan / Tagline */}
+                  <div className="sm:col-span-2">
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      স্লোগান / ট্যাগলাইন (Service Tagline / Subtitle)
+                    </label>
+                    <input
+                      type="text"
+                      value={orgSettings.organization.description}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, description: e.target.value } })}
+                      placeholder="e.g. বাংলাদেশ বিশ্ববিদ্যালয় ভর্তি স্পেশাল এক্সপ্রেস পরিবহন"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
+                    />
+                  </div>
+
+                  {/* Hotline / Support Phone */}
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      হটলাইন / হেল্পলাইন নম্বর (Helpline Phone) *
+                    </label>
                     <input
                       type="text"
                       value={orgSettings.organization.phone}
                       onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, phone: e.target.value } })}
+                      placeholder="017XXXXXXXX"
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold"
                     />
                   </div>
 
+                  {/* Alternative Contact / WhatsApp */}
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">জরুরী যোগাযোগ নম্বর (Emergency)</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      বিকল্প যোগাযোগ নম্বর / WhatsApp
+                    </label>
+                    <input
+                      type="text"
+                      value={orgSettings.organization.altPhone || ''}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, altPhone: e.target.value } })}
+                      placeholder="018XXXXXXXX"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold"
+                    />
+                  </div>
+
+                  {/* Emergency Contact */}
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      জরুরী যোগাযোগ নম্বর (Emergency Helpline)
+                    </label>
                     <input
                       type="text"
                       value={orgSettings.organization.emergencyContact}
                       onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, emergencyContact: e.target.value } })}
+                      placeholder="019XXXXXXXX"
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold"
                     />
                   </div>
 
+                  {/* Official Email */}
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      অফিসিয়াল সাপোর্ট ইমেইল (Official Email)
+                    </label>
+                    <input
+                      type="email"
+                      value={orgSettings.organization.email}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, email: e.target.value } })}
+                      placeholder="support@domain.com"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold"
+                    />
+                  </div>
+
+                  {/* Website */}
                   <div className="sm:col-span-2">
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">হেড অফিস ঠিকানা</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      ওয়েবসাইট লিঙ্ক (Official Website URL)
+                    </label>
+                    <input
+                      type="text"
+                      value={orgSettings.organization.website}
+                      onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, website: e.target.value } })}
+                      placeholder="https://atoms-transit.com"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold"
+                    />
+                  </div>
+
+                  {/* Head Office Address */}
+                  <div className="sm:col-span-2">
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      হেড অফিস ঠিকানা (Head Office Address)
+                    </label>
                     <input
                       type="text"
                       value={orgSettings.organization.address}
                       onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, address: e.target.value } })}
+                      placeholder="যেমন: কেন্দ্রীয় বাস টার্মিনাল, গাবতলী, ঢাকা"
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
                     />
                   </div>
+                </div>
+
+                {/* Save Branding to Database Action Button */}
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-500">
+                    * এই তথ্যগুলো টিকিট, বোর্ডিং পাস, মানি রিসিট ও হোয়াটসঅ্যাপ মেসেজে স্বয়ংক্রিয়ভাবে ব্যবহৃত হবে।
+                  </span>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={async () => {
+                      await saveOrganizationSettingsToBackend(orgSettings);
+                      setSaveMessage(language === 'bn' ? '✓ ডাটাবেজে প্রতিষ্ঠান ব্র্যান্ডিং সংরক্ষিত হয়েছে!' : '✓ Organization branding saved to DB!');
+                      setTimeout(() => setSaveMessage(null), 3500);
+                    }}
+                    className="bg-blue-600 hover:bg-blue-500 font-black rounded-xl text-xs shadow-md shadow-blue-500/20"
+                  >
+                    <Save className="w-3.5 h-3.5 mr-1.5" />
+                    {language === 'bn' ? 'ডাটাবেজে ব্র্যান্ডিং সেভ করুন' : 'Save to Database'}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

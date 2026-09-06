@@ -11,6 +11,8 @@ from app.core.rate_limiter import rate_limit
 from app.services.inventory_service import (
     get_trip_seat_inventory,
     hold_seat,
+    acquire_seat_hold,
+    release_seat_hold,
     lock_seat,
     unlock_seat,
     clean_all_expired
@@ -32,6 +34,22 @@ class LockSeatRequest(BaseModel):
     notes: Optional[str] = None
     locked_until: Optional[str] = None
     lockedUntil: Optional[str] = None
+
+
+class AcquireSeatHoldRequest(BaseModel):
+    seat_id: Optional[str] = None
+    seatId: Optional[str] = None
+    client_id: Optional[str] = None
+    clientId: Optional[str] = None
+    duration_minutes: Optional[int] = 10
+    durationMinutes: Optional[int] = None
+
+
+class ReleaseSeatHoldRequest(BaseModel):
+    seat_id: Optional[str] = None
+    seatId: Optional[str] = None
+    client_id: Optional[str] = None
+    clientId: Optional[str] = None
 
 
 @router.get("/check-exam-duplicate-phone")
@@ -125,14 +143,70 @@ async def check_exam_duplicate_phone(
 @router.get("/{trip_id}/seat-map")
 async def get_seat_map(
     trip_id: str,
+    client_id: Optional[str] = Query(None),
+    x_client_id: Optional[str] = Header(None, alias="X-Client-Id"),
     db: WrappedAsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user)
 ) -> Dict[str, Any]:
     try:
         staff_id = current_user.id if current_user else None
-        return await get_trip_seat_inventory(db, trip_id, staff_id)
+        effective_client = client_id or x_client_id or (current_user.id if current_user else None)
+        return await get_trip_seat_inventory(db, trip_id, staff_id, effective_client)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{trip_id}/acquire-seat-hold", dependencies=[Depends(rate_limit(requests_per_minute=60, key_prefix="acquire_hold"))])
+async def acquire_single_seat_hold(
+    trip_id: str,
+    req: AcquireSeatHoldRequest,
+    x_client_id: Optional[str] = Header(None, alias="X-Client-Id"),
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    target_seat_id = req.seat_id or req.seatId
+    if not target_seat_id:
+        raise HTTPException(status_code=400, detail="seat_id is required")
+
+    effective_client_id = (
+        req.client_id
+        or req.clientId
+        or x_client_id
+        or (current_user.id if current_user else None)
+    )
+    if not effective_client_id:
+        raise HTTPException(status_code=400, detail="client_id or session identifier is required")
+
+    duration = req.duration_minutes or req.durationMinutes or 10
+    try:
+        return await acquire_seat_hold(db, trip_id, target_seat_id, effective_client_id, duration)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{trip_id}/release-seat-hold")
+async def release_single_seat_hold(
+    trip_id: str,
+    req: ReleaseSeatHoldRequest,
+    x_client_id: Optional[str] = Header(None, alias="X-Client-Id"),
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    target_seat_id = req.seat_id or req.seatId
+    if not target_seat_id:
+        raise HTTPException(status_code=400, detail="seat_id is required")
+
+    effective_client_id = (
+        req.client_id
+        or req.clientId
+        or x_client_id
+        or (current_user.id if current_user else None)
+    )
+    try:
+        success = await release_seat_hold(db, trip_id, target_seat_id, effective_client_id)
+        return {"success": success, "seat_id": target_seat_id, "status": "AVAILABLE"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/{trip_id}/hold-seat", dependencies=[Depends(rate_limit(requests_per_minute=20, key_prefix="hold"))])

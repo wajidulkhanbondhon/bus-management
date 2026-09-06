@@ -6,15 +6,19 @@ from pydantic import BaseModel, Field
 class PassengerInput(BaseModel):
     passenger_name: str = Field(..., min_length=1)
     passenger_phone: str = Field(..., min_length=8)
+    passenger_email: Optional[str] = None
+    email: Optional[str] = None
     passenger_type: str = "STUDENT"  # "STUDENT", "GUARDIAN", "GUEST"
     gender: str = "FEMALE"           # "MALE", "FEMALE"
     seat_id: str
+    seat_number: Optional[str] = None
     admission_id: Optional[str] = None
     student_admission_id: Optional[str] = None
     institution: Optional[str] = None
     group_category: Optional[str] = None
     address: Optional[str] = None
     guardian_relationship: Optional[str] = None
+    guardian_phone: Optional[str] = None
     phone_type: Optional[str] = "WHATSAPP"
     has_whatsapp: Optional[bool] = True
     whatsapp_number: Optional[str] = None
@@ -27,6 +31,9 @@ class CreateBookingRequest(BaseModel):
     trip_id: str
     seats: List[dict]  # [{"seat_id": "...", "fare": 550}]
     passengers: List[PassengerInput]
+    contact_name: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_email: Optional[str] = None
     journey_type: Optional[str] = "ROUND_TRIP"
     boarding_point: Optional[str] = None
     dropping_point: Optional[str] = None
@@ -46,6 +53,7 @@ class CreatePreBookingRequest(BaseModel):
     seat_ids: List[str]
     contact_name: str
     contact_phone: str
+    contact_email: Optional[str] = None
     passenger_gender: str = "FEMALE"
     is_student: bool = False
     student_admission_id: Optional[str] = None
@@ -79,6 +87,7 @@ class BookingPassengerOut(BaseModel):
     id: str
     passenger_name: str
     passenger_phone: str
+    passenger_email: Optional[str] = None
     passenger_type: str
     gender: str
     seat_number: str
@@ -96,6 +105,7 @@ class BookingOut(BaseModel):
     source: str
     contact_name: Optional[str] = None
     contact_phone: Optional[str] = None
+    contact_email: Optional[str] = None
     passenger_gender: Optional[str] = None
     is_student: bool
     student_admission_id: Optional[str] = None
@@ -113,3 +123,24 @@ class BookingOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class OfflineBookingItem(BaseModel):
+    offline_ref_id: str
+    trip_id: str
+    seats: List[dict]
+    passengers: List[PassengerInput]
+    journey_type: Optional[str] = "ROUND_TRIP"
+    boarding_point: Optional[str] = None
+    dropping_point: Optional[str] = None
+    payment_method: str = "HAND_CASH"
+    paid_amount: float = 0.0
+    due_amount: Optional[float] = 0.0
+    transaction_id: Optional[str] = None
+    sender_reference: Optional[str] = None
+    booked_at: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class OfflineSyncRequest(BaseModel):
+    bookings: List[OfflineBookingItem]

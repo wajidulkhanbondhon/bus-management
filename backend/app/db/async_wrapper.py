@@ -4,6 +4,7 @@ from sqlalchemy import func
 class AsyncQueryWrapper:
     def __init__(self, session, *entities):
         self.session = session
+        self.entities = entities
         # If the first entity is an instrumented attribute (like func.count(Model.id)), select(*entities) works.
         self.stmt = select(*entities)
         
@@ -41,10 +42,14 @@ class AsyncQueryWrapper:
 
     async def all(self):
         result = await self.session.execute(self.stmt)
+        if len(self.entities) > 1:
+            return result.all()
         return result.scalars().all()
         
     async def first(self):
         result = await self.session.execute(self.stmt)
+        if len(self.entities) > 1:
+            return result.first()
         return result.scalars().first()
         
     async def scalar(self):

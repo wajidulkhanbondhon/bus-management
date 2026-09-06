@@ -31,21 +31,75 @@ interface BusSeatMapModalProps {
 export function BusSeatMapModal({ isOpen, onClose, bus }: BusSeatMapModalProps) {
   const { language } = useApp();
 
-  // Generate rows for this bus
-  const { rows, totalSeats, bookedCount } = useMemo(() => {
-    if (!bus) return { rows: [], totalSeats: 0, bookedCount: 0 };
+  // Generate rows for this bus from its real seat layout (never from fake
+  // "booked" arithmetic — availability is only meaningful for a live trip).
+  const { rows, totalSeats, layoutLoaded } = useMemo(() => {
+    if (!bus) return { rows: [], totalSeats: 0, layoutLoaded: false };
 
-    const capacity = bus.capacity || 40;
-    const isFemale = bus.busType === 'FEMALE' || bus.bus_type === 'FEMALE';
-    const isMale = bus.busType === 'MALE' || bus.bus_type === 'MALE';
+    const capacity = Number(bus.capacity) || 40;
 
+    // 1. If the bus has a saved layout, render its real geometry.
+    const layout = bus.seatLayout || (bus as any).seat_layout;
+    const rawJson = layout?.layout_json || layout?.layoutJson;
+    if (rawJson) {
+      try {
+        const parsed = typeof rawJson === 'string' ? JSON.parse(rawJson) : rawJson;
+        const grid = parsed.layoutGrid || parsed.grid;
+        if (Array.isArray(grid) && grid.length > 0) {
+          const generatedRows: SeatRow[] = [];
+          const rowLetters = 'ABCDEFGHIJKLMN';
+          let total = 0;
+          grid.forEach((rowCells: any[], rIdx: number) => {
+            if (!Array.isArray(rowCells)) return;
+            const letter = rowLetters[rIdx] || `R${rIdx + 1}`;
+            const left: (SeatInfo | null)[] = [];
+            const right: (SeatInfo | null)[] = [];
+            // Preserve the visual column order as rendered by the builder
+            // (left pair, center aisle/seat, right pair).
+            const asLeft: SeatInfo[] = [];
+            const asRight: SeatInfo[] = [];
+            rowCells.forEach((cell: any, cIdx: number) => {
+              if (!cell || cell.type === 'EMPTY' || cell.type === 'AISLE' || cell.type === 'DOOR' || cell.type === 'DRIVER' || cell.type === 'STAIRS') return;
+              const label = String(cell.label || cell.seatNumber || `${letter}${cIdx >= 3 ? cIdx : cIdx + 1}`).toUpperCase();
+              const seat: SeatInfo = {
+                id: `${bus.id}-${label}`,
+                label,
+                status: 'available',
+                zone: rIdx < 2 ? 'VIP Front' : 'Standard',
+                fare: Number(cell.baseFare) || 0,
+              };
+              total++;
+              if (cIdx < 2) asLeft.push(seat);
+              else if (cIdx > 2) asRight.push(seat);
+              else if (rowCells.length === 5) {
+                // 5-seat row: K3 center seat belongs visually with the right
+                // pair in the SeatMapVisual 2+2 model? The visual primitive
+                // only supports left/right pairs; represent 5-seat rows as
+                // K1|K2 on left, K3|K4|K5 on right with center aisle gap.
+                asRight.push(seat);
+              }
+            });
+            generatedRows.push({
+              rowLabel: letter,
+              left: asLeft.length ? asLeft : [null, null],
+              right: asRight.length ? asRight : [null, null],
+            });
+          });
+          if (generatedRows.length) {
+            return { rows: generatedRows, totalSeats: total || capacity, layoutLoaded: true };
+          }
+        }
+      } catch (e) {
+        // fall through to heuristic grid below
+      }
+    }
+
+    // 2. Fallback: standard 2+2 grid from capacity — ALL available.
     const rowLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
     const generatedRows: SeatRow[] = [];
     const numRows = Math.ceil(capacity / 4);
 
     let currentSeatNum = 1;
-    let booked = 0;
-
     for (let r = 0; r < numRows; r++) {
       const letter = rowLetters[r] || `R${r + 1}`;
       const leftSeats: (SeatInfo | null)[] = [];
@@ -53,14 +107,10 @@ export function BusSeatMapModal({ isOpen, onClose, bus }: BusSeatMapModalProps) 
 
       // Left column 1
       if (currentSeatNum <= capacity) {
-        const isBooked = (currentSeatNum % 7 === 0 || currentSeatNum === 1 || currentSeatNum === 4);
-        if (isBooked) booked++;
         leftSeats.push({
           id: `${bus.id}-${letter}1`,
           label: `${letter}1`,
-          status: isBooked
-            ? (isFemale ? 'booked_female' : isMale ? 'booked_male' : 'booked')
-            : 'available',
+          status: 'available',
           zone: r < 2 ? 'VIP Front' : 'Standard'
         });
         currentSeatNum++;
@@ -68,14 +118,10 @@ export function BusSeatMapModal({ isOpen, onClose, bus }: BusSeatMapModalProps) 
 
       // Left column 2
       if (currentSeatNum <= capacity) {
-        const isBooked = (currentSeatNum % 5 === 0);
-        if (isBooked) booked++;
         leftSeats.push({
           id: `${bus.id}-${letter}2`,
           label: `${letter}2`,
-          status: isBooked
-            ? (isFemale ? 'booked_female' : isMale ? 'booked_male' : 'booked')
-            : 'available',
+          status: 'available',
           zone: r < 2 ? 'VIP Front' : 'Standard'
         });
         currentSeatNum++;
@@ -83,14 +129,10 @@ export function BusSeatMapModal({ isOpen, onClose, bus }: BusSeatMapModalProps) 
 
       // Right column 1
       if (currentSeatNum <= capacity) {
-        const isBooked = (currentSeatNum % 6 === 0);
-        if (isBooked) booked++;
         rightSeats.push({
           id: `${bus.id}-${letter}3`,
           label: `${letter}3`,
-          status: isBooked
-            ? (isFemale ? 'booked_female' : isMale ? 'booked_male' : 'booked')
-            : 'available',
+          status: 'available',
           zone: r < 2 ? 'VIP Front' : 'Standard'
         });
         currentSeatNum++;
@@ -98,14 +140,10 @@ export function BusSeatMapModal({ isOpen, onClose, bus }: BusSeatMapModalProps) 
 
       // Right column 2
       if (currentSeatNum <= capacity) {
-        const isBooked = (currentSeatNum % 8 === 0);
-        if (isBooked) booked++;
         rightSeats.push({
           id: `${bus.id}-${letter}4`,
           label: `${letter}4`,
-          status: isBooked
-            ? (isFemale ? 'booked_female' : isMale ? 'booked_male' : 'booked')
-            : 'available',
+          status: 'available',
           zone: r < 2 ? 'VIP Front' : 'Standard'
         });
         currentSeatNum++;
@@ -121,7 +159,7 @@ export function BusSeatMapModal({ isOpen, onClose, bus }: BusSeatMapModalProps) 
     return {
       rows: generatedRows,
       totalSeats: capacity,
-      bookedCount: booked
+      layoutLoaded: false
     };
   }, [bus]);
 
@@ -153,6 +191,9 @@ export function BusSeatMapModal({ isOpen, onClose, bus }: BusSeatMapModalProps) 
                 <Badge variant="default" className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-2.5 py-0.5">
                   {bus.capacity} {language === 'bn' ? 'রিক্লাইনার সিট' : 'Recliner Seats'}
                 </Badge>
+                <Badge variant="default" className="text-xs bg-slate-500 text-white font-black px-2.5 py-0.5">
+                  {language === 'bn' ? 'লেআউট প্রিভিউ' : 'Layout Preview'}
+                </Badge>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium flex items-center gap-2 flex-wrap">
                 <span>{language === 'bn' ? `অপারেটর: ${bus.operator}` : `Operator: ${bus.operator}`}</span>
@@ -181,9 +222,15 @@ export function BusSeatMapModal({ isOpen, onClose, bus }: BusSeatMapModalProps) 
           <SeatMapVisual
             rows={rows}
             totalSeats={totalSeats}
-            bookedCount={bookedCount}
-            readOnly={false}
+            bookedCount={0}
+            selectedIds={[]}
+            readOnly
           />
+          <p className="text-center text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2 mt-3">
+            {language === 'bn'
+              ? 'এটি সিট লেআউট প্রিভিউ — লাইভ খালি/বুকড অবস্থা দেখতে ট্রিপ থেকে বুকিং শুরু করুন।'
+              : 'Layout preview only — live availability is shown when booking from a scheduled trip.'}
+          </p>
         </div>
 
         {/* Modal Footer Actions */}
@@ -201,14 +248,16 @@ export function BusSeatMapModal({ isOpen, onClose, bus }: BusSeatMapModalProps) 
             <Button variant="ghost" size="md" onClick={onClose} className="rounded-xl font-bold">
               {language === 'bn' ? 'বন্ধ করুন' : 'Close'}
             </Button>
-            <Link href={`/bookings/new?tripId=${bus.id}`} onClick={onClose}>
+            <Link href={`/bookings/new?busId=${bus.id}`} onClick={onClose}>
               <Button
                 size="md"
                 variant="primary"
                 className="rounded-2xl font-black flex items-center gap-2 px-5 shadow-lg shadow-blue-600/30 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800"
               >
                 <Ticket className="w-4 h-4" />
-                <span>{language === 'bn' ? '🎟️ এই বাসের টিকিট কাটুন' : '🎟️ Book Tickets'}</span>
+                <span>
+                  {language === 'bn' ? '🎟️ এই বাসের টিকিট কাটুন' : '🎟️ Book Tickets'}
+                </span>
               </Button>
             </Link>
           </div>

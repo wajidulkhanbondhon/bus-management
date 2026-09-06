@@ -117,13 +117,25 @@ export const fastApiClient = {
   createTrip: (data: any) => apiRequest('/trips', { method: 'POST', body: JSON.stringify(data) }),
   getRoutes: () => apiRequest('/trips/routes'),
   createRoute: (data: any) => apiRequest('/trips/routes', { method: 'POST', body: JSON.stringify(data) }),
-  getSeatMap: (tripId: string) => apiRequest(`/inventory/${tripId}/seat-map`),
+  getSeatMap: (tripId: string, clientId?: string) => apiRequest(`/inventory/${tripId}/seat-map${clientId ? `?client_id=${encodeURIComponent(clientId)}` : ''}`),
   getSeatLayouts: () => apiRequest('/buses/seat-layouts'),
   createSeatLayout: (data: any) => apiRequest('/buses/seat-layouts', { method: 'POST', body: JSON.stringify(data) }),
   deleteSeatLayout: (id: string, toRecycleBin: boolean = true) => 
     apiRequest(`/buses/seat-layouts/${id}?toRecycleBin=${toRecycleBin ? 'true' : 'false'}`, { method: 'DELETE' }),
 
   // Bookings & Pre-Booking
+  getBookings: (params?: { status?: string; payment_status?: string; has_due?: boolean; search?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.status) sp.set('status', params.status);
+    if (params?.payment_status) sp.set('payment_status', params.payment_status);
+    if (params?.has_due !== undefined) sp.set('has_due', String(params.has_due));
+    const qs = sp.toString();
+    return apiRequest(`/bookings${qs ? `?${qs}` : ''}`);
+  },
+  getBookingById: (id: string, options?: RequestInit) =>
+    apiRequest(`/bookings/${id}`, options),
+  getOnlineRequests: (statusFilter?: string) =>
+    apiRequest(`/bookings/online-requests${statusFilter ? `?status_filter=${encodeURIComponent(statusFilter)}` : ''}`),
   createCounterBooking: (data: any, options?: RequestInit) =>
     apiRequest('/bookings', { method: 'POST', body: JSON.stringify(data), ...options }),
   createPreBooking: (data: any, options?: RequestInit) =>
@@ -145,6 +157,10 @@ export const fastApiClient = {
     apiRequest(`/bookings/${bookingId}/reject?reason=${encodeURIComponent(reason)}`, { method: 'POST', ...options }),
 
   // Inventory & Locking
+  acquireSeatHold: (tripId: string, data: { seat_id?: string; seatId?: string; client_id?: string; clientId?: string; duration_minutes?: number }, options?: RequestInit) =>
+    apiRequest(`/inventory/${tripId}/acquire-seat-hold`, { method: 'POST', body: JSON.stringify(data), ...options }),
+  releaseSeatHold: (tripId: string, data: { seat_id?: string; seatId?: string; client_id?: string; clientId?: string }, options?: RequestInit) =>
+    apiRequest(`/inventory/${tripId}/release-seat-hold`, { method: 'POST', body: JSON.stringify(data), ...options }),
   lockSeat: (tripId: string, data: any) =>
     apiRequest(`/inventory/${tripId}/lock-seat`, { method: 'POST', body: JSON.stringify(data) }),
   unlockSeat: (tripId: string, seatId: string) =>

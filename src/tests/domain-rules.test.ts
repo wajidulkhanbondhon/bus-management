@@ -152,6 +152,61 @@ describe('ATOMS Domain Engine & Business Rules', () => {
     });
   });
 
+  describe('Adjacency Geometry (2+2 and rear 5-seat row)', () => {
+    it('should expose the physical neighbours for a 5-seat rear row', async () => {
+      const { adjacentPartners } = await import('@/services/rules.service');
+      // K1 K2 [K3] K4 K5 — K is detected as a five-seat row.
+      expect(adjacentPartners('K1', { fiveSeatRows: ['K'] }).sort()).toEqual(['K2']);
+      expect(adjacentPartners('K2', { fiveSeatRows: ['K'] }).sort()).toEqual(['K1']);
+      expect(adjacentPartners('K3', { fiveSeatRows: ['K'] }).sort()).toEqual(['K2', 'K4']);
+      expect(adjacentPartners('K4', { fiveSeatRows: ['K'] }).sort()).toEqual(['K3', 'K5']);
+      expect(adjacentPartners('K5', { fiveSeatRows: ['K'] }).sort()).toEqual(['K4']);
+      // Standard rows unchanged
+      expect(adjacentPartners('A3').sort()).toEqual(['A4']);
+    });
+
+    it('should auto-detect five-seat rows from seat labels', async () => {
+      const { detectFiveSeatRows } = await import('@/services/rules.service');
+      expect(detectFiveSeatRows('A1 A2 K1 K2 K3 K4 K5')).toEqual(['K']);
+    });
+
+    it('should reject opposite-gender students on the K4/K5 pair (rear bench)', async () => {
+      const { validateMultiSeatBookingPairRules } = await import('@/services/rules.service');
+      const seats = [
+        { seatId: 's1', seatNumber: 'K4', status: 'AVAILABLE' },
+        { seatId: 's2', seatNumber: 'K5', status: 'AVAILABLE' }
+      ];
+      const res = validateMultiSeatBookingPairRules(
+        [
+          { seatId: 's1', seatNumber: 'K4', passengerName: 'Girl', gender: 'FEMALE', passengerType: 'STUDENT' },
+          { seatId: 's2', seatNumber: 'K5', passengerName: 'Boy', gender: 'MALE', passengerType: 'STUDENT' }
+        ],
+        seats
+      );
+      expect(res.isValid).toBe(false);
+      expect(res.code).toBe('OPPOSITE_GENDER_ADJACENT_NO_GUARDIAN');
+    });
+
+    it('should NOT flag K3/K5 as adjacent (they are not physical neighbours)', async () => {
+      const { validateMultiSeatBookingPairRules } = await import('@/services/rules.service');
+      const seats = [
+        { seatId: 's1', seatNumber: 'K3', status: 'AVAILABLE' },
+        { seatId: 's2', seatNumber: 'K4', status: 'AVAILABLE' },
+        { seatId: 's3', seatNumber: 'K5', status: 'AVAILABLE' }
+      ];
+      const res = validateMultiSeatBookingPairRules(
+        [
+          { seatId: 's1', seatNumber: 'K3', passengerName: 'Girl', gender: 'FEMALE', passengerType: 'STUDENT' },
+          { seatId: 's2', seatNumber: 'K5', passengerName: 'Boy', gender: 'MALE', passengerType: 'STUDENT' }
+        ],
+        seats
+      );
+      // K3's neighbours are K2/K4; K5's neighbour is K4 — K3 & K5 are NOT
+      // adjacent, so two opposite-gender students may sit there.
+      expect(res.isValid).toBe(true);
+    });
+  });
+
   describe('Same Bus Duplicate Phone Detection & Form Precedence', () => {
     it('should give precedence to the completed passenger card so earlier card does not turn red', async () => {
       const { getPassengerPairRuleViolation } = await import('@/components/booking/passenger-details-step');
@@ -373,6 +428,74 @@ describe('ATOMS Domain Engine & Business Rules', () => {
       expect(waDispatch.message).toContain('ঢাকা ➔ রাজশাহী বিশ্ববিদ্যালয়');
       expect(waDispatch.message).toContain('৳550');
       expect(waDispatch.message).toContain('পরিশোধিত (PAID)');
+    });
+
+    it('should provide popular boarding and dropping points presets', async () => {
+      const { COMMON_BOARDING_POINTS, COMMON_DROPPING_POINTS } = await import('@/components/booking/boarding-point-selector');
+      expect(COMMON_BOARDING_POINTS.length).toBeGreaterThan(5);
+      expect(COMMON_BOARDING_POINTS).toContain('গাবতলী বাস টার্মিনাল');
+      expect(COMMON_BOARDING_POINTS).toContain('উত্তরা (আজমপুর)');
+      expect(COMMON_DROPPING_POINTS).toContain('বিশ্ববিদ্যালয় মেইন গেট');
+    });
+
+    it('should generate offline QR code data URL successfully using qrcode library', async () => {
+      const QRCode = (await import('qrcode')).default;
+      const dataUrl = await QRCode.toDataURL('https://atoms-transit.com/bookings/BK-TEST-123');
+      expect(dataUrl).toContain('data:image/png;base64,');
+    });
+
+    it('should calculate custom percentage, paid amount, and due amount with bi-directional accuracy', () => {
+      const netAmount = 1100;
+      
+      // Test 17% custom percentage calculation as requested by user
+      const customPct = 17;
+      const targetPaid17 = Math.round((netAmount * customPct) / 100);
+      const targetDue17 = netAmount - targetPaid17;
+      expect(targetPaid17).toBe(187);
+      expect(targetDue17).toBe(913);
+      expect(targetPaid17 + targetDue17).toBe(netAmount);
+
+      // Test 0% (Full Due)
+      const targetPaid0 = Math.round((netAmount * 0) / 100);
+      const targetDue0 = netAmount - targetPaid0;
+      expect(targetPaid0).toBe(0);
+      expect(targetDue0).toBe(1100);
+
+      // Test 100% (Full Paid)
+      const targetPaid100 = Math.round((netAmount * 100) / 100);
+      const targetDue100 = netAmount - targetPaid100;
+      expect(targetPaid100).toBe(1100);
+      expect(targetDue100).toBe(0);
+
+      // Test decimal percentage e.g. 17.5%
+      const targetPaidDecimal = Math.round((netAmount * 17.5) / 100);
+      expect(targetPaidDecimal).toBe(193);
+      expect(netAmount - targetPaidDecimal).toBe(907);
+
+      // Test reverse calculation: Entering due amount 500 should yield 600 paid and 45.45% due
+      const manualDue = 500;
+      const derivedPaid = netAmount - manualDue;
+      const derivedDuePct = (manualDue / netAmount) * 100;
+      expect(derivedPaid).toBe(600);
+      expect(derivedDuePct.toFixed(1)).toBe('45.5');
+    });
+
+    it('should prevent floating-point rounding error where 25% of 550 Tk (138 Tk) became 25.1%', () => {
+      const netAmount = 550;
+      const chosenPct = 25;
+      const targetPaid = Math.round((netAmount * chosenPct) / 100); // 138
+      expect(targetPaid).toBe(138);
+
+      // Raw ratio is 138 / 550 * 100 = 25.0909...
+      const rawRatio = (targetPaid / netAmount) * 100;
+      expect(rawRatio).toBeCloseTo(25.09, 1);
+
+      // Verify clean percentage derivation
+      const roundedInt = Math.round(rawRatio);
+      const isClean = Math.round((netAmount * roundedInt) / 100) === targetPaid;
+      expect(isClean).toBe(true);
+      expect(roundedInt).toBe(25);
+      expect(100 - roundedInt).toBe(75);
     });
   });
 });

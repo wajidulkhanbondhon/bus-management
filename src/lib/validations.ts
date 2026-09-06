@@ -29,6 +29,7 @@ export const OptionalBdPhoneNumberSchema = z
 export const PassengerInputSchema = z.object({
   passengerName: z.string().min(1, 'Passenger name is required').max(200),
   passengerPhone: BdPhoneNumberSchema,
+  email: z.string().email().optional().or(z.literal('')).nullable(),
   phoneType: z.enum(['WHATSAPP', 'NORMAL']).optional().default('WHATSAPP'),
   hasWhatsapp: z.boolean().optional().default(true),
   whatsappNumber: OptionalBdPhoneNumberSchema,
@@ -59,8 +60,11 @@ export const CreateBookingSchema = z.object({
   seats: z.array(z.object({
     seatId: z.string().min(1),
     fare: z.number().min(0, 'Fare must be non-negative'),
-  })).min(1, 'At least one seat must be selected'),
-  passengers: z.array(PassengerInputSchema).min(1, 'At least one passenger is required'),
+  })).min(1, 'At least one seat must be selected').max(6, 'এক সাথে সর্বোচ্চ ৬টির বেশি সিট বুকিং করা যাবে না (A4 সিঙ্গেল-পেজ প্রিন্ট নীতি অনুযায়ী)'),
+  passengers: z.array(PassengerInputSchema).min(1, 'At least one passenger is required').max(6, 'এক সাথে সর্বোচ্চ ৬টির বেশি টিকিট কাটা যাবে না (A4 সিঙ্গেল-পেজ প্রিন্ট নীতি অনুযায়ী)'),
+  contactName: z.string().optional(),
+  contactPhone: z.string().optional(),
+  contactEmail: z.string().email().optional().or(z.literal('')).nullable(),
   isDiscountApplied: z.boolean().optional(),
   discountType: z.enum(['FIXED', 'PERCENTAGE']).optional(),
   discountRate: z.number().min(0).max(50000, 'Discount is unreasonably large').optional(),
@@ -86,9 +90,10 @@ export const CreateBookingSchema = z.object({
 
 export const CreatePreBookingSchema = z.object({
   tripId: z.string().min(1, 'Trip ID is required'),
-  seatIds: z.array(z.string().min(1)).min(1, 'At least one seat must be selected'),
+  seatIds: z.array(z.string().min(1)).min(1, 'At least one seat must be selected').max(6, 'এক সাথে সর্বোচ্চ ৬টির বেশি সিট বুকিং করা যাবে না (A4 সিঙ্গেল-পেজ প্রিন্ট নীতি অনুযায়ী)'),
   contactName: z.string().min(1, 'Contact name is required').max(200),
   contactPhone: BdPhoneNumberSchema,
+  contactEmail: z.string().email().optional().or(z.literal('')).nullable(),
   passengerGender: GenderSchema,
   isStudent: z.boolean().optional(),
   studentAdmissionId: z.string().max(50).optional(),
