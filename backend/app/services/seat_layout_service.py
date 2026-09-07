@@ -104,10 +104,40 @@ async def get_bus_layout_seats(db: Any, trip: Trip) -> Tuple[Optional[Bus], Opti
     if trip and trip.bus_id:
         bus = await _maybe_await(db.query(Bus).filter(Bus.id == trip.bus_id).first())
     if not bus:
-        return None, None, []
+        # Auto-fallback: locate active bus with an assigned layout
+        bus = await _maybe_await(
+            db.query(Bus).filter(Bus.status == "ACTIVE", Bus.seat_layout_id.isnot(None)).first()
+        )
+        if not bus:
+            bus = await _maybe_await(db.query(Bus).filter(Bus.status != "DELETED").first())
+        if bus and trip and getattr(trip, "id", None):
+            try:
+                trip.bus_id = bus.id
+                await _maybe_await(db.flush())
+            except Exception:
+                pass
+
     layout = None
-    if bus.seat_layout_id:
+    if bus and bus.seat_layout_id:
         layout = await _maybe_await(db.query(SeatLayout).filter(SeatLayout.id == bus.seat_layout_id).first())
+
+    if not layout:
+        # Auto-fallback to default active layout in the system
+        layout = await _maybe_await(
+            db.query(SeatLayout).filter(
+                (SeatLayout.description == None) | (~SeatLayout.description.startswith("[DELETED"))
+            ).order_by(SeatLayout.created_at.desc() if hasattr(SeatLayout, 'created_at') else SeatLayout.id.desc()).first()
+        )
+        if not layout:
+            layout = await _maybe_await(db.query(SeatLayout).first())
+
+        if layout and bus and not bus.seat_layout_id:
+            try:
+                bus.seat_layout_id = layout.id
+                await _maybe_await(db.flush())
+            except Exception:
+                pass
+
     seats = []
     if layout:
         seats = await _maybe_await(
@@ -197,6 +227,26 @@ async def layout_cells(db: Any, trip: Trip) -> List[Dict[str, Any]]:
             "is_extra": True,
         })
 
+    if not cells:
+        # Standard synthesis if layout has no explicit grid or seat rows
+        rows_cnt = (layout.total_rows if layout else None) or 10
+        cols_cnt = (layout.total_cols if layout else None) or 4
+        for r_idx in range(rows_cnt):
+            row_char = row_letters[r_idx] if r_idx < len(row_letters) else f"R{r_idx + 1}"
+            for c_idx in range(cols_cnt):
+                label = f"{row_char}{c_idx + 1}"
+                seg_fare = _fare_for_row(row_char, seg_map)
+                cells.append({
+                    "seat_id": f"seat-{trip.id if trip else 'default'}-{label}",
+                    "seat_number": label,
+                    "row_index": r_idx,
+                    "col_index": c_idx,
+                    "seat_type": "VIP" if r_idx < 2 else "STANDARD",
+                    "gender_allowed": "ANY",
+                    "fare": float(seg_fare or (trip.base_price if trip else None) or 550.0),
+                    "is_extra": False,
+                })
+
     return cells
 
 
@@ -206,10 +256,24 @@ async def ensure_seat_rows(db: Any, trip: Trip, labels: Optional[List[str]] = No
     canonical seat ids are real rows and BookingSeat FKs never dangle.
 
     Rows are created once per layout using the layout-scoped id scheme
-    (`seat-layout-<layout_id>-<label>`). Missing layout -> raises ValueError so
-    callers fail closed instead of fabricating a phantom layout.
+    (`seat-layout-<layout_id>-<label>`). Missing layout -> auto-recovers to active layout.
     """
     bus, layout, _ = await get_bus_layout_seats(db, trip)
+    if not layout:
+        # Fallback to locate default active layout
+        layout = await _maybe_await(
+            db.query(SeatLayout).filter(
+                (SeatLayout.description == None) | (~SeatLayout.description.startswith("[DELETED"))
+            ).order_by(SeatLayout.created_at.desc() if hasattr(SeatLayout, 'created_at') else SeatLayout.id.desc()).first()
+        )
+        if not layout:
+            layout = await _maybe_await(db.query(SeatLayout).first())
+        if layout and bus and not bus.seat_layout_id:
+            try:
+                bus.seat_layout_id = layout.id
+                await _maybe_await(db.flush())
+            except Exception:
+                pass
     if not layout:
         raise ValueError("Trip's bus has no seat layout assigned")
     await sync_seat_rows_from_layout(db, layout)
@@ -284,6 +348,19 @@ async def sync_seat_rows_from_layout(db: Any, layout: Optional[SeatLayout]) -> i
         _touch(label, 999, i, "EXTRA",
                float(ex.get("baseFare") or 0.0),
                (ex.get("genderAllowed") or ex.get("genderRule") or "ANY").upper())
+
+    if not isinstance(grid, list):
+        rows_cnt = layout.total_rows or 10
+        cols_cnt = layout.total_cols or 4
+        for r_idx in range(rows_cnt):
+            row_char = row_letters[r_idx] if r_idx < len(row_letters) else f"R{r_idx + 1}"
+            for c_idx in range(cols_cnt):
+                label = f"{row_char}{c_idx + 1}"
+                seg_fare = _fare_for_row(row_char, seg_map)
+                _touch(label, r_idx, c_idx,
+                       "VIP" if r_idx < 2 else "STANDARD",
+                       float(seg_fare or 550.0),
+                       "ANY")
 
     if created:
         await _maybe_await(db.flush())

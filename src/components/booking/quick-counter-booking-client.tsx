@@ -16,8 +16,10 @@ import {
   Search,
   Filter,
   RefreshCw,
-  Ticket
+  Ticket,
+  Check
 } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -51,6 +53,9 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
 
   // Success modal
   const [confirmedBookingData, setConfirmedBookingData] = useState<any | null>(null);
+  const [processingFee, setProcessingFee] = useState<number>(0);
+  const [vatTaxAmount, setVatTaxAmount] = useState<number>(0);
+  const { success: toastSuccess, error: toastError } = useToast();
 
   const activeTrip = useMemo(() => {
     return trips.find((t) => t.id === selectedTripId) || trips[0];
@@ -126,7 +131,7 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
     return selectedSeatItems.reduce((acc, s) => acc + s.fare, 0);
   }, [selectedSeatItems]);
 
-  const netAmount = grossAmount;
+  const netAmount = grossAmount + processingFee + vatTaxAmount;
 
   useEffect(() => {
     setPaidAmount(netAmount);
@@ -166,22 +171,34 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
         journey_type: 'ROUND_TRIP',
         payment_method: paymentMethod,
         paid_amount: paidAmount,
+        processing_fee: processingFee,
+        vat_amount: vatTaxAmount,
         notes: `Quick Counter Booking by ${currentUser?.name || 'Staff'}`
       };
 
       const result = await createBookingAction(payload as any);
       if (result.success && result.booking) {
-        setConfirmedBookingData(result.booking);
+        toastSuccess(
+          language === 'bn'
+            ? `🎉 টিকিট বুকিং সফল হয়েছে! ট্র্যাকিং কোড: ${result.booking.bookingNumber}`
+            : `🎉 Booking confirmed successfully! Code: ${result.booking.bookingNumber}`
+        );
+        setConfirmedBookingData({
+          ...result.booking,
+          processingFee,
+          vatAmount: vatTaxAmount,
+          netAmount
+        });
         fetchLiveSeats(activeTrip.id);
         setSelectedSeatIds([]);
         setPassengerName('');
         setPassengerPhone('');
       } else {
-        alert(result.error || (language === 'bn' ? 'বুকিং সম্পন্ন করতে ব্যর্থ হয়েছে।' : 'Failed to confirm booking.'));
+        toastError(result.error || (language === 'bn' ? 'বুকিং সম্পন্ন করতে ব্যর্থ হয়েছে।' : 'Failed to confirm booking.'));
         fetchLiveSeats(activeTrip.id);
       }
     } catch (e: any) {
-      alert(e.message || 'Error occurred');
+      toastError(e.message || 'Error occurred');
     } finally {
       setIsSubmitting(false);
     }
@@ -191,8 +208,89 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
   const bookedSeatsCount = tripSeats.filter((s) => s.status === 'BOOKED').length;
   const availableSeatsCount = Math.max(0, totalSeatsCount - bookedSeatsCount);
 
+  // Helper to render ergonomic seat button matching interactive-seat-map
+  const renderSeatButton = (sNum: string, isWindow: boolean) => {
+    const seatObj = tripSeats.find((s) => (s.seat_number || s.seatNumber) === sNum);
+    const isBooked = seatObj?.status === 'BOOKED';
+    const isSelected = selectedSeatIds.includes(seatObj?.seat_id || seatObj?.seatId || sNum);
+    const seatPrice = seatObj?.fare || activeTrip?.basePrice || 550;
+    const isFemaleOnly = seatObj?.gender_allowed === 'FEMALE_ONLY' || seatObj?.genderAllowed === 'FEMALE_ONLY';
+    const isMaleOnly = seatObj?.gender_allowed === 'MALE_ONLY' || seatObj?.genderAllowed === 'MALE_ONLY';
+
+    return (
+      <button
+        key={sNum}
+        type="button"
+        disabled={isBooked}
+        onClick={() => handleToggleSeat(seatObj?.seat_id || seatObj?.seatId || sNum, seatObj?.status || 'AVAILABLE')}
+        title={`সিট: ${sNum} ${isWindow ? '• জানালা (Window)' : ''} | ভাড়া: ৳${seatPrice}`}
+        className={`w-12 h-14 sm:w-14 sm:h-15 shrink-0 p-1 rounded-2xl flex flex-col items-center justify-between font-black transition-all duration-150 select-none cursor-pointer relative ${
+          isSelected
+            ? 'bg-gradient-to-b from-blue-600 via-blue-700 to-indigo-800 text-white border-2 border-blue-400 shadow-lg shadow-blue-600/30 scale-105 z-10 ring-4 ring-blue-500/30'
+            : isBooked
+            ? 'bg-gradient-to-b from-rose-50 via-rose-100 to-rose-200 dark:from-rose-950/70 dark:to-rose-900/70 text-rose-950 dark:text-rose-200 border-2 border-rose-300 dark:border-rose-700 opacity-70 cursor-not-allowed'
+            : isFemaleOnly
+            ? 'bg-gradient-to-b from-pink-50 via-pink-100 to-pink-200 dark:from-pink-950/60 dark:to-pink-900/60 text-pink-950 dark:text-pink-200 border-2 border-pink-400 dark:border-pink-600 hover:border-pink-500 shadow-xs'
+            : isMaleOnly
+            ? 'bg-gradient-to-b from-blue-50 via-blue-100 to-blue-200 dark:from-blue-950/80 dark:to-blue-900/80 text-blue-950 dark:text-blue-100 border-2 border-blue-400 dark:border-blue-500 shadow-xs hover:border-blue-500'
+            : 'bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-850 dark:to-slate-900 text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-600 shadow-xs hover:border-blue-500 hover:shadow-md'
+        }`}
+      >
+        {/* Ergonomic Headrest Cushion */}
+        <div
+          className={`w-8 h-1 rounded-full shadow-inner transition-all ${
+            isSelected
+              ? 'bg-white/95 shadow-white/40'
+              : isBooked
+              ? 'bg-rose-400'
+              : isFemaleOnly
+              ? 'bg-pink-500'
+              : isMaleOnly
+              ? 'bg-blue-500'
+              : 'bg-emerald-500'
+          }`}
+        />
+
+        {/* Crisp Seat Number & Window Indicator */}
+        <div className="flex items-center justify-center gap-0.5 my-auto">
+          <span className={`text-xs sm:text-sm font-black tracking-tight leading-none font-mono ${isSelected ? 'text-white' : ''}`}>
+            {sNum}
+          </span>
+          {isWindow && (
+            <span className="text-[8px] opacity-75 select-none" title="জানালা (Window)">
+              🪟
+            </span>
+          )}
+        </div>
+
+        {/* Fare / Status Pill */}
+        <div
+          className={`w-full flex items-center justify-center gap-0.5 px-0.5 py-0.5 rounded-md backdrop-blur-xs transition-colors ${
+            isSelected
+              ? 'bg-black/30 text-white'
+              : 'bg-black/5 dark:bg-white/10'
+          }`}
+        >
+          {isSelected ? (
+            <span className="text-[9px] font-black font-mono leading-none tracking-tight flex items-center gap-0.5 text-white">
+              <Check className="w-2.5 h-2.5 stroke-[3]" /> ৳{seatPrice}
+            </span>
+          ) : isBooked ? (
+            <span className="text-[8px] font-black text-rose-700 dark:text-rose-300 leading-none">
+              বুকড
+            </span>
+          ) : (
+            <span className="text-[9px] font-black font-mono leading-none tracking-tight">
+              ৳{seatPrice}
+            </span>
+          )}
+        </div>
+      </button>
+    );
+  };
+
   return (
-    <div className="space-y-6 pb-16">
+    <div suppressHydrationWarning className="space-y-6 pb-16">
       {/* Top Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white p-5 rounded-3xl shadow-lg">
         <div className="flex items-center gap-3">
@@ -231,6 +329,38 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
           </Button>
         </div>
       </div>
+
+      {/* Success Notification Alert Banner if booking confirmed */}
+      {confirmedBookingData && (
+        <div className="p-4 bg-emerald-500 text-white rounded-2xl shadow-md flex items-center justify-between gap-3 animate-in slide-in-from-top duration-300">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center font-black">
+              <CheckCircle2 className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <div className="font-black text-sm sm:text-base">
+                {language === 'bn' ? '🎉 বুকিং সফলভাবে নিশ্চিত হয়েছে!' : '🎉 Booking Confirmed Successfully!'}
+              </div>
+              <div className="text-xs text-emerald-100 font-mono">
+                {language === 'bn' ? 'বুকিং নম্বর:' : 'Booking Number:'} <strong>{confirmedBookingData.bookingNumber}</strong>
+                {confirmedBookingData.passengers && confirmedBookingData.passengers.length > 0 && (
+                  <span> • {language === 'bn' ? 'সিট:' : 'Seats:'} {confirmedBookingData.passengers.map((p: any) => p.seatNumber).join(', ')}</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => setConfirmedBookingData(confirmedBookingData)}
+              className="bg-white text-emerald-900 hover:bg-emerald-50 font-black text-xs rounded-xl shadow-xs"
+            >
+              <Ticket className="w-3.5 h-3.5 mr-1" />
+              {language === 'bn' ? 'টিকিট ও চালান দেখুন' : 'View Ticket & Invoice'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Trip / Bus Selector Bar */}
       <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
@@ -312,16 +442,19 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
             {/* Seat Map Legend */}
             <div className="px-5 py-2.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center gap-4 text-xs font-semibold">
               <div className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-white dark:bg-slate-800 border-2 border-slate-300"></span>
+                <span className="w-3.5 h-3.5 rounded-md bg-white dark:bg-slate-800 border-2 border-slate-300"></span>
                 <span>খালি আসন</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-blue-600 border border-blue-400"></span>
-                <span className="font-bold text-blue-600 dark:text-blue-400">নির্বাচিত</span>
+                <span className="w-3.5 h-3.5 rounded-md bg-blue-600 border border-blue-400"></span>
+                <span className="font-bold text-blue-600 dark:text-blue-400">নির্বাচিত সিট</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-rose-500"></span>
-                <span className="text-rose-600 dark:text-rose-400">বুকড</span>
+                <span className="w-3.5 h-3.5 rounded-md bg-rose-500"></span>
+                <span className="text-rose-600 dark:text-rose-400">বুকড (বিক্রিত)</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-slate-400 font-mono text-[11px]">
+                <span>🪟 জানালা (Window)</span>
               </div>
             </div>
 
@@ -336,12 +469,14 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border-4 border-slate-300 dark:border-slate-700 shadow-xl w-full max-w-md">
                   {/* Cockpit / Driver Cabin Header */}
                   <div className="mb-4 pb-3 border-b-2 border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-400 px-2">
-                    <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 rounded-lg text-[10px] font-black">
-                      🚪 প্রবেশদ্বার (DOOR)
-                    </span>
-                    <span className="px-2 py-1 bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 rounded-lg text-[10px] font-black">
-                      ✇ ড্রাইভার (DRIVER)
-                    </span>
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 rounded-xl text-xs font-black shadow-xs">
+                      <span>🚪</span>
+                      <span>প্রবেশদ্বার (DOOR)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 rounded-xl text-xs font-black shadow-xs">
+                      <span>✇</span>
+                      <span>ড্রাইভার কেবিন (DRIVER)</span>
+                    </div>
                   </div>
 
                   {/* Seat Rows Matrix */}
@@ -353,89 +488,25 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
                         <div key={r} className="flex items-center justify-between gap-2">
                           {/* Left Seats: 1, 2 */}
                           <div className="flex items-center gap-2">
-                            {[1, 2].map((col) => {
-                              const sNum = `${rowChar}${col}`;
-                              const seatObj = tripSeats.find((s) => (s.seat_number || s.seatNumber) === sNum);
-                              const isBooked = seatObj?.status === 'BOOKED';
-                              const isSelected = selectedSeatIds.includes(seatObj?.seat_id || seatObj?.seatId || sNum);
-                              return (
-                                <button
-                                  key={sNum}
-                                  type="button"
-                                  disabled={isBooked}
-                                  onClick={() => handleToggleSeat(seatObj?.seat_id || seatObj?.seatId || sNum, seatObj?.status || 'AVAILABLE')}
-                                  className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-black font-mono text-xs transition-all border-2 cursor-pointer ${
-                                    isSelected
-                                      ? 'bg-blue-600 text-white border-blue-400 shadow-md scale-105 ring-2 ring-blue-400/40 z-10'
-                                      : isBooked
-                                      ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-700 cursor-not-allowed opacity-70'
-                                      : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-blue-500 shadow-2xs'
-                                  }`}
-                                >
-                                  <span>{sNum}</span>
-                                  <span className="text-[9px] opacity-75 font-normal">৳{seatObj?.fare || activeTrip?.basePrice || 550}</span>
-                                </button>
-                              );
-                            })}
+                            {renderSeatButton(`${rowChar}1`, true)}
+                            {renderSeatButton(`${rowChar}2`, false)}
                           </div>
 
                           {/* Center Walkway / Aisle */}
-                          <div className="w-8 text-center font-mono text-[11px] font-black text-slate-400">
+                          <div className="w-8 text-center font-mono text-[11px] font-black text-slate-400 flex items-center justify-center">
                             {isLastRow ? (
-                              (() => {
-                                const sNum = `${rowChar}3`;
-                                const seatObj = tripSeats.find((s) => (s.seat_number || s.seatNumber) === sNum);
-                                const isBooked = seatObj?.status === 'BOOKED';
-                                const isSelected = selectedSeatIds.includes(seatObj?.seat_id || seatObj?.seatId || sNum);
-                                return (
-                                  <button
-                                    type="button"
-                                    disabled={isBooked}
-                                    onClick={() => handleToggleSeat(seatObj?.seat_id || seatObj?.seatId || sNum, seatObj?.status || 'AVAILABLE')}
-                                    className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-black font-mono text-xs transition-all border-2 cursor-pointer ${
-                                      isSelected
-                                        ? 'bg-blue-600 text-white border-blue-400 shadow-md scale-105 ring-2 ring-blue-400/40 z-10'
-                                        : isBooked
-                                        ? 'bg-rose-100 text-rose-800 border-rose-300 cursor-not-allowed opacity-70'
-                                        : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-blue-500'
-                                    }`}
-                                  >
-                                    <span>{sNum}</span>
-                                    <span className="text-[9px] opacity-75 font-normal">৳{seatObj?.fare || activeTrip?.basePrice || 550}</span>
-                                  </button>
-                                );
-                              })()
+                              renderSeatButton(`${rowChar}3`, false)
                             ) : (
-                              rowChar
+                              <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-xs text-slate-500 border border-slate-200 dark:border-slate-700">
+                                {rowChar}
+                              </span>
                             )}
                           </div>
 
                           {/* Right Seats: 3, 4 (or 4, 5 on last row) */}
                           <div className="flex items-center gap-2">
-                            {[(isLastRow ? 4 : 3), (isLastRow ? 5 : 4)].map((col) => {
-                              const sNum = `${rowChar}${col}`;
-                              const seatObj = tripSeats.find((s) => (s.seat_number || s.seatNumber) === sNum);
-                              const isBooked = seatObj?.status === 'BOOKED';
-                              const isSelected = selectedSeatIds.includes(seatObj?.seat_id || seatObj?.seatId || sNum);
-                              return (
-                                <button
-                                  key={sNum}
-                                  type="button"
-                                  disabled={isBooked}
-                                  onClick={() => handleToggleSeat(seatObj?.seat_id || seatObj?.seatId || sNum, seatObj?.status || 'AVAILABLE')}
-                                  className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-black font-mono text-xs transition-all border-2 cursor-pointer ${
-                                    isSelected
-                                      ? 'bg-blue-600 text-white border-blue-400 shadow-md scale-105 ring-2 ring-blue-400/40 z-10'
-                                      : isBooked
-                                      ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-700 cursor-not-allowed opacity-70'
-                                      : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-blue-500 shadow-2xs'
-                                  }`}
-                                >
-                                  <span>{sNum}</span>
-                                  <span className="text-[9px] opacity-75 font-normal">৳{seatObj?.fare || activeTrip?.basePrice || 550}</span>
-                                </button>
-                              );
-                            })}
+                            {renderSeatButton(`${rowChar}${isLastRow ? 4 : 3}`, false)}
+                            {renderSeatButton(`${rowChar}${isLastRow ? 5 : 4}`, true)}
                           </div>
                         </div>
                       );
@@ -456,6 +527,10 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
             netAmount={netAmount}
             paidAmount={paidAmount}
             onPaidAmountChange={(amt) => setPaidAmount(amt)}
+            processingFee={processingFee}
+            onProcessingFeeChange={(fee) => setProcessingFee(fee)}
+            vatTaxAmount={vatTaxAmount}
+            onVatTaxAmountChange={(tax) => setVatTaxAmount(tax)}
             paymentMethod={paymentMethod}
             onPaymentMethodChange={(m) => setPaymentMethod(m)}
             passengerName={passengerName}

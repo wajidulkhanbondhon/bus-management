@@ -46,6 +46,13 @@ export function LiveBookingTrackerClient({ initialBooking }: Props) {
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [hostOrigin, setHostOrigin] = useState('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setHostOrigin(window.location.origin);
+    }
+  }, []);
 
   // Poll / Refresh status periodically
   const refreshStatus = async () => {
@@ -164,7 +171,7 @@ export function LiveBookingTrackerClient({ initialBooking }: Props) {
                   </div>
                   <div className="p-1.5 bg-white rounded-lg border border-slate-200">
                     <QRCodeView
-                      value={`${typeof window !== 'undefined' ? window.location.origin : ''}/track/${encodeURIComponent(booking.bookingNumber)}`}
+                      value={`${hostOrigin || 'https://atoms-transit.com'}/track/${encodeURIComponent(booking.bookingNumber)}`}
                       size={128}
                     />
                   </div>

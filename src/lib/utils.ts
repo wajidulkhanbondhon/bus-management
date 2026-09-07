@@ -8,7 +8,8 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatCurrency(amount: number | null | undefined): string {
   if (amount === null || amount === undefined || isNaN(amount)) return '৳0';
-  return `৳${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  const formatted = Number(amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).replace(/[\u202f\u00a0]/g, ' ');
+  return `৳${formatted}`;
 }
 
 export function formatTime(date: Date | string | null | undefined): string {
@@ -20,14 +21,14 @@ export function formatTime(date: Date | string | null | undefined): string {
   }
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return typeof date === 'string' ? date : '--:--';
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Dhaka' });
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Dhaka' }).replace(/[\u202f\u00a0]/g, ' ');
 }
 
 export function formatDate(date: Date | string | null | undefined): string {
   if (!date) return '---';
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return typeof date === 'string' ? date : '---';
-  return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Dhaka' });
+  return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Dhaka' }).replace(/[\u202f\u00a0]/g, ' ');
 }
 
 export function formatDateTime(date: Date | string | null | undefined): string {

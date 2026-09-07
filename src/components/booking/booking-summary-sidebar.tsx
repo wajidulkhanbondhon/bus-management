@@ -52,6 +52,10 @@ interface BookingSummarySidebarProps {
   onIsStudentChange?: (isStudent: boolean) => void;
   studentAdmissionId?: string;
   onStudentAdmissionIdChange?: (id: string) => void;
+  processingFee?: number;
+  onProcessingFeeChange?: (fee: number) => void;
+  vatTaxAmount?: number;
+  onVatTaxAmountChange?: (tax: number) => void;
   autoPrintTicket: boolean;
   onAutoPrintTicketChange: (autoPrint: boolean) => void;
   onConfirmBooking: () => void;
@@ -69,6 +73,10 @@ export function BookingSummarySidebar({
   netAmount,
   paidAmount,
   onPaidAmountChange,
+  processingFee = 0,
+  onProcessingFeeChange,
+  vatTaxAmount = 0,
+  onVatTaxAmountChange,
   paymentMethod,
   onPaymentMethodChange,
   passengerName,
@@ -90,10 +98,11 @@ export function BookingSummarySidebar({
   className = ''
 }: BookingSummarySidebarProps) {
   const { language } = useApp();
+  const [showFeeTaxSettings, setShowFeeTaxSettings] = React.useState(false);
   const dueAmount = Math.max(0, netAmount - paidAmount);
 
   return (
-    <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xl flex flex-col gap-5 sticky top-20 z-20 ${className}`}>
+    <div suppressHydrationWarning className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xl flex flex-col gap-5 sticky top-20 z-20 ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
         <div className="flex items-center gap-2">
@@ -104,7 +113,7 @@ export function BookingSummarySidebar({
             <h3 className="font-black text-sm text-slate-900 dark:text-white leading-tight">
               {language === 'bn' ? 'বুকিং সামারি ও চেকআউট' : 'Booking Summary'}
             </h3>
-            <p className="text-[11px] text-slate-500 font-medium">
+            <p suppressHydrationWarning className="text-[11px] text-slate-500 font-medium">
               {trip?.bus?.busName || trip?.tripCode || (language === 'bn' ? 'কাউন্টার বুকিং' : 'Counter Session')}
             </p>
           </div>
@@ -226,7 +235,7 @@ export function BookingSummarySidebar({
       </div>
 
       {/* Payment & Breakdown */}
-      <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+      <div suppressHydrationWarning className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
         <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
           <span>{language === 'bn' ? 'মোট টিকিট ভাড়া:' : 'Gross Fare:'}</span>
           <span className="font-mono font-bold">{formatCurrency(grossAmount)}</span>
@@ -236,6 +245,69 @@ export function BookingSummarySidebar({
           <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-bold">
             <span>{language === 'bn' ? 'ডিসকাউন্ট / ছাড়:' : 'Discount:'}</span>
             <span className="font-mono">- {formatCurrency(discountAmount)}</span>
+          </div>
+        )}
+
+        {/* Processing Fee & VAT Tax Breakdown Rows */}
+        {processingFee > 0 && (
+          <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+            <span>{language === 'bn' ? 'অনলাইন প্রসেসিং ফি:' : 'Processing Fee:'}</span>
+            <span className="font-mono font-bold">+ {formatCurrency(processingFee)}</span>
+          </div>
+        )}
+
+        {vatTaxAmount > 0 && (
+          <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+            <span>{language === 'bn' ? 'ভ্যাট ও সার্ভিস ট্যাক্স:' : 'VAT & Service Tax:'}</span>
+            <span className="font-mono font-bold">+ {formatCurrency(vatTaxAmount)}</span>
+          </div>
+        )}
+
+        {/* Fee & Tax Entry Toggle for Counter Staff */}
+        {(onProcessingFeeChange || onVatTaxAmountChange) && (
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => setShowFeeTaxSettings((prev) => !prev)}
+              className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <span>{showFeeTaxSettings ? '▼ ফি ও কর গোপন করুন' : '⚙️ প্রসেসিং ফি ও ভ্যাট ট্যাক্স সমন্বয়'}</span>
+            </button>
+
+            {showFeeTaxSettings && (
+              <div className="mt-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-2 text-[10px]">
+                {onProcessingFeeChange && (
+                  <div>
+                    <label className="text-slate-600 dark:text-slate-300 font-bold block mb-0.5">
+                      {language === 'bn' ? 'প্রসেসিং ফি (৳)' : 'Fee (৳)'}
+                    </label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={processingFee}
+                      onChange={(e) => onProcessingFeeChange(parseFloat(e.target.value) || 0)}
+                      className="h-7 text-[11px] font-mono rounded-lg"
+                      placeholder="0"
+                    />
+                  </div>
+                )}
+                {onVatTaxAmountChange && (
+                  <div>
+                    <label className="text-slate-600 dark:text-slate-300 font-bold block mb-0.5">
+                      {language === 'bn' ? 'ভ্যাট / ট্যাক্স (৳)' : 'VAT (৳)'}
+                    </label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={vatTaxAmount}
+                      onChange={(e) => onVatTaxAmountChange(parseFloat(e.target.value) || 0)}
+                      className="h-7 text-[11px] font-mono rounded-lg"
+                      placeholder="0"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

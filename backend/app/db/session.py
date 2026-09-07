@@ -38,6 +38,7 @@ AsyncSessionLocal = sessionmaker(
     bind=engine, 
     class_=AsyncSession
 )
+SessionLocal = AsyncSessionLocal
 
 async def get_db():
     session = AsyncSessionLocal()
