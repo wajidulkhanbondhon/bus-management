@@ -188,7 +188,9 @@ export function FareAndPaymentStep({
 
     (passengers || []).forEach((p, idx) => {
       const sObj = (allCurrentSeats || []).find((s) => s.seatId === p.seatId);
-      const seatLabel = sObj?.seatNumber || (sObj as any)?.seat_number || p.seatNumber || (p.seatId?.includes('-') ? p.seatId.split('-').pop() : `সিট ${idx + 1}`);
+      const exMatch = p.seatId?.match(/EX(?:TRA)?[-_]?\d+/i);
+      const exResolved = exMatch ? (exMatch[0].match(/\d+/) ? `EX-${exMatch[0].match(/\d+/)?.[0]}` : exMatch[0].toUpperCase()) : null;
+      const seatLabel = sObj?.seatNumber || (sObj as any)?.seat_number || p.seatNumber || exResolved || (p.seatId?.includes('-') ? p.seatId.split('-').pop() : `সিট ${idx + 1}`);
       const cleanPhone = (p.passengerPhone || '').trim();
       if (cleanPhone) {
         list.push({

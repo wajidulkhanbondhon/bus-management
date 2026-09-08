@@ -561,7 +561,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
             b.seats.forEach((st: any) => {
               const num = (st.seatNumber || st.seat_number || '').toString().trim().toUpperCase();
               const sId = (st.seatId || st.seat_id || '').toString().trim().toUpperCase();
-              const sSuffix = sId ? sId.split('-').pop() || '' : '';
+              const sSuffix = sId ? (sId.includes('-EX-') ? `EX-${sId.split('-').pop()}` : (sId.split('-').pop() || '')) : '';
               if (num) bookedSeatsFromBookings.set(num, dataObj);
               if (sId) bookedSeatsFromBookings.set(sId, dataObj);
               if (sSuffix) bookedSeatsFromBookings.set(sSuffix, dataObj);
@@ -571,7 +571,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
             b.passengers.forEach((ps: any) => {
               const num = (ps.seatNumber || ps.seat_number || '').toString().trim().toUpperCase();
               const sId = (ps.seatId || ps.seat_id || '').toString().trim().toUpperCase();
-              const sSuffix = sId ? sId.split('-').pop() || '' : '';
+              const sSuffix = sId ? (sId.includes('-EX-') ? `EX-${sId.split('-').pop()}` : (sId.split('-').pop() || '')) : '';
               const pObj = {
                 booking: b,
                 passengerName: ps.passengerName || ps.passenger_name || pName,
@@ -590,7 +590,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           data.seats.forEach((s: any) => {
             const num = (s.seatNumber || s.seat_number || s.label || '').toString().trim().toUpperCase();
             const sId = (s.seatId || s.seat_id || s.id || '').toString().trim().toUpperCase();
-            const sSuffix = sId ? sId.split('-').pop() || '' : '';
+            const sSuffix = sId ? (sId.includes('-EX-') ? `EX-${sId.split('-').pop()}` : (sId.split('-').pop() || '')) : '';
             if (num) seatDataMap.set(num, s);
             if (sId) seatDataMap.set(sId, s);
             if (sSuffix) seatDataMap.set(sSuffix, s);
@@ -600,7 +600,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         finalSeats = finalSeats.map((s: any) => {
           const sNum = (s.seatNumber || s.seat_number || '').toString().trim().toUpperCase();
           const sId = (s.seatId || s.seat_id || s.id || '').toString().trim().toUpperCase();
-          const sSuffix = sId ? sId.split('-').pop() || '' : '';
+          const sSuffix = sId ? (sId.includes('-EX-') ? `EX-${sId.split('-').pop()}` : (sId.split('-').pop() || '')) : '';
 
           const bSeat = (sNum ? seatDataMap.get(sNum) : null)
             || (sId ? seatDataMap.get(sId) : null)
@@ -643,7 +643,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         finalExtras = finalExtras.map((s: any) => {
           const sNum = (s.seatNumber || s.seat_number || '').toString().trim().toUpperCase();
           const sId = (s.seatId || s.seat_id || s.id || '').toString().trim().toUpperCase();
-          const sSuffix = sId ? sId.split('-').pop() || '' : '';
+          const sSuffix = sId ? (sId.includes('-EX-') ? `EX-${sId.split('-').pop()}` : (sId.split('-').pop() || '')) : '';
 
           const bSeat = (sNum ? seatDataMap.get(sNum) : null)
             || (sId ? seatDataMap.get(sId) : null)
@@ -1166,10 +1166,21 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
 
       if (!isOffline) {
         try {
+          const enrichedPassengers = passengers.map((p) => {
+            const sObj = allCurrentSeats.find((s) => s.seatId === p.seatId);
+            const rawNum = sObj?.seatNumber || (p as any).seatNumber;
+            const exMatch = p.seatId?.match(/EX(?:TRA)?[-_]?\d+/i);
+            const resolvedNum = rawNum || (exMatch ? (exMatch[0].match(/\d+/) ? `EX-${exMatch[0].match(/\d+/)?.[0]}` : exMatch[0].toUpperCase()) : p.seatId);
+            return {
+              ...p,
+              seatNumber: resolvedNum
+            };
+          });
+
           res = await createBookingAction({
             tripId: selectedTripId,
             seats: seatsPayload,
-            passengers,
+            passengers: enrichedPassengers,
             contactName: passengers[0]?.passengerName || undefined,
             contactPhone: passengers[0]?.passengerPhone || undefined,
             contactEmail: passengers[0]?.email || undefined,

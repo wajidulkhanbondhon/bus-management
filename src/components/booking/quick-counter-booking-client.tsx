@@ -55,6 +55,7 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
   const [confirmedBookingData, setConfirmedBookingData] = useState<any | null>(null);
   const [processingFee, setProcessingFee] = useState<number>(0);
   const [vatTaxAmount, setVatTaxAmount] = useState<number>(0);
+  const [cashoutCharge, setCashoutCharge] = useState<number>(0);
   const { success: toastSuccess, error: toastError } = useToast();
 
   const activeTrip = useMemo(() => {
@@ -131,7 +132,7 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
     return selectedSeatItems.reduce((acc, s) => acc + s.fare, 0);
   }, [selectedSeatItems]);
 
-  const netAmount = grossAmount + processingFee + vatTaxAmount;
+  const netAmount = grossAmount + processingFee + vatTaxAmount + cashoutCharge;
 
   useEffect(() => {
     setPaidAmount(netAmount);
@@ -173,6 +174,8 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
         paid_amount: paidAmount,
         processing_fee: processingFee,
         vat_amount: vatTaxAmount,
+        cashout_fee: cashoutCharge,
+        cashoutFee: cashoutCharge,
         notes: `Quick Counter Booking by ${currentUser?.name || 'Staff'}`
       };
 
@@ -187,6 +190,7 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
           ...result.booking,
           processingFee,
           vatAmount: vatTaxAmount,
+          cashoutFee: cashoutCharge,
           netAmount
         });
         fetchLiveSeats(activeTrip.id);
@@ -531,6 +535,8 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
             onProcessingFeeChange={(fee) => setProcessingFee(fee)}
             vatTaxAmount={vatTaxAmount}
             onVatTaxAmountChange={(tax) => setVatTaxAmount(tax)}
+            cashoutCharge={cashoutCharge}
+            onCashoutChargeChange={(charge) => setCashoutCharge(charge)}
             paymentMethod={paymentMethod}
             onPaymentMethodChange={(m) => setPaymentMethod(m)}
             passengerName={passengerName}

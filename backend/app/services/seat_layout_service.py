@@ -68,7 +68,7 @@ def json_loads(raw: str) -> Dict[str, Any]:
 def seat_label_of(seat_id_or_number: str) -> str:
     """Normalize any seat identifier to its label (e.g. 'A1', 'EX-2').
 
-    Handles ids like 'seat-{trip}-A1', 'dynamic-{trip}-A1', raw 'A1'.
+    Handles ids like 'seat-{trip}-A1', 'dynamic-{trip}-A1', 'seat-layout-{id}-EX-1', raw 'A1'.
     Extra seats use 'EX-<n>' labels.
     """
     if not seat_id_or_number:
@@ -76,9 +76,24 @@ def seat_label_of(seat_id_or_number: str) -> str:
     s = str(seat_id_or_number).strip().upper()
     if not s:
         return ""
-    # 'seat-<uuid>-A1' / 'dynamic-<uuid>-A1' / 'seat-trip-A1'
+    # 1. Match explicit extra seat patterns, e.g. EX-1, EXTRA-1, EX_1, or seat-...-EX-1
+    m_ex = re.search(r'(?:^|[-_])(EX(?:TRA)?[-_]?\d+)$', s)
+    if m_ex:
+        digits = re.search(r'\d+', m_ex.group(1))
+        if digits:
+            return f"EX-{digits.group(0)}"
+    # 2. Match standard seat pattern, e.g. A1, B2, K5, R1-1, etc.
+    m_seat = re.search(r'(?:^|[-_])([A-Z]\d{1,2})$', s)
+    if m_seat:
+        return m_seat.group(1)
+    # 3. If s is purely digits (e.g. "1" from sliced extra seat)
+    if s.isdigit():
+        return f"EX-{s}"
+    # 4. Standard parts splitting with extra check
     parts = s.split("-")
     if len(parts) >= 3 and parts[0] in ("SEAT", "DYNAMIC", "CELL"):
+        if len(parts) >= 4 and parts[-2] in ("EX", "EXT", "EXTRA"):
+            return f"EX-{parts[-1]}"
         return parts[-1]
     return s
 
@@ -420,7 +435,55 @@ def _label_for_grid_position(row_char: str, c_idx: int, row_len: int) -> str:
 
 
 def canonicalize_seat_label(label: str) -> str:
-    return (label or "").strip().upper()
+    if not label:
+        return ""
+    s = str(label).strip().upper()
+    if s.isdigit():
+        return f"EX-{s}"
+    m_ex = re.match(r'^EX(?:TRA)?[-_]?(\d+)$', s)
+    if m_ex:
+        return f"EX-{m_ex.group(1)}"
+    return s
+
+
+async def ensure_extra_seat_row(db: Any, layout: Optional[SeatLayout], label: str, fare: float = 500.0) -> Seat:
+    """Ensure a Seat record exists in the database for an on-the-fly extra seat (EX-1, EX-2, etc.).
+
+    This guarantees that BookingSeat foreign key constraints succeed and that
+    all trip layout inventory queries cleanly recognize the extra seat.
+    """
+    if not layout:
+        raise ValueError("Trip bus has no seat layout assigned for extra seat materialization")
+    label = canonicalize_seat_label(label)
+    seat_id = f"seat-layout-{layout.id}-{label}"
+    existing = await _maybe_await(
+        db.query(Seat).filter(Seat.seat_layout_id == layout.id, Seat.seat_number == label).first()
+    )
+    if existing:
+        return existing
+    m = re.search(r'\d+', label)
+    col_idx = int(m.group(0)) if m else 1
+    new_seat = Seat(
+        id=seat_id,
+        seat_layout_id=layout.id,
+        seat_number=label,
+        row_index=999,
+        col_index=col_idx,
+        seat_type="EXTRA",
+        gender_allowed="ANY",
+        base_fare=fare,
+        is_active=True,
+    )
+    db.add(new_seat)
+    try:
+        await _maybe_await(db.flush())
+    except Exception:
+        existing = await _maybe_await(
+            db.query(Seat).filter(Seat.seat_layout_id == layout.id, Seat.seat_number == label).first()
+        )
+        if existing:
+            return existing
+    return new_seat
 
 
 # ---------------------------------------------------------------------------
@@ -487,6 +550,33 @@ async def resolve_requested_seats(
             lbl = seat_label_of(raw_id)
             if lbl and lbl in by_label:
                 cell = by_label[lbl]
+
+        # Extra seat auto-materialization:
+        if not cell and (label_in.startswith("EX") or "EX" in raw_id.upper() or label_in.isdigit() or r.get("is_extra")):
+            effective_ex_label = label_in if label_in.startswith("EX") else (f"EX-{label_in}" if label_in.isdigit() else seat_label_of(raw_id))
+            if not effective_ex_label.startswith("EX"):
+                m_dig = re.search(r'\d+', effective_ex_label)
+                effective_ex_label = f"EX-{m_dig.group(0) if m_dig else '1'}"
+
+            if effective_ex_label in by_label:
+                cell = by_label[effective_ex_label]
+            else:
+                bus, layout, _ = await get_bus_layout_seats(db, trip)
+                if layout:
+                    extra_row = await ensure_extra_seat_row(db, layout, effective_ex_label, float(r.get("fare") or trip.base_price or 500.0))
+                    cell = {
+                        "seat_id": extra_row.id,
+                        "seat_number": effective_ex_label,
+                        "row_index": 999,
+                        "col_index": extra_row.col_index or 1,
+                        "seat_type": "EXTRA",
+                        "gender_allowed": "ANY",
+                        "fare": float(r.get("fare") or extra_row.base_fare or trip.base_price or 500.0),
+                        "is_extra": True,
+                    }
+                    by_label[effective_ex_label] = cell
+                    by_id[extra_row.id.upper()] = cell
+
         if not cell:
             errors.append(f"Seat {label_in or raw_id} does not exist on this trip's layout")
             continue
@@ -760,6 +850,34 @@ async def validate_booking_request_seats(
         raw_id = (p.seat_id or "").strip()
         label = canonicalize_seat_label(p.seat_number or seat_label_of(raw_id))
         cell = by_label.get(label) or (by_label.get(canonicalize_seat_label(raw_id)) if raw_id else None)
+
+        # Extra seat auto-materialization:
+        if not cell and (label.startswith("EX") or "EX" in raw_id.upper() or label.isdigit() or getattr(p, "is_extra", False)):
+            effective_ex_label = label if label.startswith("EX") else (f"EX-{label}" if label.isdigit() else seat_label_of(raw_id))
+            if not effective_ex_label.startswith("EX"):
+                m_dig = re.search(r'\d+', effective_ex_label)
+                effective_ex_label = f"EX-{m_dig.group(0) if m_dig else '1'}"
+
+            if effective_ex_label in by_label:
+                cell = by_label[effective_ex_label]
+            else:
+                bus, layout, _ = await get_bus_layout_seats(db, trip)
+                if layout:
+                    extra_row = await ensure_extra_seat_row(db, layout, effective_ex_label, float(getattr(p, "fare", None) or trip.base_price or 500.0))
+                    cell = {
+                        "seat_id": extra_row.id,
+                        "seat_number": effective_ex_label,
+                        "row_index": 999,
+                        "col_index": extra_row.col_index or 1,
+                        "seat_type": "EXTRA",
+                        "gender_allowed": "ANY",
+                        "fare": float(extra_row.base_fare or trip.base_price or 500.0),
+                        "is_extra": True,
+                    }
+                    by_label[effective_ex_label] = cell
+                    if extra_row.id:
+                        by_label[extra_row.id.upper()] = cell
+
         if not cell:
             return [], f"Seat {label or raw_id} does not exist on this trip's layout"
         # Canonical seat number always wins over whatever the client sent.

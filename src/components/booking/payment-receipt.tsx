@@ -35,7 +35,8 @@ import {
   BadgePercent,
   UserCheck,
   Lock,
-  Fingerprint
+  Fingerprint,
+  Settings
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -181,7 +182,7 @@ export function printReceiptElement(elementId: string = 'printable-payment-recei
       margin: 0 auto !important;
       box-shadow: none !important;
       border: 1.5px solid #0f172a !important;
-      zoom: 0.88;
+      /* full A4 fit */
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
@@ -222,8 +223,6 @@ export async function downloadReceiptAsPdf(bookingNumber: string, elementId: str
   }
 
   try {
-    // Dynamically import html2canvas-pro (native support for modern CSS color spaces: lab, oklch, lch)
-    // with fallback to html2canvas if needed
     let html2canvas: any;
     try {
       const h2cPro = await import('html2canvas-pro');
@@ -234,12 +233,22 @@ export async function downloadReceiptAsPdf(bookingNumber: string, elementId: str
     }
     const { jsPDF } = await import('jspdf');
 
+    // Force printable width to 794px during render so PDF matches standard A4 width
+    const originalWidth = receiptEl.style.width;
+    const originalMaxWidth = receiptEl.style.maxWidth;
+    receiptEl.style.width = '794px';
+    receiptEl.style.maxWidth = '794px';
+
     const canvas = await html2canvas(receiptEl, {
       scale: 2,
       useCORS: true,
       logging: false,
-      backgroundColor: '#ffffff'
+      backgroundColor: '#ffffff',
+      windowWidth: 1200
     });
+
+    receiptEl.style.width = originalWidth;
+    receiptEl.style.maxWidth = originalMaxWidth;
 
     const imgData = canvas.toDataURL('image/jpeg', 0.98);
     const pdf = new jsPDF({
@@ -249,7 +258,7 @@ export async function downloadReceiptAsPdf(bookingNumber: string, elementId: str
     });
 
     const pdfWidth = pdf.internal.pageSize.getWidth();
-    const margin = 8;
+    const margin = 6;
     const contentWidth = pdfWidth - (margin * 2);
     const contentHeight = (canvas.height * contentWidth) / canvas.width;
 
@@ -314,7 +323,7 @@ export function downloadReceiptOfflineHtml(bookingNumber: string, elementId: str
     @media print {
       body { background: #fff; padding: 0; }
       .offline-banner { display: none !important; }
-      #printable-payment-receipt { box-shadow: none !important; border: 1.5px solid #0f172a !important; border-radius: 4px !important; zoom: 0.88; max-height: 275mm !important; page-break-inside: avoid !important; break-inside: avoid !important; }
+      #printable-payment-receipt { box-shadow: none !important; border: 1.5px solid #0f172a !important; border-radius: 4px !important; /* full A4 fit */ max-height: 275mm !important; page-break-inside: avoid !important; break-inside: avoid !important; }
     }
   </style>
 </head>
@@ -337,6 +346,202 @@ export function downloadReceiptOfflineHtml(bookingNumber: string, elementId: str
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+
+// ============================================================================
+// CRISP HIGH-RESOLUTION MINI BUS SEAT MAP (AUTHENTIC BANGLADESH RHD LAYOUT)
+// Single Unified Coach: Front on TOP, Rear on BOTTOM, Door on LEFT, Driver on RIGHT
+// ============================================================================
+function MiniBusSeatMap({
+  allocatedSeats = [],
+  busType = 'MIXED',
+  isEcoMode = false
+}: {
+  allocatedSeats: string[];
+  busType?: string;
+  isEcoMode?: boolean;
+}) {
+  const normalizedAllocated = React.useMemo(() => {
+    return new Set(
+      allocatedSeats.map(s => String(s).trim().toUpperCase().replace(/\s+/g, ''))
+    );
+  }, [allocatedSeats]);
+
+  const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+
+  // Detect extra seats (EX-1, EX-2, CABIN, GUIDE, etc.) not in standard A1-J5 grid
+  const standardSeatRegex = /^[A-J][1-5]$/i;
+  const extraAllocatedSeats = React.useMemo(() => {
+    return Array.from(normalizedAllocated).filter(s => !standardSeatRegex.test(s));
+  }, [normalizedAllocated]);
+
+  const renderSeatBox = (sNum: string, isWindow: boolean) => {
+    const isAllocated = normalizedAllocated.has(sNum);
+    return (
+      <div
+        key={sNum}
+        title={isAllocated ? `আপনার বরাদ্দকৃত আসন: ${sNum}` : `আসন নম্বর: ${sNum}`}
+        className={`w-6 h-5 sm:w-7 sm:h-5.5 rounded flex items-center justify-center font-mono text-[9px] font-black select-none transition-all ${
+          isAllocated
+            ? isEcoMode
+              ? 'bg-black text-white ring-2 ring-black font-black'
+              : 'bg-emerald-600 text-white ring-2 ring-emerald-400 shadow-sm font-black'
+            : isEcoMode
+            ? 'bg-white border border-black text-black font-bold'
+            : 'bg-white border border-slate-700 text-slate-900 font-bold shadow-2xs hover:border-blue-600'
+        }`}
+      >
+        {isAllocated ? (
+          <span className="flex items-center gap-0.5">
+            <BadgeCheck className="w-2.5 h-2.5 text-white shrink-0" />
+            <span className="leading-none">{sNum}</span>
+          </span>
+        ) : (
+          <span className="leading-none">{sNum}</span>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className={`rounded-xl border overflow-hidden flex flex-col h-full justify-between ${
+      isEcoMode
+        ? 'bg-white border-black text-black'
+        : 'bg-white border-slate-300 shadow-2xs print:border-slate-800'
+    }`}>
+      {/* Header Bar */}
+      <div>
+        <div className="bg-[#032b69] print:bg-black text-white px-3 py-1.5 flex items-center justify-between font-bold text-xs">
+          <div className="flex items-center gap-1.5">
+            <Bus className="w-3.5 h-3.5 text-sky-300 print:text-white" />
+            <span>বাস আসন অবস্থান (SEAT LOCATOR)</span>
+          </div>
+          <span className="text-[9px] font-mono text-emerald-300 print:text-white font-bold">
+            RHD COACH
+          </span>
+        </div>
+
+        {/* Legend */}
+        <div className="px-2.5 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-[9px] font-bold">
+          <div className="flex items-center gap-1 text-emerald-800 print:text-black">
+            <span className="w-3 h-3 rounded bg-emerald-600 flex items-center justify-center text-white text-[8px] font-black shadow-2xs">
+              <BadgeCheck className="w-2 h-2 text-white" />
+            </span>
+            <span>আপনার আসন</span>
+          </div>
+          <div className="flex items-center gap-1 text-slate-700">
+            <span className="w-3 h-3 rounded bg-white border border-slate-700 inline-block" />
+            <span>অন্যান্য আসন</span>
+          </div>
+          <div className="text-slate-500 font-mono text-[8px]">
+            [দরজা বামে • চালক ডানে]
+          </div>
+        </div>
+
+        {/* Realistic Unified Bus Coach Frame */}
+        <div className="p-2 sm:p-2.5 flex justify-center">
+          <div className={`w-full max-w-[260px] rounded-t-2xl rounded-b-xl border-2 p-2 ${
+            isEcoMode
+              ? 'bg-white border-black'
+              : 'bg-slate-50/70 border-slate-700 shadow-xs print:bg-white print:border-black'
+          }`}>
+            {/* Windshield & Cockpit Header */}
+            <div className={`flex items-center justify-between px-2 py-1 mb-1.5 rounded-lg border text-[9px] font-bold ${
+              isEcoMode
+                ? 'bg-slate-100 border-black text-black'
+                : 'bg-sky-50 border-sky-300 text-sky-950 print:bg-slate-100 print:border-black'
+            }`}>
+              {/* Left Door */}
+              <div className="flex items-center gap-1 text-emerald-800 print:text-black font-black">
+                <span>🚪</span>
+                <span className="text-[8px] uppercase tracking-tight">দরজা (Door)</span>
+              </div>
+              {/* Center Windshield */}
+              <div className="text-[8px] font-black uppercase tracking-wider text-slate-600 font-mono">
+                ▲ সামনে (Front) ▲
+              </div>
+              {/* Right Driver */}
+              <div className="flex items-center gap-1 text-[#032b69] print:text-black font-black">
+                <span className="text-[8px] uppercase tracking-tight">চালক (Driver)</span>
+                <span>🛞</span>
+              </div>
+            </div>
+
+            {/* Extra Seat Zone Callout if extra seats (EX-1, EX-2, CABIN, etc.) are booked */}
+            {extraAllocatedSeats.length > 0 && (
+              <div className="mb-1.5 p-1 rounded-md bg-amber-50 border border-amber-300 print:bg-slate-100 print:border-black flex items-center justify-between gap-1 text-[8px]">
+                <div className="flex items-center gap-1 font-bold text-amber-900 print:text-black">
+                  <span>💺</span>
+                  <span>অতিরিক্ত সিট:</span>
+                </div>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {extraAllocatedSeats.map(exSeat => (
+                    <span key={exSeat} className="px-1.5 py-0.2 rounded bg-emerald-600 text-white font-mono font-black text-[8px] flex items-center gap-0.5 shadow-2xs">
+                      <BadgeCheck className="w-2 h-2 text-white shrink-0" />
+                      <span>{exSeat}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Coach Interior: Rows */}
+            <div className="space-y-1">
+              {rows.map((rowChar, rIdx) => {
+                const isLastRow = rIdx === rows.length - 1;
+                const s1 = `${rowChar}1`;
+                const s2 = `${rowChar}2`;
+                const s3 = `${rowChar}3`;
+                const s4 = `${rowChar}4`;
+                const s5 = `${rowChar}5`;
+
+                return (
+                  <div key={rowChar} className="flex items-center justify-between gap-1">
+                    {/* Left Window & Aisle pair (s1, s2) */}
+                    <div className="flex items-center gap-1">
+                      {renderSeatBox(s1, true)}
+                      {renderSeatBox(s2, false)}
+                    </div>
+
+                    {/* Center Gangway / Aisle */}
+                    <div className="w-5 text-center font-mono text-[8px] font-black text-slate-400 flex items-center justify-center">
+                      {isLastRow ? (
+                        renderSeatBox(s5, false)
+                      ) : (
+                        <span className="w-4 h-4 rounded-full bg-slate-200/80 print:bg-slate-200 flex items-center justify-center text-slate-700 font-bold text-[8px] border border-slate-300 print:border-black">
+                          {rowChar}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Right Aisle & Window pair (s3, s4) */}
+                    <div className="flex items-center gap-1">
+                      {renderSeatBox(s3, false)}
+                      {renderSeatBox(s4, true)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Rear Bumper & Taillights */}
+            <div className="mt-1.5 pt-1 border-t border-dashed border-slate-300 flex items-center justify-between text-[8px] font-mono font-bold text-slate-500">
+              <span className="text-rose-600">🔴 লাইট</span>
+              <span>▼ পেছনে (REAR) ▼</span>
+              <span className="text-rose-600">লাইট 🔴</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom note */}
+      <div className="px-2.5 py-1 bg-slate-100/70 border-t border-slate-200 text-center text-[9px] text-slate-600 font-bold print:bg-slate-100">
+        🚌 বাসে প্রবেশের পর আসন খুঁজে নিতে এই ম্যাপ অনুসরণ করুন
+      </div>
+    </div>
+  );
+}
+
 
 export function PaymentReceipt({
   booking,
@@ -416,14 +621,26 @@ export function PaymentReceipt({
   const transactions = booking.transactions || [];
   const primaryTx = transactions[0] || {};
 
-  const grossAmount = booking.grossAmount ?? booking.gross_amount ?? 0;
-  const discountAmount = booking.discountAmount ?? booking.discount_amount ?? 0;
-  const processingFee = booking.processingFee ?? booking.processing_fee ?? 0;
-  const vatAmount = booking.vatAmount ?? booking.vat_amount ?? booking.taxAmount ?? 0;
-  const netAmount = booking.netAmount ?? booking.net_amount ?? (grossAmount - discountAmount + processingFee + vatAmount);
-  const paidAmount = booking.paidAmount ?? booking.paid_amount ?? 0;
-  const dueAmount = booking.dueAmount ?? booking.due_amount ?? Math.max(0, netAmount - paidAmount);
-  const isPaidInFull = dueAmount <= 0;
+  const grossAmount = booking.grossAmount ?? booking.gross_amount ?? (displayPassengers.reduce((sum: number, p: any) => sum + (p.fareSnapshot || trip.basePrice || 550), 0) || 0);
+
+  // Live editable Billing Settings states
+  const [processingFee, setProcessingFee] = useState<number>(booking.processingFee ?? booking.processing_fee ?? 0);
+  const [vatAmount, setVatAmount] = useState<number>(booking.vatAmount ?? booking.vat_amount ?? booking.taxAmount ?? 0);
+  const [cashoutFee, setCashoutFee] = useState<number>(booking.cashoutFee ?? booking.cashout_fee ?? booking.cashoutCharge ?? 0);
+  const [discountAmount, setDiscountAmount] = useState<number>(booking.discountAmount ?? booking.discount_amount ?? 0);
+  const [paidAmount, setPaidAmount] = useState<number>(booking.paidAmount ?? booking.paid_amount ?? 0);
+  const [showBillingSettings, setShowBillingSettings] = useState<boolean>(false);
+
+  // Synchronize initial paidAmount if full payment was originally recorded
+  useEffect(() => {
+    if (booking.paidAmount !== undefined || booking.paid_amount !== undefined) {
+      setPaidAmount(Number(booking.paidAmount ?? booking.paid_amount ?? 0));
+    }
+  }, [booking.paidAmount, booking.paid_amount]);
+
+  const netAmount = Math.max(0, grossAmount - discountAmount + processingFee + vatAmount + cashoutFee);
+  const dueAmount = Math.max(0, netAmount - paidAmount);
+  const isPaidInFull = dueAmount <= 0 && paidAmount >= netAmount;
 
   const duePromiseDate = booking.duePromiseDate || booking.due_promise_date
     ? formatDate(booking.duePromiseDate || booking.due_promise_date)
@@ -448,6 +665,20 @@ export function PaymentReceipt({
 
   const busType = trip.tripBusType || bus.busType || bus.bus_type || 'MIXED';
   const verifyUrl = `${hostUrl}/bookings/${booking.id || ''}`;
+
+  // Dynamic Boarding and Dropping Points with Detailed Addresses
+  const boardingPointName = booking.boardingPoint || booking.boarding_point || 'তালাইমারী কাউন্টার (রাজশাহী)';
+  const boardingAddressDetailed = booking.boardingAddress || booking.boarding_address || 'তালাইমারী মোড়, ঢাকা-রাজশাহী হাইওয়ে, কাজলা, রাজশাহী (কাউন্টার ০১)';
+  
+  const droppingPointName = booking.droppingPoint || booking.dropping_point || 'জাহাঙ্গীরনগর বিশ্ববিদ্যালয় ক্যাম্পাস (সাভার, ঢাকা)';
+  const droppingAddressDetailed = booking.droppingAddress || booking.dropping_address || 'বিশ্ববিদ্যালয় প্রধান ফটক / ডেইরি গেট সংলগ্ন বাস ড্রপিং লেন, সাভার';
+
+  const [isEcoMode, setIsEcoMode] = useState(false);
+  const helplineNumber = orgBrand.phone || '01711000001';
+  const helplineDial = helplineNumber.replace(/\D/g, '');
+  const [showSeatMap, setShowSeatMap] = useState<boolean>(true);
+  const isMultiPassenger = displayPassengers.length > 3;
+
 
   const handlePrint = () => {
     printReceiptElement('printable-payment-receipt');
@@ -519,6 +750,21 @@ export function PaymentReceipt({
 
           {/* Paper Format & Action Controls */}
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Seat Map Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowSeatMap(prev => !prev)}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                showSeatMap
+                  ? 'bg-blue-600/30 text-blue-300 border-blue-500/40 shadow-xs'
+                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+              }`}
+              title="টিকেটে বাসের সিট মিনি-ম্যাপ চালু বা বন্ধ করুন (Toggle Seat Map)"
+            >
+              <Armchair className="w-3.5 h-3.5" />
+              <span>ম্যাপ: {showSeatMap ? 'চালু' : 'বন্ধ'}</span>
+            </button>
+
             {/* Paper Size selector */}
             <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
               <button
@@ -540,6 +786,21 @@ export function PaymentReceipt({
                 80mm থার্মাল
               </button>
             </div>
+
+            {/* Billing & Fees Adjustment Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowBillingSettings(prev => !prev)}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                showBillingSettings
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-xs'
+                  : 'bg-slate-800 text-amber-300 border-amber-500/40 hover:bg-slate-700'
+              }`}
+              title="ভ্যাট, ট্যাক্স, প্রসেসিং ফি ও ক্যাশআউট চার্জ সমন্বয় করুন"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>ফি ও চার্জ সমন্বয় {showBillingSettings ? '▲' : '▼'}</span>
+            </button>
 
             {/* Settle Due Button if due exists */}
             {dueAmount > 0 && (
@@ -595,6 +856,212 @@ export function PaymentReceipt({
         </div>
       )}
 
+      {/* Interactive Fee / VAT / Cashout Charge adjustment panel (print:hidden) */}
+      {showBillingSettings && (
+        <div className="bg-slate-900 border-2 border-amber-500/40 rounded-2xl p-4 text-white shadow-xl space-y-3 print:hidden">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div className="flex items-center gap-2">
+              <Settings className="w-4 h-4 text-amber-400" />
+              <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                টিকিট ফি, ভ্যাট, ক্যাশআউট চার্জ ও পরিশোধ সমন্বয়
+              </h4>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowBillingSettings(false)}
+              className="text-xs text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800"
+            >
+              ✕ বন্ধ করুন
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+            {/* Online Processing Fee */}
+            <div className="space-y-1.5 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+              <label className="text-[11px] font-bold text-slate-300 block">
+                অনলাইন প্রসেসিং ফি
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={processingFee || ''}
+                placeholder="0"
+                onChange={(e) => setProcessingFee(Math.max(0, Number(e.target.value) || 0))}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:border-blue-500 outline-none"
+              />
+              <div className="flex gap-1 pt-0.5">
+                {[0, 20, 50].map((fee) => (
+                  <button
+                    key={fee}
+                    type="button"
+                    onClick={() => setProcessingFee(fee)}
+                    className="flex-1 py-0.5 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono"
+                  >
+                    ৳{fee}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* VAT & Tax */}
+            <div className="space-y-1.5 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+              <label className="text-[11px] font-bold text-slate-300 block">
+                ভ্যাট ও সরকারি ট্যাক্স
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={vatAmount || ''}
+                placeholder="0"
+                onChange={(e) => setVatAmount(Math.max(0, Number(e.target.value) || 0))}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:border-blue-500 outline-none"
+              />
+              <div className="flex gap-1 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setVatAmount(0)}
+                  className="flex-1 py-0.5 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono"
+                >
+                  ৳০
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVatAmount(Math.round(grossAmount * 0.05))}
+                  className="flex-1 py-0.5 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono"
+                >
+                  ৫%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVatAmount(25)}
+                  className="flex-1 py-0.5 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono"
+                >
+                  ৳২৫
+                </button>
+              </div>
+            </div>
+
+            {/* Cashout Charge */}
+            <div className="space-y-1.5 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-amber-300 block">
+                  ক্যাশআউট চার্জ (বিকাশ/নগদ)
+                </label>
+              </div>
+              <input
+                type="number"
+                min="0"
+                value={cashoutFee || ''}
+                placeholder="0"
+                onChange={(e) => setCashoutFee(Math.max(0, Number(e.target.value) || 0))}
+                className="w-full bg-slate-900 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:border-amber-400 outline-none"
+              />
+              <div className="flex gap-1 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setCashoutFee(0)}
+                  className="flex-1 py-0.5 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono"
+                >
+                  ৳০
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCashoutFee(Math.round(grossAmount * 0.015))}
+                  className="flex-1 py-0.5 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono"
+                >
+                  ১.৫%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCashoutFee(Math.round(grossAmount * 0.0185))}
+                  className="flex-1 py-0.5 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono"
+                >
+                  ১.৮৫%
+                </button>
+              </div>
+            </div>
+
+            {/* Discount / Coupon */}
+            <div className="space-y-1.5 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+              <label className="text-[11px] font-bold text-slate-300 block">
+                ছাড় / বিশেষ কুপন (লেস)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={discountAmount || ''}
+                placeholder="0"
+                onChange={(e) => setDiscountAmount(Math.max(0, Number(e.target.value) || 0))}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:border-blue-500 outline-none"
+              />
+              <div className="flex gap-1 pt-0.5">
+                {[0, 50, 100].map((disc) => (
+                  <button
+                    key={disc}
+                    type="button"
+                    onClick={() => setDiscountAmount(disc)}
+                    className="flex-1 py-0.5 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono"
+                  >
+                    ৳{disc}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Paid Amount */}
+            <div className="space-y-1.5 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+              <label className="text-[11px] font-bold text-emerald-400 block">
+                পরিশোধিত নগদ টাকা (Paid)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={paidAmount || ''}
+                placeholder="0"
+                onChange={(e) => setPaidAmount(Math.max(0, Number(e.target.value) || 0))}
+                className="w-full bg-slate-900 border border-emerald-500/40 rounded-lg px-2.5 py-1.5 text-xs text-emerald-300 font-mono font-bold focus:border-emerald-400 outline-none"
+              />
+              <div className="flex gap-1 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPaidAmount(netAmount)}
+                  className="flex-1 py-0.5 text-[10px] rounded bg-emerald-950 text-emerald-300 hover:bg-emerald-900 font-mono font-bold"
+                >
+                  সম্পূর্ণ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaidAmount(Math.round(netAmount / 2))}
+                  className="flex-1 py-0.5 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono"
+                >
+                  ৫০%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaidAmount(0)}
+                  className="flex-1 py-0.5 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono"
+                >
+                  ৳০ (বকেয়া)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800">
+            <div>
+              <span>সর্বমোট প্রদেয়: <strong className="text-white font-mono">{formatCurrency(netAmount)}</strong></span>
+              <span className="mx-2">•</span>
+              <span>পরিশোধিত: <strong className="text-emerald-400 font-mono">{formatCurrency(paidAmount)}</strong></span>
+              <span className="mx-2">•</span>
+              <span>অবশিষ্ট বকেয়া (Due): <strong className={`font-mono ${dueAmount > 0 ? 'text-rose-400 font-bold' : 'text-slate-300'}`}>{formatCurrency(dueAmount)}</strong></span>
+            </div>
+            <div className="text-[11px] text-amber-300">
+              ✓ মান পরিবর্তন করার সাথে সাথে নিচের মূল টিকিটে রিয়েল-টাইমে আপডেট হবে।
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Global Print Styles strictly enforcing Single Page A4 output */}
       <style jsx global>{`
         @page {
@@ -640,7 +1107,7 @@ export function PaymentReceipt({
             overflow: visible !important;
           }
           #printable-payment-receipt {
-            zoom: 0.90;
+            /* full A4 fit */
             height: auto !important;
             max-height: 275mm !important;
             page-break-inside: avoid !important;
@@ -665,7 +1132,7 @@ export function PaymentReceipt({
         className={`bg-white text-slate-900 overflow-hidden relative print:shadow-none print:m-0 print:w-full print:bg-white print:text-black ${
           paperMode === 'THERMAL_80MM'
             ? 'max-w-sm mx-auto font-mono text-xs rounded-xl border border-slate-300 shadow-xl'
-            : 'max-w-3xl mx-auto rounded-2xl border border-slate-200 shadow-[0_15px_35px_rgba(0,0,0,0.12)] ring-1 ring-slate-900/5 print:border-slate-900 print:shadow-none print:rounded-none'
+            : 'w-full max-w-[850px] mx-auto rounded-2xl border border-slate-200 shadow-[0_15px_35px_rgba(0,0,0,0.12)] ring-1 ring-slate-900/5 print:border-slate-900 print:shadow-none print:rounded-none'
         }`}
       >
         {booking.isOffline && (
@@ -758,6 +1225,12 @@ export function PaymentReceipt({
                   <span>+{formatCurrency(vatAmount)}</span>
                 </div>
               )}
+              {cashoutFee > 0 && (
+                <div className="flex justify-between font-medium">
+                  <span>ক্যাশআউট চার্জ:</span>
+                  <span>+{formatCurrency(cashoutFee)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-black text-xs pt-1 border-t border-dotted border-black">
                 <span>সর্বমোট প্রদেয়:</span>
                 <span>{formatCurrency(netAmount)}</span>
@@ -819,12 +1292,14 @@ export function PaymentReceipt({
                   <h1 className="text-xl sm:text-2xl lg:text-3xl font-black uppercase tracking-wider text-white leading-none font-sans drop-shadow-sm">
                     {orgBrand.name || 'ATOMS TRANSIT'}
                   </h1>
-                  <div className="flex items-center gap-2 text-[10px] sm:text-[11px] text-sky-200 font-semibold mt-1 tracking-wide">
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] sm:text-[11px] text-sky-200 font-semibold mt-1 tracking-wide">
+                    <span className="text-white font-mono font-bold bg-white/10 px-2 py-0.5 rounded border border-white/20">
+                      🌐 {orgBrand.website || 'www.atomstransit.com'}
+                    </span>
+                    <span>•</span>
                     <span>Safe Journey</span>
                     <span>•</span>
                     <span>Smart Transport</span>
-                    <span>•</span>
-                    <span>Better Tomorrow</span>
                   </div>
                 </div>
               </div>
@@ -832,7 +1307,7 @@ export function PaymentReceipt({
               {/* Right: Executive Dual-Ring Holographic Authority Seal */}
               <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/25 shadow-sm relative z-10 print:border-white/40">
                 <div className="relative flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500/30 via-emerald-400/20 to-sky-400/30 border-2 border-emerald-400 shadow-inner shrink-0 text-emerald-300">
-                  <ShieldCheck className="w-6 h-6 text-emerald-300" />
+                  <BadgeCheck className="w-6 h-6 text-emerald-300" />
                   <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[9px] font-black shadow-xs">
                     ✓
                   </span>
@@ -951,13 +1426,16 @@ export function PaymentReceipt({
                   <div className="w-full sm:w-5/12 text-left">
                     <div className="flex items-center gap-1.5 text-sky-800 print:text-black text-[10px] font-black uppercase tracking-wider font-mono">
                       <MapPin className="w-3.5 h-3.5 text-sky-700 print:text-black" />
-                      <span>BOARDING POINT</span>
+                      <span>BOARDING POINT & TERMINAL ADDRESS</span>
                     </div>
                     <div className="text-lg sm:text-xl font-black text-slate-950 uppercase tracking-tight mt-0.5 leading-tight">
                       {route.origin || 'RAJSHAHI'}
                     </div>
-                    <div className="text-xs text-slate-700 font-medium mt-0.5">
-                      {booking.boardingPoint || booking.boarding_point || 'Talaimari / Bhadra / Railgate Bus Counter'}
+                    <div className="text-xs text-slate-900 font-bold mt-0.5">
+                      📍 {boardingPointName}
+                    </div>
+                    <div className="text-[11px] text-slate-600 font-medium leading-snug mt-0.5">
+                      🏢 ঠিকানা: {boardingAddressDetailed}
                     </div>
                   </div>
 
@@ -978,13 +1456,16 @@ export function PaymentReceipt({
                   <div className="w-full sm:w-5/12 text-left sm:text-right">
                     <div className="flex items-center sm:justify-end gap-1.5 text-sky-800 print:text-black text-[10px] font-black uppercase tracking-wider font-mono">
                       <MapPin className="w-3.5 h-3.5 text-sky-700 print:text-black" />
-                      <span>DROPPING POINT</span>
+                      <span>DROPPING POINT & CAMPUS ZONE</span>
                     </div>
                     <div className="text-lg sm:text-xl font-black text-slate-950 uppercase tracking-tight mt-0.5 leading-tight">
                       {route.destination || 'JAHANGIRNAGAR UNIVERSITY (JU)'}
                     </div>
-                    <div className="text-xs text-slate-700 font-medium mt-0.5">
-                      {booking.droppingPoint || booking.dropping_point || 'University Main Gate / Designated Campus Drop Zone'}
+                    <div className="text-xs text-slate-900 font-bold mt-0.5">
+                      🏁 {droppingPointName}
+                    </div>
+                    <div className="text-[11px] text-slate-600 font-medium leading-snug mt-0.5">
+                      🏢 ড্রপিং: {droppingAddressDetailed}
                     </div>
                   </div>
                 </div>
@@ -1013,30 +1494,30 @@ export function PaymentReceipt({
                     </div>
                   </div>
 
-                  {/* Coach & Bus Type (Full Name, No Truncate) */}
+                  {/* Seats & Coach Category (No Bus Name as requested: Mixed / Male / Female) */}
                   <div className="flex items-start gap-2 bg-white/70 sm:bg-transparent p-2 sm:p-0 rounded-lg">
-                    <Bus className="w-4 h-4 text-[#032b69] print:text-black shrink-0 mt-0.5" />
+                    <Armchair className="w-4 h-4 text-[#032b69] print:text-black shrink-0 mt-0.5" />
                     <div className="min-w-0">
-                      <span className="text-[10px] text-slate-600 font-bold block uppercase">Coach & Bus Type</span>
-                      <span className="font-black text-slate-950 text-xs block leading-snug break-words">
-                        {bus.busName || trip.busName || 'Express Deluxe'}
+                      <span className="text-[10px] text-slate-600 font-bold block uppercase">আসন ও কোচ টাইপ</span>
+                      <span className="font-mono font-black text-[#032b69] print:text-black text-xs block leading-snug">
+                        সিট: {displayPassengers.map((p: any) => p.seatNumber || p.seat_number || p.seat?.seatNumber).filter(Boolean).join(', ') || 'বরাদ্দকৃত'}
                       </span>
-                      <span className="text-[10px] text-slate-600 font-semibold font-mono block mt-0.5">
-                        ({busType === 'FEMALE' ? 'Female Special' : busType === 'MALE' ? 'Student Special' : 'Mixed Coach'} • {bus.busNumber || 'Coach Reg'})
+                      <span className="text-[10px] text-emerald-800 print:text-black font-bold font-mono block mt-0.5">
+                        {busType === 'FEMALE' ? '👩 নারী স্পেশাল (Female Special)' : busType === 'MALE' ? '👨 ছাত্র স্পেশাল (Male Special)' : '👥 মিক্সড কোচ (Mixed Coach)'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Total Reserved Seats */}
+                  {/* Official Website & Portal Verification */}
                   <div className="flex items-start gap-2 bg-white/70 sm:bg-transparent p-2 sm:p-0 rounded-lg">
-                    <Armchair className="w-4 h-4 text-[#032b69] shrink-0 mt-0.5" />
-                    <div>
-                      <span className="text-[10px] text-slate-500 font-bold block uppercase">Total Reserved Seats</span>
-                      <span className="font-mono font-black text-blue-900 text-xs block">
-                        {displayPassengers.map((p: any) => p.seatNumber || p.seat_number || p.seat?.seatNumber).filter(Boolean).join(', ') || 'Assigned'}
+                    <Building2 className="w-4 h-4 text-[#032b69] print:text-black shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-slate-600 font-bold block uppercase">অফিশিয়াল ওয়েবসাইট</span>
+                      <span className="font-mono font-black text-slate-950 text-xs block truncate text-sky-900 print:text-black">
+                        🌐 {orgBrand.website || 'www.atomstransit.com'}
                       </span>
-                      <span className="text-[10px] text-slate-600 font-bold">
-                        ({displayPassengers.length} Seats)
+                      <span className="text-[9px] text-slate-500 font-bold block mt-0.5">
+                        কাউন্টার ও অনলাইন অথরাইজড
                       </span>
                     </div>
                   </div>
@@ -1080,27 +1561,28 @@ export function PaymentReceipt({
                       return (
                         <tr key={p.id || idx} className="hover:bg-slate-50/80 transition-colors">
                           {/* Seat Badge (Solid Blue Rounded / Solid Black in B&W) */}
-                          <td className="py-2 px-3 text-center">
+                          <td className={`${isMultiPassenger ? "py-1 px-2.5" : "py-2 px-3"} text-center`}>
                             <span className="w-8 h-7 rounded-lg bg-[#0d6efd] print:bg-black text-white font-mono font-black inline-flex items-center justify-center text-xs shadow-2xs">
                               {sLabel}
                             </span>
                           </td>
 
-                          {/* Passenger Name with Avatar Badge */}
-                          <td className="py-2 px-3 font-bold text-slate-950 text-xs">
+                          {/* Passenger Name with Avatar Badge and Verified Badge */}
+                          <td className={`${isMultiPassenger ? "py-1 px-2.5 text-[11px]" : "py-2 px-3 text-xs"} font-bold text-slate-950`}>
                             <div className="flex items-center gap-1.5">
                               <span className="text-xs">{pGender === 'FEMALE' ? '👩' : '👨'}</span>
                               <span>{pName}</span>
+                              <BadgeCheck className="w-3.5 h-3.5 text-emerald-600 print:text-black shrink-0" />
                             </div>
                           </td>
 
                           {/* Mobile Phone */}
-                          <td className="py-2 px-3 font-mono text-slate-900 text-xs font-bold">
+                          <td className={`${isMultiPassenger ? "py-1 px-2.5 text-[11px]" : "py-2 px-3 text-xs"} font-mono text-slate-900 font-bold`}>
                             {pPhone}
                           </td>
 
                           {/* Category / Admission Roll */}
-                          <td className="py-2 px-3 text-slate-800 text-xs">
+                          <td className={`${isMultiPassenger ? "py-1 px-2.5 text-[10px]" : "py-2 px-3 text-xs"} text-slate-800`}>
                             <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-300 print:border-black text-slate-900 font-bold text-[11px] inline-block">
                               {pCategory === 'STUDENT' ? 'শিক্ষার্থী' : pCategory === 'GUARDIAN' ? 'অভিভাবক' : 'সাধারণ যাত্রী'}
                             </span>
@@ -1112,7 +1594,7 @@ export function PaymentReceipt({
                           </td>
 
                           {/* Seat Fare */}
-                          <td className="py-2 px-3 text-right font-mono font-black text-slate-950 text-xs">
+                          <td className={`${isMultiPassenger ? "py-1 px-2.5 text-[11px]" : "py-2 px-3 text-xs"} text-right font-mono font-black text-slate-950`}>
                             {formatCurrency(sFare)}
                           </td>
                         </tr>
@@ -1136,197 +1618,257 @@ export function PaymentReceipt({
                 </div>
               </div>
 
-              {/* 6. BOTTOM 2-COLUMN SECTION: Journey Details (Left) & Billing Summary (Right) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
-                {/* 6.1 LEFT COLUMN: Journey Details & Instructions */}
-                <div className="rounded-xl border border-slate-300 print:border-slate-800 overflow-hidden bg-white shadow-2xs">
-                  <div className="bg-[#032b69] print:bg-black text-white px-3.5 py-1.5 flex items-center gap-2 font-bold text-xs">
-                    <Info className="w-3.5 h-3.5 text-sky-300 print:text-white" />
-                    <span>যাত্রার বিবরণ ও ভ্রমণ নিয়মাবলী</span>
-                  </div>
-
-                  <div className="p-3 space-y-2.5 text-[11px]">
-                    {/* Boarding Point */}
-                    <div className="flex items-start gap-2">
-                      <MapPin className="w-3.5 h-3.5 text-[#032b69] shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-bold text-slate-800 block">বোর্ডিং পয়েন্ট:</span>
-                        <span className="text-slate-600">
-                          {booking.boardingPoint || booking.boarding_point || 'কাউন্টার নির্ধারিত (ছাড়ার ৩০ মিনিট পূর্বে উপস্থিতি)'}
-                        </span>
-                      </div>
+              {/* 6. BOTTOM 3-COLUMN SECTION: Journey Details (Col 1), Mini Seat Map (Col 2), Billing & 3D QR (Col 3) */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 text-xs mt-3">
+                {/* 6.1 COLUMN 1: Journey Details & Instructions (md:col-span-4) */}
+                <div className={`${showSeatMap ? "md:col-span-4" : "md:col-span-6"} rounded-xl border border-slate-300 print:border-slate-800 overflow-hidden bg-white shadow-2xs flex flex-col justify-between`}>
+                  <div>
+                    <div className="bg-[#032b69] print:bg-black text-white px-3 py-1.5 flex items-center gap-1.5 font-bold text-xs">
+                      <Info className="w-3.5 h-3.5 text-sky-300 print:text-white" />
+                      <span>ভ্রমণ ও বোর্ডিং ঠিকানা</span>
                     </div>
 
-                    {/* Dropping Point */}
-                    <div className="flex items-start gap-2">
-                      <MapPin className="w-3.5 h-3.5 text-[#032b69] shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-bold text-slate-800 block">ড্রপিং পয়েন্ট:</span>
-                        <span className="text-slate-600">
-                          {booking.droppingPoint || booking.dropping_point || 'জাহাঙ্গীরনগর বিশ্ববিদ্যালয় ক্যাম্পাস (মেইন গেট ড্রপিং জোন)'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Payment Method with Authentic Brand Logo */}
-                    <div className="flex items-start gap-2">
-                      <CreditCard className="w-3.5 h-3.5 text-[#032b69] shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-bold text-slate-800 block">পেমেন্ট পদ্ধতি:</span>
-                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                          {paymentMethod === 'BKASH' ? (
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#DF146E]/10 border border-[#DF146E]/30 text-[#DF146E] font-bold text-xs">
-                              <BkashLogo className="w-4 h-4" />
-                              <span>বিকাশ ডিজিটাল (bKash)</span>
-                            </div>
-                          ) : paymentMethod === 'NAGAD' ? (
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#F9A01B]/10 border border-[#F9A01B]/30 text-[#D4710A] font-bold text-xs">
-                              <NagadLogo className="w-4 h-4" />
-                              <span>নগদ ডিজিটাল (Nagad)</span>
-                            </div>
-                          ) : paymentMethod === 'ROCKET' ? (
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#8C3494]/10 border border-[#8C3494]/30 text-[#8C3494] font-bold text-xs">
-                              <RocketLogo className="w-4 h-4" />
-                              <span>রকেট ডিজিটাল (Rocket)</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold text-xs">
-                              <CashMoneyLogo className="w-4 h-4" />
-                              <span>কাউন্টার সরাসরি ক্যাশ (Hand Cash)</span>
-                            </div>
-                          )}
-                          <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                            • অফিস কাউন্টার ভেরিফাইড
+                    <div className="p-2.5 space-y-2 text-[11px]">
+                      {/* Boarding Point with Detailed Address */}
+                      <div className="flex items-start gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-[#032b69] shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-slate-800 block text-[10px]">বোর্ডিং কাউন্টার ও পূর্ণাঙ্গ ঠিকানা:</span>
+                          <span className="text-slate-950 font-bold block text-xs">
+                            {boardingPointName}
+                          </span>
+                          <span className="text-slate-600 block text-[10px] mt-0.5 leading-snug">
+                            🏢 {boardingAddressDetailed}
+                          </span>
+                          <span className="text-emerald-700 font-bold block text-[9px] mt-0.5">
+                            ⏱️ ছাড়ার ২০ মিনিট পূর্বে কাউন্টারে রিপোর্ট করুন।
                           </span>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Booked By */}
-                    <div className="flex items-start gap-2">
-                      <User className="w-3.5 h-3.5 text-[#032b69] shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-bold text-slate-800 block">বুকিংকারী ব্যক্তি:</span>
-                        <span className="text-slate-700 font-mono font-bold">
-                          {booking.contactName || primaryPassenger.passengerName} (ফোন: {booking.contactPhone || primaryPassenger.passengerPhone})
-                        </span>
+                      {/* Dropping Point */}
+                      <div className="flex items-start gap-1.5 pt-1.5 border-t border-slate-100">
+                        <MapPin className="w-3.5 h-3.5 text-sky-700 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-slate-800 block text-[10px]">ড্রপিং জোন ও গন্তব্য ঠিকানা:</span>
+                          <span className="text-slate-950 font-bold block text-xs">
+                            {droppingPointName}
+                          </span>
+                          <span className="text-slate-600 block text-[10px] mt-0.5 leading-snug">
+                            🏢 {droppingAddressDetailed}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Payment Method */}
+                      <div className="flex items-start gap-1.5 pt-1.5 border-t border-slate-100">
+                        <CreditCard className="w-3.5 h-3.5 text-[#032b69] shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-slate-800 block text-[10px]">পেমেন্ট মাধ্যম:</span>
+                          <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                            {paymentMethod === 'BKASH' ? (
+                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#DF146E]/10 border border-[#DF146E]/30 text-[#DF146E] font-bold text-[10px]">
+                                <BkashLogo className="w-3.5 h-3.5" />
+                                <span>বিকাশ (bKash)</span>
+                              </div>
+                            ) : paymentMethod === 'NAGAD' ? (
+                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#F9A01B]/10 border border-[#F9A01B]/30 text-[#D4710A] font-bold text-[10px]">
+                                <NagadLogo className="w-3.5 h-3.5" />
+                                <span>নগদ (Nagad)</span>
+                              </div>
+                            ) : paymentMethod === 'ROCKET' ? (
+                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#8C3494]/10 border border-[#8C3494]/30 text-[#8C3494] font-bold text-[10px]">
+                                <RocketLogo className="w-3.5 h-3.5" />
+                                <span>রকেট (Rocket)</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold text-[10px]">
+                                <CashMoneyLogo className="w-3.5 h-3.5" />
+                                <span>কাউন্টার সরাসরি ক্যাশ</span>
+                              </div>
+                            )}
+                            <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
+                              • ভেরিফাইড
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Travel Rules */}
+                      <div className="pt-1.5 border-t border-slate-100 space-y-0.5 text-[9px] text-slate-600">
+                        <div className="font-bold text-rose-700 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-rose-600" />
+                          <span>জরুরি ভ্রমণ নির্দেশিকা:</span>
+                        </div>
+                        <ol className="list-decimal list-inside space-y-0.5 pl-0.5">
+                          <li>বাস ছাড়ার ২০ মিনিট পূর্বে কাউন্টারে রিপোর্ট করুন।</li>
+                          <li>প্রবেশপত্র ও ডিজিটাল টিকিটের কপি সাথে রাখুন।</li>
+                          <li>বাসে ওঠার সময় কিউআর কোড স্ক্যান করতে দিন।</li>
+                        </ol>
                       </div>
                     </div>
+                  </div>
 
-                    {/* Important Rules List */}
-                    <div className="pt-2 border-t border-slate-100 space-y-1 text-[10px] text-slate-600">
-                      <div className="font-bold text-rose-700 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 text-rose-600" />
-                        <span>জরুরি ভ্রমণ নিয়মাবলী:</span>
-                      </div>
-                      <ol className="list-decimal list-inside space-y-0.5 pl-0.5">
-                        <li>বাস ছাড়ার অন্তত ৩০ মিনিট পূর্বে নিজ নিজ বোর্ডিং কাউন্টারে রিপোর্ট করতে হবে।</li>
-                        <li>প্রবেশপত্র এবং এই ডিজিটাল টিকিটের প্রিন্ট বা মোবাইল কপি সাথে রাখুন।</li>
-                        <li>কাউন্টার ছেঁড়া স্লিপ জমা দেওয়া লাগবে না; বাসে ওঠার সময় ডিজিটাল ভেরিফিকেশন হবে।</li>
-                      </ol>
+                  {/* Helpline Strip (NO Counter Map or WhatsApp Share as requested) */}
+                  <div className="p-2 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-1 text-[10px] print:bg-slate-50">
+                    <a
+                      href={`tel:${(orgBrand.phone || '01711000001').replace(/\s+/g, '')}`}
+                      className="inline-flex items-center gap-1 text-emerald-800 font-bold hover:underline"
+                      title="কাউন্টার হেল্পলাইনে কল করুন"
+                    >
+                      <Phone className="w-3 h-3 text-emerald-600" />
+                      <span>হেল্পলাইন: <strong>{orgBrand.phone || '০১৭১১-০০০০০১'}</strong></span>
+                    </a>
+                    <div className="flex items-center gap-0.5 text-emerald-800 font-bold text-[9px]">
+                      <BadgeCheck className="w-3 h-3 text-emerald-600" />
+                      <span>অনুমোদিত পাস</span>
                     </div>
                   </div>
                 </div>
 
-                {/* 6.2 RIGHT COLUMN: Clean Billing Summary & Anti-Copy QR Verification */}
-                <div className="rounded-xl border border-slate-300 print:border-slate-800 overflow-hidden bg-white shadow-2xs flex flex-col justify-between">
+                {/* 6.2 COLUMN 2: Visual Coach Mini Seat Map (Only if showSeatMap is true) */}
+                {showSeatMap && (
+                  <div className="md:col-span-4 flex flex-col">
+                    <MiniBusSeatMap
+                      allocatedSeats={displayPassengers.map((p: any) => p.seatNumber || p.seat_number || p.seat?.seatNumber).filter(Boolean)}
+                      busType={busType}
+                      isEcoMode={isEcoMode}
+                    />
+                  </div>
+                )}
+
+                {/* 6.3 COLUMN 3: Clean Billing Summary & 3D QR Verification (md:col-span-4) */}
+                <div className={`${showSeatMap ? "md:col-span-4" : "md:col-span-6"} rounded-xl border border-slate-300 print:border-slate-800 overflow-hidden bg-white shadow-2xs flex flex-col justify-between`}>
                   <div>
-                    <div className="bg-[#032b69] print:bg-black text-white px-3.5 py-1.5 flex items-center justify-between font-bold text-xs">
-                      <div className="flex items-center gap-2">
+                    <div className="bg-[#032b69] print:bg-black text-white px-3 py-1.5 flex items-center justify-between font-bold text-xs">
+                      <div className="flex items-center gap-1.5">
                         <BadgePercent className="w-3.5 h-3.5 text-sky-300" />
-                        <span>ভ্রমণ ভাড়া (BILLING SUMMARY)</span>
+                        <span>ভাড়ার হিসাব (BILLING)</span>
                       </div>
-                      <span className="text-[10px] font-mono text-sky-200 print:text-white font-normal">
-                        অফিসিয়াল পেমেন্ট ভাউচার
+                      <span className="text-[9px] font-mono text-sky-200 print:text-white font-normal">
+                        অফিসিয়াল ভাউচার
                       </span>
                     </div>
 
-                    <div className="p-3.5 space-y-1.5 text-xs font-mono">
+                    <div className="p-2.5 space-y-1 text-[11px] font-mono">
                       {/* Base Fare Calculation */}
                       <div className="flex justify-between text-slate-700">
-                        <span>মূল ভাড়া ({formatCurrency(displayPassengers[0]?.fareSnapshot || 650)} × {displayPassengers.length} আসন):</span>
+                        <span>মূল ভাড়া ({formatCurrency(displayPassengers[0]?.fareSnapshot || 650)} × {displayPassengers.length}):</span>
                         <span className="font-bold text-slate-900">{formatCurrency(grossAmount)}</span>
                       </div>
 
                       {/* Discount row if applicable */}
                       {discountAmount > 0 && (
                         <div className="flex justify-between text-emerald-700 print:text-black font-bold">
-                          <span>ছাড় / বিশেষ কুপন লেস:</span>
+                          <span>ছাড় / বিশেষ কুপন (লেস):</span>
                           <span>- {formatCurrency(discountAmount)}</span>
                         </div>
                       )}
 
-                      {/* Processing Fee if entered in software */}
+                      {/* Processing Fee if entered */}
                       {processingFee > 0 && (
                         <div className="flex justify-between text-slate-700 font-medium">
-                          <span>অনলাইন রিজার্ভেশন ও প্রসেসিং ফি:</span>
+                          <span>অনলাইন প্রসেসিং ফি:</span>
                           <span className="font-bold text-slate-900">+ {formatCurrency(processingFee)}</span>
                         </div>
                       )}
 
-                      {/* VAT & Tax if entered in software */}
+                      {/* VAT & Tax if entered */}
                       {vatAmount > 0 && (
                         <div className="flex justify-between text-slate-700 font-medium">
-                          <span>ভ্যাট ও সরকার নির্ধারিত ট্যাক্স:</span>
+                          <span>ভ্যাট ও সরকারি কর:</span>
                           <span className="font-bold text-slate-900">+ {formatCurrency(vatAmount)}</span>
                         </div>
                       )}
 
+                      {/* Cashout Charge if entered */}
+                      {cashoutFee > 0 && (
+                        <div className="flex justify-between text-amber-800 print:text-black font-medium">
+                          <span>ক্যাশআউট চার্জ (বিকাশ/নগদ):</span>
+                          <span className="font-bold text-slate-900">+ {formatCurrency(cashoutFee)}</span>
+                        </div>
+                      )}
+
                       {/* Net Total Payable */}
-                      <div className="flex justify-between text-slate-950 font-black pt-1.5 border-t border-slate-300 text-[13px]">
+                      <div className="flex justify-between text-slate-950 font-black pt-1 border-t border-slate-300 text-xs">
                         <span>সর্বমোট প্রদেয় ভাড়া:</span>
-                        <span>{formatCurrency(netAmount)}</span>
+                        <span className="text-sm font-black text-slate-950">{formatCurrency(netAmount)}</span>
                       </div>
 
-                      {/* NET PAID BANNER (High contrast for Color and B&W print) */}
-                      <div className="my-2 p-2.5 rounded-xl bg-emerald-50 border-2 border-emerald-600 print:border-black print:bg-slate-100 flex items-center justify-between">
-                        <div>
-                          <span className="text-[10px] text-emerald-900 print:text-black font-black uppercase tracking-wider font-mono block">
-                            NET PAID (পরিশোধিত)
-                          </span>
-                          <span className="text-2xl font-black text-emerald-800 print:text-black font-mono leading-none mt-0.5 block">
-                            {formatCurrency(paidAmount || netAmount)}
-                          </span>
+                      {/* PAYMENT & DUE STATUS CARDS - crystal clear separation */}
+                      {isPaidInFull ? (
+                        /* Fully Paid Banner with BadgeCheck */
+                        <div className="my-1.5 p-2 rounded-lg bg-emerald-50 border-2 border-emerald-600 print:border-black print:bg-slate-100 flex items-center justify-between">
+                          <div>
+                            <span className="text-[9px] text-emerald-900 print:text-black font-black uppercase tracking-wider font-mono block">
+                              পরিশোধিত (PAID IN FULL)
+                            </span>
+                            <span className="text-base font-black text-emerald-800 print:text-black font-mono leading-none mt-0.5 block">
+                              {formatCurrency(paidAmount)}
+                            </span>
+                            <span className="text-[9px] text-emerald-700 print:text-black font-bold mt-0.5 block">
+                              ✓ কোনো বকেয়া নেই
+                            </span>
+                          </div>
+                          <div>
+                            <span className="px-2 py-1 rounded bg-emerald-600 print:bg-black text-white font-black text-[10px] flex items-center gap-1 font-mono shadow-xs">
+                              PAID <BadgeCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <span className="px-3 py-1.5 rounded-lg bg-emerald-600 print:bg-black text-white font-black text-xs flex items-center gap-1.5 font-mono shadow-xs">
-                            PAID <Check className="w-4 h-4 stroke-[3]" />
-                          </span>
-                        </div>
-                      </div>
+                      ) : (
+                        /* High-visibility Partial / Due Alert Card */
+                        <div className="my-1.5 space-y-1">
+                          <div className="p-2 rounded-lg bg-rose-50 border-2 border-rose-600 print:border-black print:bg-slate-100 flex items-center justify-between">
+                            <div>
+                              <span className="text-[9px] text-rose-900 print:text-black font-black uppercase tracking-wider font-mono block">
+                                অবশিষ্ট বকেয়া টাকা (DUE AMOUNT)
+                              </span>
+                              <span className="text-lg font-black text-rose-700 print:text-black font-mono leading-none mt-0.5 block">
+                                {formatCurrency(dueAmount)}
+                              </span>
+                              <span className="text-[9px] text-rose-800 print:text-black font-bold mt-0.5 block">
+                                ⚠️ কাউন্টারে প্রদেয়: {duePromiseDate}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="px-2 py-1 rounded bg-rose-600 print:bg-black text-white font-black text-[10px] inline-block font-mono shadow-xs">
+                                DUE ৳{dueAmount}
+                              </span>
+                            </div>
+                          </div>
 
-                      {/* Due Info */}
-                      <div className="flex justify-between text-xs font-bold pt-1 border-t border-slate-200">
-                        <span className="text-slate-600">অবশিষ্ট বকেয়া (Due):</span>
-                        <span className={dueAmount > 0 ? 'text-rose-600 font-black' : 'text-slate-800'}>
-                          {formatCurrency(dueAmount)}
-                        </span>
-                      </div>
+                          <div className="flex justify-between items-center text-[10px] px-1 font-mono text-slate-700">
+                            <span>জমা (Paid): <strong className="text-slate-900">{formatCurrency(paidAmount)}</strong></span>
+                            <span>বকেয়া (Due): <strong className="text-rose-700 font-black">{formatCurrency(dueAmount)}</strong></span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* QR Scan & Anti-Fraud Security Box */}
-                  <div className="p-3 pt-0">
-                    <div className="bg-slate-50 print:bg-white p-2.5 rounded-xl border border-slate-300 print:border-black flex items-center gap-3">
-                      {/* Enlarged High-Contrast QR Code */}
-                      <div className="p-1.5 bg-white rounded-lg border-2 border-slate-800 shrink-0 shadow-xs">
-                        <QRCodeView value={verifyUrl} size={92} />
+                  {/* 3D Security Framed QR Scan & Anti-Fraud Box */}
+                  <div className="p-2 pt-0">
+                    <div className="bg-slate-50 print:bg-white p-2 rounded-xl border border-slate-300 print:border-black flex items-center gap-2">
+                      {/* 3D-depth framed QR Code */}
+                      <div className="p-1 bg-white rounded-lg border-2 border-slate-800 shadow-sm shrink-0">
+                        <QRCodeView value={verifyUrl} size={76} />
                       </div>
 
                       {/* Verification Code & Anti-Tamper Details */}
-                      <div className="text-[10px] text-slate-700 font-mono space-y-1 flex-1 min-w-0">
-                        <span className="text-[9px] font-black text-slate-900 uppercase block tracking-wide">
-                          ডিজিটাল গেট স্ক্যান ও নিরাপত্তা কোড
+                      <div className="text-[9px] text-slate-700 font-mono space-y-0.5 flex-1 min-w-0">
+                        <span className="text-[8px] font-black text-slate-900 uppercase block tracking-wide">
+                          ৩D সিকিউরিটি গেট পাস
                         </span>
-                        <div className="bg-[#032b69] print:bg-black text-white px-2 py-0.5 rounded font-black text-[11px] inline-block tracking-wider">
+                        <div className="bg-[#032b69] print:bg-black text-white px-1.5 py-0.2 rounded font-black text-[10px] inline-block tracking-wider">
                           *{bookingNumber}*
                         </div>
-                        <div className="text-[9px] font-bold text-slate-900 flex items-center gap-1">
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 print:text-black" />
-                          <span>SEC-HASH: {securityHash}</span>
+                        <div className="text-[8px] font-bold text-slate-900 flex items-center gap-0.5">
+                          <BadgeCheck className="w-3 h-3 text-emerald-600 print:text-black shrink-0" />
+                          <span className="truncate">HASH: {securityHash}</span>
                         </div>
-                        <div className="text-[8px] text-slate-500 print:text-black leading-tight">
-                          ⚠️ জাল বা ফটোকপি টিকিট দণ্ডনীয় অপরাধ। কেবল মূল কিউআর কোড স্ক্যানকৃত কপি বৈধ।
+                        <div className="text-[7.5px] text-slate-500 print:text-black leading-tight">
+                          ডিজিটাল ভেরিফিকেশনের জন্য মূল কিউআর কোড স্ক্যান করুন।
                         </div>
                       </div>
                     </div>
@@ -1335,11 +1877,13 @@ export function PaymentReceipt({
               </div>
             </div>
 
-            {/* 7. BOTTOM CENTRAL FOOTER STRIP */}
+{/* 7. BOTTOM CENTRAL FOOTER STRIP */}
             <div className="bg-[#032b69] print:bg-black text-white py-2 px-4 text-center text-[10px] font-medium tracking-wide">
               <div className="font-bold flex items-center justify-center gap-2">
                 <Lock className="w-3 h-3 text-sky-300 print:text-white" />
                 <span>{orgBrand.name || 'ATOMS Transit'} Central Secure Transit Pass Management System</span>
+                <span>•</span>
+                <span className="font-mono text-emerald-300">🌐 {orgBrand.website || 'www.atomstransit.com'}</span>
               </div>
               <div className="text-sky-200 print:text-white text-[9px] flex items-center justify-center gap-3 mt-0.5 font-mono">
                 <span>Anti-Counterfeit Protection</span>
@@ -1729,7 +2273,7 @@ export function PaymentReceiptModal({
 
         {/* Luxury Document Workbench Preview Area */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-950/95 flex justify-center items-start">
-          <div className="w-full max-w-3xl">
+          <div className="w-full max-w-[850px]">
             <PaymentReceipt
               booking={booking}
               showControls={false}

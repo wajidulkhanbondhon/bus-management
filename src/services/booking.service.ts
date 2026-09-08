@@ -140,7 +140,25 @@ export async function createBooking(input: CreateBookingInput, options?: Request
     contact_phone: input.passengers?.[0]?.passengerPhone,
     contact_email: input.contactEmail || input.passengers?.[0]?.email || undefined,
     passengers: input.passengers.map(p => {
-      const sNum = (p as any).seatNumber || (p as any).seat_number || (p.seatId?.includes('-') ? p.seatId.split('-').pop() : p.seatId);
+      let sNum = (p as any).seatNumber || (p as any).seat_number;
+      if (!sNum && p.seatId) {
+        const idUpper = p.seatId.toUpperCase();
+        if (idUpper.includes('EX-') || idUpper.includes('EXTRA-')) {
+          const exMatch = idUpper.match(/EX(?:TRA)?[-_]?\d+/i);
+          if (exMatch) {
+            const dig = exMatch[0].match(/\d+/);
+            sNum = dig ? `EX-${dig[0]}` : exMatch[0];
+          }
+        }
+        if (!sNum) {
+          const parts = p.seatId.split('-');
+          if (parts.length >= 2 && parts[parts.length - 2].toUpperCase() === 'EX') {
+            sNum = `EX-${parts[parts.length - 1]}`;
+          } else {
+            sNum = parts[parts.length - 1];
+          }
+        }
+      }
       return {
         passenger_name: p.passengerName,
         passenger_phone: p.passengerPhone,

@@ -56,6 +56,8 @@ interface BookingSummarySidebarProps {
   onProcessingFeeChange?: (fee: number) => void;
   vatTaxAmount?: number;
   onVatTaxAmountChange?: (tax: number) => void;
+  cashoutCharge?: number;
+  onCashoutChargeChange?: (charge: number) => void;
   autoPrintTicket: boolean;
   onAutoPrintTicketChange: (autoPrint: boolean) => void;
   onConfirmBooking: () => void;
@@ -77,6 +79,8 @@ export function BookingSummarySidebar({
   onProcessingFeeChange,
   vatTaxAmount = 0,
   onVatTaxAmountChange,
+  cashoutCharge = 0,
+  onCashoutChargeChange,
   paymentMethod,
   onPaymentMethodChange,
   passengerName,
@@ -263,44 +267,130 @@ export function BookingSummarySidebar({
           </div>
         )}
 
+        {cashoutCharge > 0 && (
+          <div className="flex justify-between items-center text-pink-700 dark:text-pink-400 font-bold">
+            <span>{language === 'bn' ? 'বিকাশ/নগদ ক্যাশআউট চার্জ:' : 'MFS Cashout Charge:'}</span>
+            <span className="font-mono">+ {formatCurrency(cashoutCharge)}</span>
+          </div>
+        )}
+
         {/* Fee & Tax Entry Toggle for Counter Staff */}
-        {(onProcessingFeeChange || onVatTaxAmountChange) && (
+        {(onProcessingFeeChange || onVatTaxAmountChange || onCashoutChargeChange) && (
           <div className="py-1">
             <button
               type="button"
               onClick={() => setShowFeeTaxSettings((prev) => !prev)}
               className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
             >
-              <span>{showFeeTaxSettings ? '▼ ফি ও কর গোপন করুন' : '⚙️ প্রসেসিং ফি ও ভ্যাট ট্যাক্স সমন্বয়'}</span>
+              <span>{showFeeTaxSettings ? '▼ ফি, কর ও ক্যাশআউট লুকান' : '⚙️ প্রসেসিং ফি, ভ্যাট ও ক্যাশআউট সমন্বয়'}</span>
             </button>
 
             {showFeeTaxSettings && (
-              <div className="mt-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-2 text-[10px]">
-                {onProcessingFeeChange && (
-                  <div>
-                    <label className="text-slate-600 dark:text-slate-300 font-bold block mb-0.5">
-                      {language === 'bn' ? 'প্রসেসিং ফি (৳)' : 'Fee (৳)'}
-                    </label>
+              <div className="mt-2 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2 text-[10px]">
+                <div className="grid grid-cols-2 gap-2">
+                  {onProcessingFeeChange && (
+                    <div>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <label className="text-slate-600 dark:text-slate-300 font-bold block">
+                          {language === 'bn' ? 'প্রসেসিং ফি' : 'Fee'}
+                        </label>
+                        <div className="flex gap-1">
+                          {[0, 20, 50].map((f) => (
+                            <button
+                              key={f}
+                              type="button"
+                              onClick={() => onProcessingFeeChange(f)}
+                              className="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-[9px] font-mono hover:bg-blue-600 hover:text-white transition-colors cursor-pointer"
+                            >
+                              ৳{f}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={processingFee}
+                        onChange={(e) => onProcessingFeeChange(parseFloat(e.target.value) || 0)}
+                        className="h-7 text-[11px] font-mono rounded-lg"
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
+
+                  {onVatTaxAmountChange && (
+                    <div>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <label className="text-slate-600 dark:text-slate-300 font-bold block">
+                          {language === 'bn' ? 'ভ্যাট / ট্যাক্স' : 'VAT'}
+                        </label>
+                        <div className="flex gap-1">
+                          {[0, 25, 50].map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => onVatTaxAmountChange(t)}
+                              className="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-[9px] font-mono hover:bg-blue-600 hover:text-white transition-colors cursor-pointer"
+                            >
+                              ৳{t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={vatTaxAmount}
+                        onChange={(e) => onVatTaxAmountChange(parseFloat(e.target.value) || 0)}
+                        className="h-7 text-[11px] font-mono rounded-lg"
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {onCashoutChargeChange && (
+                  <div className="pt-1.5 border-t border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <label className="text-pink-800 dark:text-pink-300 font-bold block">
+                        {language === 'bn' ? 'বিকাশ/নগদ ক্যাশআউট চার্জ (৳)' : 'Cashout Charge (৳)'}
+                      </label>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onCashoutChargeChange(0)}
+                          className="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-[9px] font-mono hover:bg-rose-600 hover:text-white transition-colors cursor-pointer"
+                        >
+                          ৳০
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onCashoutChargeChange(Math.round(grossAmount * 0.015))}
+                          className="px-1.5 py-0.2 rounded bg-pink-100 dark:bg-pink-900/60 text-pink-800 dark:text-pink-200 text-[9px] font-mono font-bold hover:bg-pink-600 hover:text-white transition-colors cursor-pointer"
+                        >
+                          ১.৫% (৳{Math.round(grossAmount * 0.015)})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onCashoutChargeChange(Math.round(grossAmount * 0.0185))}
+                          className="px-1.5 py-0.2 rounded bg-pink-100 dark:bg-pink-900/60 text-pink-800 dark:text-pink-200 text-[9px] font-mono font-bold hover:bg-pink-600 hover:text-white transition-colors cursor-pointer"
+                        >
+                          ১.৮৫%
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onCashoutChargeChange(20)}
+                          className="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-[9px] font-mono hover:bg-blue-600 hover:text-white transition-colors cursor-pointer"
+                        >
+                          ৳২০
+                        </button>
+                      </div>
+                    </div>
                     <Input
                       type="number"
                       min={0}
-                      value={processingFee}
-                      onChange={(e) => onProcessingFeeChange(parseFloat(e.target.value) || 0)}
-                      className="h-7 text-[11px] font-mono rounded-lg"
-                      placeholder="0"
-                    />
-                  </div>
-                )}
-                {onVatTaxAmountChange && (
-                  <div>
-                    <label className="text-slate-600 dark:text-slate-300 font-bold block mb-0.5">
-                      {language === 'bn' ? 'ভ্যাট / ট্যাক্স (৳)' : 'VAT (৳)'}
-                    </label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={vatTaxAmount}
-                      onChange={(e) => onVatTaxAmountChange(parseFloat(e.target.value) || 0)}
+                      value={cashoutCharge}
+                      onChange={(e) => onCashoutChargeChange(parseFloat(e.target.value) || 0)}
                       className="h-7 text-[11px] font-mono rounded-lg"
                       placeholder="0"
                     />
@@ -327,7 +417,7 @@ export function BookingSummarySidebar({
                 key={m}
                 type="button"
                 onClick={() => onPaymentMethodChange(m)}
-                className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all ${
+                className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${
                   paymentMethod === m
                     ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                     : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
@@ -337,6 +427,35 @@ export function BookingSummarySidebar({
               </button>
             ))}
           </div>
+
+          {/* Quick Cashout Notification for bKash/Nagad */}
+          {(paymentMethod === 'BKASH' || paymentMethod === 'NAGAD') && onCashoutChargeChange && (
+            <div className="mt-2 p-2 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-200 dark:border-pink-800/80 flex items-center justify-between gap-1.5 text-[10px]">
+              <span className="text-pink-900 dark:text-pink-200 font-bold">
+                {paymentMethod === 'BKASH' ? 'বিকাশ' : 'নগদ'} ক্যাশআউট চার্জ: {cashoutCharge > 0 ? `৳${cashoutCharge}` : 'যুক্ত নেই'}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => onCashoutChargeChange(Math.round(grossAmount * 0.015))}
+                  className="px-2 py-0.5 rounded bg-pink-600 hover:bg-pink-700 text-white font-mono font-black text-[9px] cursor-pointer"
+                  title="১.৫% ক্যাশআউট চার্জ যুক্ত করুন"
+                >
+                  + ১.৫% (৳{Math.round(grossAmount * 0.015)})
+                </button>
+                {cashoutCharge > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onCashoutChargeChange(0)}
+                    className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[9px] cursor-pointer"
+                    title="ক্যাশআউট চার্জ মুছুন"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Paid and Due Amount Inputs */}
