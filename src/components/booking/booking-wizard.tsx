@@ -238,6 +238,9 @@ export function BookingWizard({
         if (orgSettings.finance.taxCalculationType === 'FIXED' && orgSettings.finance.taxFixedAmount !== undefined) {
           setVatTaxAmount(Number(orgSettings.finance.taxFixedAmount) || 0);
         }
+        if (orgSettings.finance.autoApplyMfsCashout && orgSettings.finance.mfsCashoutCalculationType === 'FIXED' && orgSettings.finance.defaultMfsCashoutFixed !== undefined) {
+          setCashoutCharge(Number(orgSettings.finance.defaultMfsCashoutFixed) || 0);
+        }
       }
     } catch {}
   }, []);
@@ -888,6 +891,21 @@ export function BookingWizard({
 
   const netAmount = Math.max(0, grossAmount - discountAmount + processingFee + vatTaxAmount + cashoutCharge);
   const dueAmount = Math.max(0, netAmount - paidAmount);
+
+  // Dynamically calculate percentage-based VAT and Cashout based on grossAmount
+  useEffect(() => {
+    try {
+      const orgSettings = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('atoms_organization_settings') || '{}') : {};
+      if (orgSettings?.finance && grossAmount > 0) {
+        if (orgSettings.finance.taxCalculationType !== 'FIXED' && orgSettings.finance.taxRatePercent) {
+          setVatTaxAmount(Math.round((grossAmount * Number(orgSettings.finance.taxRatePercent)) / 100));
+        }
+        if (orgSettings.finance.autoApplyMfsCashout && orgSettings.finance.mfsCashoutCalculationType !== 'FIXED' && orgSettings.finance.defaultMfsCashoutPercent) {
+          setCashoutCharge(Math.round((grossAmount * Number(orgSettings.finance.defaultMfsCashoutPercent)) / 100));
+        }
+      }
+    } catch {}
+  }, [grossAmount]);
 
   const hasInitializedPaidStep5 = useRef(false);
   useEffect(() => {

@@ -226,7 +226,7 @@ export function AppShell({ children, currentUser }: AppShellProps) {
       </div>
 
       {/* ── Mobile Bottom Navigation Bar (Staff / ERP Mode) ── */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center justify-around shadow-lg">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center justify-around shadow-lg print:hidden">
         <Link
           href="/dashboard"
           className={cn(
@@ -293,7 +293,9 @@ export function AppShell({ children, currentUser }: AppShellProps) {
       </div>
 
       {/* Global Floating AI Trigger & Dialog Widget */}
-      <AIFloatingTrigger />
+      <div className="print:hidden">
+        <AIFloatingTrigger />
+      </div>
     </div>
   );
 }

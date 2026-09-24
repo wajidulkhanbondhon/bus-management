@@ -476,23 +476,23 @@ export const DEFAULT_ORGANIZATION_SETTINGS: OrganizationSettingsState = {
     calendarType: 'GREGORIAN'
   },
   organization: {
-    name: 'ঢাকা সেন্ট্রাল ট্রানজিট (RU & DU Admission Express)',
-    legalName: 'Dhaka Central Student Transport Ltd.',
-    orgCode: 'DCT-2026',
-    businessType: 'Student Transport & Tour Operator',
-    description: 'বিশ্ববিদ্যালয় ভর্তি পরীক্ষার্থী ও অভিভাবকদের বিশেষ নিরাপদ ও আরামদায়ক এসি বাস সার্ভিস।',
-    email: 'support@atomsbus.bd',
-    phone: '01712345678',
-    altPhone: '01812345678',
+    name: 'ATOMS TRANSIT',
+    legalName: 'Atoms Transit Ltd.',
+    orgCode: 'ATL-2026',
+    businessType: 'Intercity Bus Service & Transit Operator',
+    description: 'স্মার্ট ও নিরাপদ আন্তঃজেলা ডিজিটাল পরিবহন নেটওয়ার্ক।',
+    email: 'support@atomstransit.com',
+    phone: '01711000001',
+    altPhone: '01811000001',
     address: 'গাবতলী বাস টার্মিনাল, ঢাকা ১২১৬',
     city: 'Dhaka',
     district: 'Dhaka',
     country: 'Bangladesh',
     postalCode: '1216',
-    website: 'https://atomsbus.bd',
+    website: 'https://atomstransit.com',
     taxBinNumber: 'BIN-99018274-2026',
-    supportContact: '01712345678 (24/7 Helpline)',
-    emergencyContact: '01812345678 (Operations In-charge)',
+    supportContact: '01711000001 (24/7 Helpline)',
+    emergencyContact: '01811000001 (Operations In-charge)',
     status: 'ACTIVE'
   },
   branches: [
@@ -904,6 +904,8 @@ export function saveStoredOrganizationSettings(settings: OrganizationSettingsSta
   if (typeof window === 'undefined') return false;
   try {
     localStorage.setItem(STORAGE_KEY_ORG, JSON.stringify(settings));
+    window.dispatchEvent(new CustomEvent('atoms_settings_updated', { detail: settings }));
+    window.dispatchEvent(new Event('storage'));
     return true;
   } catch {
     return false;

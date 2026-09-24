@@ -60,6 +60,26 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
   const [cashoutCharge, setCashoutCharge] = useState<number>(0);
   const { success: toastSuccess, error: toastError } = useToast();
 
+  // Load fee settings from organization defaults
+  useEffect(() => {
+    try {
+      const orgSettings = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('atoms_organization_settings') || '{}') : {};
+      if (orgSettings?.finance) {
+        if (orgSettings.finance.defaultProcessingFee !== undefined) {
+          setProcessingFee(Number(orgSettings.finance.defaultProcessingFee) || 0);
+        }
+        if (orgSettings.finance.taxCalculationType === 'FIXED' && orgSettings.finance.taxFixedAmount !== undefined) {
+          setVatTaxAmount(Number(orgSettings.finance.taxFixedAmount) || 0);
+        }
+        if (orgSettings.finance.autoApplyMfsCashout) {
+          if (orgSettings.finance.mfsCashoutCalculationType === 'FIXED' && orgSettings.finance.defaultMfsCashoutFixed !== undefined) {
+            setCashoutCharge(Number(orgSettings.finance.defaultMfsCashoutFixed) || 0);
+          }
+        }
+      }
+    } catch {}
+  }, []);
+
   const activeTrip = useMemo(() => {
     return trips.find((t) => t.id === selectedTripId) || trips[0];
   }, [trips, selectedTripId]);
