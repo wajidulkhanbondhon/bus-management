@@ -572,6 +572,7 @@ async def lock_seat(
     await ensure_seat_rows(db, trip, labels=[clean_num])
     seat = await db.query(Seat).filter(
         or_(
+            Seat.id == seat_id,
             Seat.seat_number == clean_num,
             Seat.id == f"seat-{trip_id}-{clean_num}",
         ),
@@ -633,9 +634,13 @@ async def lock_seat(
 
 
 async def unlock_seat(db: Session, trip_id: str, seat_id: str, staff_id: str) -> bool:
+    clean_num = seat_label_of(seat_id) or seat_id.strip().upper()
     locks = await db.query(SeatLock).filter(
         SeatLock.trip_id == trip_id,
-        SeatLock.seat_id == seat_id,
+        or_(
+            SeatLock.seat_id == seat_id,
+            SeatLock.seat_id == clean_num
+        ),
         SeatLock.is_active == True
     ).all()
 

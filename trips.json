@@ -1,4 +1,4 @@
-﻿{
+{
     "success":  true,
     "count":  2,
     "data":  [
@@ -16,8 +16,8 @@
                              },
                      "route":  {
                                    "id":  "9d23c592-39fa-4539-b967-113077416740",
-                                   "name":  "Rajshahi to Dhaka University (Curzon \u0026 TSC Gate)",
-                                   "origin":  "Rajshahi (Talaimari/Bhadra/Railgate)",
+                                   "name":  "Rajshahito Dhaka University (Curzon \u0026 TSC Gate)",
+                                   "origin":  "Rajshahi",
                                    "destination":  "Dhaka University Campus"
                                },
                      "departureDate":  "2026-09-05T00:00:00",
@@ -39,8 +39,8 @@
                              },
                      "route":  {
                                    "id":  "d28321e3-05c4-4f2d-89de-e40fd1249fda",
-                                   "name":  "Rajshahi to Jahangirnagar University (Dairy Gate)",
-                                   "origin":  "Rajshahi (Talaimari/Bhadra/Railgate)",
+                                   "name":  "Rajshahito Jahangirnagar University (Dairy Gate)",
+                                   "origin":  "Rajshahi",
                                    "destination":  "Jahangirnagar University Campus"
                                },
                      "departureDate":  "2026-09-07T00:00:00",

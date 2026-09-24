@@ -196,8 +196,10 @@ function getDevFallbackUser(userId: string): AuthSessionUser | null {
 export async function hasPermission(permissionCode: string): Promise<boolean> {
   const user = await getCurrentUser();
   if (!user) return false;
-  if (user.role.name === 'SUPER_ADMIN') return true;
-  return user.role.permissions.includes(permissionCode);
+  const roleName = typeof user.role === 'string' ? user.role : user.role?.name;
+  if (roleName === 'SUPER_ADMIN') return true;
+  const perms = Array.isArray(user.role?.permissions) ? user.role.permissions : [];
+  return perms.includes(permissionCode);
 }
 
 export async function requireUser(): Promise<AuthSessionUser> {
@@ -214,7 +216,9 @@ export async function requireUser(): Promise<AuthSessionUser> {
 
 export async function requirePermission(permissionCode: string): Promise<AuthSessionUser> {
   const user = await requireUser();
-  if (user.role.name !== 'SUPER_ADMIN' && !user.role.permissions.includes(permissionCode)) {
+  const roleName = typeof user.role === 'string' ? user.role : user.role?.name;
+  const perms = Array.isArray(user.role?.permissions) ? user.role.permissions : [];
+  if (roleName !== 'SUPER_ADMIN' && !perms.includes(permissionCode)) {
     if (isDevAuthFallbackEnabled()) {
       return user;
     }

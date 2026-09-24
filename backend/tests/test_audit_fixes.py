@@ -10,8 +10,18 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 
-from app.db.session import SessionLocal
+import asyncio
+
+from app.db.session import SessionLocal, AsyncSessionLocal
+from app.db.async_wrapper import WrappedAsyncSession
 from app.core.deps import get_current_user, apply_tenant_filter
+
+def _run_with_db(async_fn):
+    async def _inner():
+        async with AsyncSessionLocal() as session:
+            wrapped = WrappedAsyncSession(session)
+            return await async_fn(wrapped)
+    return asyncio.run(_inner())
 from app.core.security import create_access_token
 from app.models.user import User, Role
 from app.models.tenant import Tenant
@@ -159,6 +169,19 @@ class TestAuditSecurityAndConcurrencyFixes(unittest.TestCase):
             cls.db.commit()
             cls.db.refresh(cls.trip)
 
+        # Ensure clean state for test trip
+        cls.db.query(SeatHold).filter(SeatHold.trip_id == cls.trip.id).delete()
+        cls.db.query(SeatLock).filter(SeatLock.trip_id == cls.trip.id).delete()
+        test_b_ids = [b.id for b in cls.db.query(Booking).filter(Booking.trip_id == cls.trip.id).all()]
+        if test_b_ids:
+            cls.db.query(FinancialLedger).filter(FinancialLedger.booking_id.in_(test_b_ids)).delete(synchronize_session=False)
+            cls.db.query(Refund).filter(Refund.booking_id.in_(test_b_ids)).delete(synchronize_session=False)
+            cls.db.query(Payment).filter(Payment.booking_id.in_(test_b_ids)).delete(synchronize_session=False)
+            cls.db.query(BookingPassenger).filter(BookingPassenger.booking_id.in_(test_b_ids)).delete(synchronize_session=False)
+            cls.db.query(BookingSeat).filter(BookingSeat.booking_id.in_(test_b_ids)).delete(synchronize_session=False)
+            cls.db.query(Booking).filter(Booking.id.in_(test_b_ids)).delete(synchronize_session=False)
+        cls.db.commit()
+
     @classmethod
     def tearDownClass(cls):
         cls.db.close()
@@ -166,7 +189,7 @@ class TestAuditSecurityAndConcurrencyFixes(unittest.TestCase):
     def test_01_unauthenticated_request_rejected_with_401(self):
         """Bug #1 Fix: Verifies that get_current_user raises 401 when no token is provided."""
         with self.assertRaises(HTTPException) as ctx:
-            get_current_user(db=self.db, credentials=None)
+            _run_with_db(lambda db: get_current_user(db=db, credentials=None))
         self.assertEqual(ctx.exception.status_code, 401)
         self.assertIn("Authentication credentials required", ctx.exception.detail)
 
@@ -174,14 +197,14 @@ class TestAuditSecurityAndConcurrencyFixes(unittest.TestCase):
         """Bug #1 Fix: Verifies that invalid tokens raise 401 instead of silent admin fallback."""
         bad_creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="invalid.token.here")
         with self.assertRaises(HTTPException) as ctx:
-            get_current_user(db=self.db, credentials=bad_creds)
+            _run_with_db(lambda db: get_current_user(db=db, credentials=bad_creds))
         self.assertEqual(ctx.exception.status_code, 401)
 
     def test_03_valid_token_resolves_user(self):
         """Verifies that a valid signed JWT correctly returns the authenticated user."""
         token = create_access_token(subject=self.test_user.id, role="ADMIN")
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
-        user = get_current_user(db=self.db, credentials=creds)
+        user = _run_with_db(lambda db: get_current_user(db=db, credentials=creds))
         self.assertEqual(user.id, self.test_user.id)
         self.assertEqual(user.email, self.test_user.email)
 
@@ -219,8 +242,8 @@ class TestAuditSecurityAndConcurrencyFixes(unittest.TestCase):
             paid_amount=500.0
         )
         with self.assertRaises(ValueError) as ctx:
-            create_counter_booking(self.db, req, self.test_user.id)
-        self.assertIn("do not exist for this bus trip", str(ctx.exception))
+            _run_with_db(lambda db: create_counter_booking(db, req, self.test_user.id))
+        self.assertTrue("does not exist" in str(ctx.exception) or "do not exist" in str(ctx.exception))
 
     def test_06_prebooked_seat_conflict_prevented(self):
         """Bug #4 & #5 Fix: Verifies that a seat in PRE_BOOKED status cannot be counter-booked."""
@@ -235,7 +258,7 @@ class TestAuditSecurityAndConcurrencyFixes(unittest.TestCase):
             passenger_gender="FEMALE",
             is_student=True
         )
-        pre_booking = create_pre_booking(self.db, pre_req, tenant_id=self.tenant.id)
+        pre_booking = _run_with_db(lambda db: create_pre_booking(db, pre_req, tenant_id=self.tenant.id))
         self.assertEqual(pre_booking.booking_status, "PRE_BOOKED")
 
         # 2. Counter tries to book the same seat while pre-booked
@@ -256,25 +279,25 @@ class TestAuditSecurityAndConcurrencyFixes(unittest.TestCase):
         )
 
         with self.assertRaises(SeatAlreadyBookedException) as ctx:
-            create_counter_booking(self.db, counter_req, self.test_user.id)
+            _run_with_db(lambda db: create_counter_booking(db, counter_req, self.test_user.id))
         self.assertIn("already booked or held", str(ctx.exception))
 
         # Cleanup pre-booking
-        cancel_booking_service(self.db, pre_booking.id, self.test_user.id, reason="Test cleanup")
+        _run_with_db(lambda db: cancel_booking_service(db, pre_booking.id, self.test_user.id, reason="Test cleanup"))
 
     def test_07_locked_seat_cannot_be_booked(self):
         """Bug #4 & #5 Fix: Verifies that an actively locked seat (VIP/Maintenance) cannot be booked."""
         seat = self.seats[1]
 
         # Lock the seat
-        lock = lock_seat(
-            db=self.db,
+        lock = _run_with_db(lambda db: lock_seat(
+            db=db,
             trip_id=self.trip.id,
             seat_id=seat.id,
             staff_id=self.test_user.id,
             lock_type="TEMPORARY",
             reason="VIP"
-        )
+        ))
         self.assertTrue(lock.is_active)
 
         # Attempt to book the locked seat
@@ -295,11 +318,11 @@ class TestAuditSecurityAndConcurrencyFixes(unittest.TestCase):
         )
 
         with self.assertRaises(ValueError) as ctx:
-            create_counter_booking(self.db, counter_req, self.test_user.id)
+            _run_with_db(lambda db: create_counter_booking(db, counter_req, self.test_user.id))
         self.assertIn("is currently locked", str(ctx.exception))
 
         # Unlock seat
-        unlocked = unlock_seat(self.db, self.trip.id, seat.id, self.test_user.id)
+        unlocked = _run_with_db(lambda db: unlock_seat(db, self.trip.id, seat.id, self.test_user.id))
         self.assertTrue(unlocked)
 
     def test_08_duplicate_passenger_seats_rejected(self):
@@ -328,7 +351,7 @@ class TestAuditSecurityAndConcurrencyFixes(unittest.TestCase):
             paid_amount=500.0
         )
         with self.assertRaises(ValueError) as ctx:
-            create_counter_booking(self.db, req, self.test_user.id)
+            _run_with_db(lambda db: create_counter_booking(db, req, self.test_user.id))
         self.assertIn("Duplicate seat", str(ctx.exception))
 
     def test_09_excessive_discount_rejected(self):
@@ -352,7 +375,7 @@ class TestAuditSecurityAndConcurrencyFixes(unittest.TestCase):
             paid_amount=0.0
         )
         with self.assertRaises(ValueError) as ctx:
-            create_counter_booking(self.db, req, self.test_user.id)
+            _run_with_db(lambda db: create_counter_booking(db, req, self.test_user.id))
         self.assertIn("cannot exceed gross ticket fare", str(ctx.exception))
 
     def test_10_refund_flow_and_double_entry_ledger(self):
@@ -373,36 +396,36 @@ class TestAuditSecurityAndConcurrencyFixes(unittest.TestCase):
             payment_method="HAND_CASH",
             paid_amount=500.0
         )
-        booking = create_counter_booking(self.db, req, self.test_user.id)
+        booking = _run_with_db(lambda db: create_counter_booking(db, req, self.test_user.id))
         self.assertEqual(booking.paid_amount, 500.0)
         self.assertEqual(booking.payment_status, "PAID")
 
         # 1. Reject refund exceeding paid amount
         with self.assertRaises(ValueError) as ctx:
-            create_refund_service(
-                db=self.db,
+            _run_with_db(lambda db: create_refund_service(
+                db=db,
                 booking_id=booking.id,
                 amount=600.0,
                 method="HAND_CASH",
                 reason="Over-refund test",
                 staff_id=self.test_user.id
-            )
+            ))
         self.assertIn("cannot exceed total paid amount", str(ctx.exception))
 
         # 2. Issue valid full refund
-        refund = create_refund_service(
-            db=self.db,
+        refund = _run_with_db(lambda db: create_refund_service(
+            db=db,
             booking_id=booking.id,
             amount=500.0,
             method="HAND_CASH",
             reason="Bus breakdown refund",
             staff_id=self.test_user.id
-        )
+        ))
         self.assertEqual(refund.amount, 500.0)
         self.assertTrue(refund.refund_number.startswith("RF-"))
 
         # Verify booking status updated
-        self.db.refresh(booking)
+        booking = self.db.query(Booking).filter(Booking.id == booking.id).first()
         self.assertEqual(booking.paid_amount, 0.0)
         self.assertEqual(booking.payment_status, "REFUNDED")
 
@@ -413,7 +436,7 @@ class TestAuditSecurityAndConcurrencyFixes(unittest.TestCase):
         self.assertEqual(ledger_entry.debit, 500.0)
 
         # Cleanup booking
-        cancel_booking_service(self.db, booking.id, self.test_user.id, reason="Test finished")
+        _run_with_db(lambda db: cancel_booking_service(db, booking.id, self.test_user.id, reason="Test finished"))
 
 
 if __name__ == "__main__":

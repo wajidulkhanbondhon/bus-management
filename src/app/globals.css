@@ -329,13 +329,73 @@ html.dark .seat-available {
   to   { transform: scaleX(0); }
 }
 
-/* Guaranteed Strict Single A4 Page Print Styles */
+/* ---------------------------------------------------------------------------
+   Ticket sheet
+   A fixed A4-proportioned box shared by the on-screen preview, the print
+   output and the PDF export, so all three are identical by construction.
+   The printed page size is injected separately (see src/lib/ticket-print.ts).
+--------------------------------------------------------------------------- */
+.ticket-sheet-viewport {
+  zoom: var(--ticket-view, 1);
+  width: fit-content;
+  margin: 0 auto;
+  transition: zoom 0.15s ease-out;
+}
+
+#printable-payment-receipt {
+  width: 794px;            /* A4 @ 96dpi, 210mm */
+  height: 1123px;          /* 297mm full A4 */
+  padding: 2px;            /* 2px breathing margin around all 4 sides */
+  box-sizing: border-box;
+  overflow: hidden;        /* pagination follows this box -> always one page */
+  position: relative;
+  margin: 0 auto;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 12px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.15);
+}
+
+/* Neutralise the app-shell typography overrides applied to <main>
+   (see contentFontClass in src/components/layout/app-shell.tsx). */
+#printable-payment-receipt h1 { font-size: 26px; line-height: 1.05; }
+#printable-payment-receipt h2 { font-size: 18px; }
+#printable-payment-receipt table { font-size: 11px; }
+
+/* The ticket body. Scaled to fit the sheet when the content is taller than one
+   page; the transform does not affect the layout box, so measurement is stable.
+   Scaling around top center preserves horizontal and vertical alignment. */
+.ticket-canvas {
+  width: 790px;
+  transform-origin: top center;
+  transform: scale(var(--ticket-fit, 1));
+}
+
+/* 80mm POS thermal slip: continuous length, so no fixed height or scaling. */
+#printable-payment-receipt[data-paper-mode="THERMAL_80MM"] {
+  width: 80mm;
+  height: auto;
+  padding: 2mm;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+}
+#printable-payment-receipt[data-paper-mode="THERMAL_80MM"] .ticket-canvas {
+  width: auto;
+  transform: none;
+}
+
 @media print {
   @page {
     size: A4 portrait;
-    margin: 4mm 4mm;
+    margin: 0 !important;
   }
-  
+  @page :first {
+    size: A4 portrait;
+    margin: 0 !important;
+  }
+
   html, body {
     background: #ffffff !important;
     color: #0f172a !important;
@@ -343,35 +403,101 @@ html.dark .seat-available {
     padding: 0 !important;
     width: 100% !important;
     height: 100% !important;
-    max-height: 100vh !important;
-    overflow: hidden !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
+    font-family: 'Noto Sans Bengali', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
   }
 
-  header, aside, nav, .screen-only, .no-print {
+  *, *::before, *::after {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Hide screen-only chrome */
+  header, aside, nav, footer, .screen-only, .no-print, [role="navigation"] {
     display: none !important;
   }
 
-  .a4-print-sheet {
+  /* Strip spacing, transforms and clipping from every ancestor of the ticket,
+     so the sheet always lands at the top of page 1 — whether it is rendered on
+     the booking page, inside a modal, or in a scroll container. */
+  body :has(#printable-payment-receipt) {
+    position: static !important;
     display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    transform: none !important;
+    filter: none !important;
+    zoom: 1 !important;
+    overflow: visible !important;
     width: 100% !important;
-    max-width: 195mm !important;
-    max-height: 265mm !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    gap: 0 !important;
+    flex: none !important;
+  }
+
+  .ticket-sheet-viewport {
+    zoom: 1 !important;
+    display: block !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* The outer flex wrapper that contains the viewport */
+  .ticket-sheet-viewport:parent,
+  .ticket-print-outer {
+    display: block !important;
+    width: 210mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  #printable-payment-receipt {
+    position: relative !important;
     margin: 0 auto !important;
     padding: 0 !important;
     box-sizing: border-box !important;
-    background: #ffffff !important;
-    color: #0f172a !important;
-    page-break-inside: avoid !important;
-    page-break-after: avoid !important;
-    page-break-before: avoid !important;
-    break-inside: avoid !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
     overflow: hidden !important;
-  }
-
-  .a4-print-sheet * {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+
+  .ticket-canvas {
+    width: 210mm !important;
+    max-width: 210mm !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    transform-origin: top center !important;
+    transform: scale(var(--ticket-fit, 1)) !important;
+  }
+
+  #printable-payment-receipt[data-paper-mode="THERMAL_80MM"] {
+    width: 80mm !important;
+    height: auto !important;
+  }
 }
+

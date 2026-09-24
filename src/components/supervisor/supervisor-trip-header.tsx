@@ -29,6 +29,8 @@ interface SupervisorTripHeaderProps {
   totalPassengers: number;
   remainingCash: number;
   onLogout: () => void;
+  availableTrips?: any[];
+  onSelectTrip?: (tripId: string) => void;
 }
 
 export function SupervisorTripHeader({
@@ -37,13 +39,15 @@ export function SupervisorTripHeader({
   totalPassengers,
   remainingCash,
   onLogout,
+  availableTrips = [],
+  onSelectTrip,
 }: SupervisorTripHeaderProps) {
   return (
     <div className="bg-gradient-to-br from-emerald-700 via-teal-800 to-slate-900 text-white p-4 sm:p-6 sticky top-0 z-30 shadow-xl border-b border-emerald-600/30">
       {/* Top Bar: Brand & Profile */}
-      <div className="flex items-center justify-between gap-3 mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-white/15 backdrop-blur-md rounded-2xl flex items-center justify-center text-emerald-200 border border-white/20 shadow-inner">
+          <div className="w-11 h-11 bg-white/15 backdrop-blur-md rounded-2xl flex items-center justify-center text-emerald-200 border border-white/20 shadow-inner shrink-0">
             <Bus className="w-6 h-6" />
           </div>
           <div>
@@ -60,14 +64,33 @@ export function SupervisorTripHeader({
           </div>
         </div>
 
-        <button
-          onClick={onLogout}
-          className="p-2.5 bg-white/10 hover:bg-rose-500/30 rounded-xl text-emerald-100 hover:text-white border border-white/10 transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold"
-          title="লগআউট"
-        >
-          <LogOut className="w-4 h-4" />
-          <span className="hidden sm:inline">লগআউট</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {availableTrips && availableTrips.length > 0 && onSelectTrip && (
+            <div className="flex items-center gap-1 bg-black/20 backdrop-blur-md px-2 py-1 rounded-xl border border-white/15">
+              <Bus className="w-3.5 h-3.5 text-emerald-300" />
+              <select
+                value={busInfo.id}
+                onChange={(e) => onSelectTrip(e.target.value)}
+                className="bg-transparent text-xs font-bold text-white outline-none cursor-pointer pr-1"
+              >
+                {availableTrips.map((t: any) => (
+                  <option key={t.id} value={t.id} className="bg-slate-900 text-white">
+                    {t.trip_code || t.tripCode || 'Trip'} - {t.bus?.bus_name || t.bus_name || 'Bus'} ({t.route?.destination || 'Campus'})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button
+            onClick={onLogout}
+            className="p-2.5 bg-white/10 hover:bg-rose-500/30 rounded-xl text-emerald-100 hover:text-white border border-white/10 transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+            title="লগআউট"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">লগআউট</span>
+          </button>
+        </div>
       </div>
 
       {/* Summary KPI Cards Grid */}

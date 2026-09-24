@@ -244,7 +244,11 @@ async def create_counter_booking(
     if discount_amount > gross_amount:
         raise ValueError(f"Discount amount (৳{discount_amount}) cannot exceed gross ticket fare (৳{gross_amount})")
 
-    net_amount = max(0.0, gross_amount - discount_amount)
+    processing_fee = float(getattr(req, "processing_fee", 0.0) or 0.0)
+    vat_amount = float(getattr(req, "vat_amount", 0.0) or 0.0)
+    cashout_fee = float(getattr(req, "cashout_fee", 0.0) or 0.0)
+
+    net_amount = max(0.0, gross_amount - discount_amount + processing_fee + vat_amount + cashout_fee)
     paid_amount = min(net_amount, max(0.0, req.paid_amount))
     due_amount = max(0.0, net_amount - paid_amount)
     payment_status = "PAID" if due_amount == 0 else ("PARTIALLY_PAID" if paid_amount > 0 else "UNPAID")
@@ -265,9 +269,15 @@ async def create_counter_booking(
         else:
             whatsapp_summary.append(f"Seat {label}: Regular {p.passenger_phone}")
     
-    notes_with_whatsapp = (req.notes or "")
+    notes_parts = []
+    if req.notes:
+        notes_parts.append(req.notes)
     if whatsapp_summary:
-        notes_with_whatsapp = (notes_with_whatsapp + " | " if notes_with_whatsapp else "") + f"[{'; '.join(whatsapp_summary)}]"
+        notes_parts.append(f"[{'; '.join(whatsapp_summary)}]")
+    if processing_fee > 0 or vat_amount > 0 or cashout_fee > 0:
+        notes_parts.append(f"[FEES: processing={processing_fee}, vat={vat_amount}, cashout={cashout_fee}]")
+
+    notes_with_whatsapp = " | ".join(notes_parts) if notes_parts else None
 
     # 4. Atomic Database Insert
     booking = Booking(
@@ -414,6 +424,9 @@ async def create_counter_booking(
 
     await db.commit()
     await db.refresh(booking)
+    booking.processing_fee = processing_fee
+    booking.vat_amount = vat_amount
+    booking.cashout_fee = cashout_fee
     # Eagerly load passengers so Pydantic serialization never attempts lazy IO
     b_passengers = await db.query(BookingPassenger).filter(BookingPassenger.booking_id == booking.id).all()
     booking.passengers = b_passengers

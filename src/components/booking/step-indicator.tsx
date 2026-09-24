@@ -9,16 +9,18 @@ export interface BookingStepDefinition {
   id: number;
   key: string;
   labelBn: string;
+  shortBn: string;
   labelEn: string;
+  shortEn: string;
   icon: React.ComponentType<{ className?: string }>;
 }
 
 export const BOOKING_STEPS: BookingStepDefinition[] = [
-  { id: 1, key: 'trip', labelBn: 'বাস নির্বাচন', labelEn: 'Bus', icon: Armchair },
-  { id: 2, key: 'seats', labelBn: 'সিট নির্বাচন', labelEn: 'Seats', icon: Armchair },
-  { id: 3, key: 'passengers', labelBn: 'যাত্রী তথ্য', labelEn: 'Students', icon: Armchair },
-  { id: 4, key: 'boarding', labelBn: 'বোর্ডিং ও প্যাকেজ', labelEn: 'Boarding', icon: Armchair },
-  { id: 5, key: 'payment', labelBn: 'ছাড়, পেমেন্ট ও টিকিট', labelEn: 'Payment', icon: Armchair }
+  { id: 1, key: 'trip', labelBn: 'বাস নির্বাচন', shortBn: '১. বাস', labelEn: 'Select Bus', shortEn: '1. Bus', icon: Armchair },
+  { id: 2, key: 'seats', labelBn: 'সিট নির্বাচন', shortBn: '২. সিট', labelEn: 'Pick Seats', shortEn: '2. Seats', icon: Armchair },
+  { id: 3, key: 'passengers', labelBn: 'যাত্রী তথ্য', shortBn: '৩. যাত্রী', labelEn: 'Passenger Info', shortEn: '3. Info', icon: Armchair },
+  { id: 4, key: 'boarding', labelBn: 'বোর্ডিং ও প্যাকেজ', shortBn: '৪. বোর্ডিং', labelEn: 'Boarding & Pkg', shortEn: '4. Boarding', icon: Armchair },
+  { id: 5, key: 'payment', labelBn: 'পেমেন্ট ও টিকিট', shortBn: '৫. পেমেন্ট', labelEn: 'Payment & Ticket', shortEn: '5. Ticket', icon: Armchair }
 ];
 
 interface StepIndicatorProps {
@@ -31,61 +33,53 @@ export function StepIndicator({ currentStep, maxReachableStep, onNavigate }: Ste
   const { language } = useApp();
 
   return (
-    <div suppressHydrationWarning className="p-1.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-x-auto">
-      <div suppressHydrationWarning className="flex items-center gap-1 min-w-max">
-        {BOOKING_STEPS.map((item, idx) => {
+    <div suppressHydrationWarning className="w-full p-1 sm:p-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs">
+      <div suppressHydrationWarning className="grid grid-cols-5 gap-1 sm:gap-2 w-full">
+        {BOOKING_STEPS.map((item) => {
           const isCurrent = currentStep === item.id;
           const isComplete = currentStep > item.id;
           const isClickable = item.id <= maxReachableStep;
           return (
-            <React.Fragment key={item.id}>
-              {idx > 0 && (
-                <span
-                  suppressHydrationWarning
-                  className={`h-px w-2.5 sm:w-3.5 shrink-0 transition-colors ${
-                    isComplete ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'
-                  }`}
-                />
-              )}
-              <button
-                type="button"
-                suppressHydrationWarning
-                disabled={!isClickable}
-                onClick={() => isClickable && onNavigate(item.id)}
-                title={
-                  !isClickable
-                    ? language === 'bn'
-                      ? 'পূর্ববর্তী ধাপ সম্পন্ন করে এগিয়ে যান'
-                      : 'Complete previous steps first'
-                    : undefined
-                }
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                  isCurrent
-                    ? 'text-white shadow-md ring-2 ring-blue-400/40'
-                    : isComplete
-                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 cursor-pointer'
-                    : isClickable
-                    ? 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer border border-transparent'
-                    : 'text-slate-400 dark:text-slate-600 bg-slate-50/50 dark:bg-slate-950/30 cursor-not-allowed border border-transparent opacity-70'
-                }`}
-                style={isCurrent ? { backgroundColor: 'var(--primary-color)' } : undefined}
-              >
-                {isComplete ? (
-                  <span suppressHydrationWarning className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
-                    <Check className="w-3 h-3" strokeWidth={3} />
-                  </span>
-                ) : !isClickable ? (
-                  <Lock suppressHydrationWarning className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0" />
-                ) : (
-                  <span suppressHydrationWarning className={`w-4 h-4 rounded-full flex items-center justify-center font-mono text-[10px] shrink-0 ${isCurrent ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'}`}>
-                    {item.id}
-                  </span>
-                )}
-                <span suppressHydrationWarning className={isCurrent ? 'font-black' : 'font-semibold'}>
-                  {language === 'bn' ? item.labelBn : item.labelEn}
+            <button
+              key={item.id}
+              type="button"
+              suppressHydrationWarning
+              disabled={!isClickable}
+              onClick={() => isClickable && onNavigate(item.id)}
+              title={
+                !isClickable
+                  ? language === 'bn'
+                    ? 'পূর্ববর্তী ধাপ সম্পন্ন করে এগিয়ে যান'
+                    : 'Complete previous steps first'
+                  : undefined
+              }
+              className={`w-full py-1.5 sm:py-2 px-0.5 sm:px-2 rounded-xl text-[10px] sm:text-xs transition-all flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 ${
+                isCurrent
+                  ? 'text-white shadow-md ring-2 ring-blue-400/50 scale-[1.01]'
+                  : isComplete
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 cursor-pointer'
+                  : isClickable
+                  ? 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer border border-slate-200/70 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50'
+                  : 'text-slate-400 dark:text-slate-600 bg-slate-50/30 dark:bg-slate-950/20 cursor-not-allowed border border-transparent opacity-60'
+              }`}
+              style={isCurrent ? { backgroundColor: 'var(--primary-color)' } : undefined}
+            >
+              {isComplete ? (
+                <span suppressHydrationWarning className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                  <Check className="w-3 h-3" strokeWidth={3} />
                 </span>
-              </button>
-            </React.Fragment>
+              ) : !isClickable ? (
+                <Lock suppressHydrationWarning className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
+              ) : (
+                <span suppressHydrationWarning className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center font-mono text-[10px] sm:text-xs font-bold shrink-0 ${isCurrent ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'}`}>
+                  {item.id}
+                </span>
+              )}
+              <span suppressHydrationWarning className={`truncate text-[10px] sm:text-xs leading-tight ${isCurrent ? 'font-black' : 'font-semibold'}`}>
+                <span className="hidden md:inline">{language === 'bn' ? item.labelBn : item.labelEn}</span>
+                <span className="inline md:hidden">{language === 'bn' ? item.shortBn : item.shortEn}</span>
+              </span>
+            </button>
           );
         })}
       </div>
@@ -119,7 +113,7 @@ export function BookingSummaryBar({
   const { language } = useApp();
 
   return (
-    <div suppressHydrationWarning className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
+    <div suppressHydrationWarning className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black shadow-md shrink-0">
           <Armchair className="w-5 h-5" />

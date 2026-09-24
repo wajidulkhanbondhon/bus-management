@@ -54,7 +54,7 @@ function AnimatedCounter({ value, suffix = '' }: { value: number; suffix?: strin
     return () => clearInterval(timer);
   }, [value]);
 
-  return <span>{count.toLocaleString()}{suffix}</span>;
+  return <span suppressHydrationWarning>{count.toLocaleString('en-US')}{suffix}</span>;
 }
 
 export function PublicHeroSearch({

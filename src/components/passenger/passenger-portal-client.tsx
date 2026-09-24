@@ -57,6 +57,7 @@ import { useToast } from '@/components/ui/toast';
 import { useApp } from '@/lib/context';
 import { formatCurrency, formatTime, formatDate } from '@/lib/utils';
 import { getBookingByTrackingNumber } from '@/services/booking.service';
+import { fastApiClient } from '@/lib/api-client';
 import { BkashLogo, NagadLogo } from '@/components/booking/payment-brand-icons';
 import {
   hasRegisteredPin,
@@ -176,6 +177,28 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
 
   // Mode: 'login_or_set' (main smart entry) vs 'sms_ticket' (direct 1-click ticket download)
   const [accessMode, setAccessMode] = useState<'smart_flow' | 'sms_ticket'>('smart_flow');
+  const [guestPortalMode, setGuestPortalMode] = useState<'book_ticket' | 'track_login'>('book_ticket');
+  const [publicTrips, setPublicTrips] = useState<any[]>([]);
+  const [selectedUni, setSelectedUni] = useState<string>('ALL');
+  const [loadingTrips, setLoadingTrips] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTrips = async () => {
+      try {
+        setLoadingTrips(true);
+        const res = await fastApiClient.getTrips();
+        const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+        if (isMounted) setPublicTrips(list);
+      } catch {
+        // ignore
+      } finally {
+        if (isMounted) setLoadingTrips(false);
+      }
+    };
+    fetchTrips();
+    return () => { isMounted = false; };
+  }, []);
 
   // Phone input & auto-detection
   const [phoneInput, setPhoneInput] = useState('');
@@ -718,18 +741,230 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
         )}
       </div>
 
-      {/* ═══════ 2. STREAMLINED PROGRESSIVE LOGIN VIEW (WHEN NOT LOGGED IN) ═══════ */}
+      {/* ═══════ 2. STREAMLINED PASSENGER VIEW (WHEN NOT LOGGED IN) ═══════ */}
       {!isAuthenticated && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-xl mx-auto py-4 space-y-6"
-        >
-          {accessMode === 'smart_flow' ? (
-            <Card className="border-slate-200 dark:border-slate-800 shadow-2xl bg-white dark:bg-slate-900/95 backdrop-blur-md overflow-hidden">
-              <div className={`h-1.5 bg-gradient-to-r ${isPinRegisteredForPhone ? 'from-blue-600 via-indigo-600 to-blue-500' : 'from-indigo-600 via-purple-600 to-pink-500'}`} />
-              
-              <CardHeader className="text-center pb-2 pt-6">
+        <div className="max-w-4xl mx-auto py-4 space-y-6">
+          {/* Top Entry Mode Toggle: Book New Ticket vs Find My Ticket */}
+          <div className="flex items-center justify-center p-1.5 bg-slate-200/80 dark:bg-slate-800/80 rounded-2xl max-w-md mx-auto shadow-inner border border-slate-300/60 dark:border-slate-700/60">
+            <button
+              type="button"
+              onClick={() => setGuestPortalMode('book_ticket')}
+              className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                guestPortalMode === 'book_ticket'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Ticket className="w-4 h-4" />
+              <span>{language === 'bn' ? '🎟️ সিট বুকিং / নতুন টিকিট' : '🎟️ Book Ticket / Seats'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setGuestPortalMode('track_login')}
+              className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                guestPortalMode === 'track_login'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Search className="w-4 h-4" />
+              <span>{language === 'bn' ? '🔍 আমার টিকিট খুঁজুন / লগইন' : '🔍 Find Ticket / Login'}</span>
+            </button>
+          </div>
+
+          {/* ═══════ TAB A: DIRECT STUDENT TICKET BOOKING ═══════ */}
+          {guestPortalMode === 'book_ticket' && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              {/* Destination Universities Quick Filter */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                      <GraduationCap className="w-4 h-4 text-blue-600" />
+                      {language === 'bn' ? 'ভর্তি পরীক্ষার গন্তব্য বিশ্ববিদ্যালয় নির্বাচন করুন' : 'Select Destination University'}
+                    </h2>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {language === 'bn' ? 'বিশ্ববিদ্যালয় স্পেশাল বাসগুলোর সিট সরাসরি বুক করতে ক্যাম্পাস বাছাই করুন' : 'Select campus to view dedicated exam special buses'}
+                    </p>
+                  </div>
+                  <Badge variant="primary" className="text-[11px] font-bold font-mono self-start sm:self-auto">
+                    {publicTrips.length} টি বাস শিডিউলড
+                  </Badge>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {[
+                    { id: 'ALL', label: 'সকল বাস', icon: '🚌' },
+                    { id: 'RU', label: 'রাজশাহী বিশ্ববিদ্যালয় (RU)', icon: '🏛️' },
+                    { id: 'CU', label: 'চট্টগ্রাম বিশ্ববিদ্যালয় (CU)', icon: '🏛️' },
+                    { id: 'GST', label: 'গুচ্ছ ভর্তি পরীক্ষা (GST)', icon: '🏛️' },
+                    { id: 'DU', label: 'ঢাকা বিশ্ববিদ্যালয় (DU)', icon: '🏛️' },
+                    { id: 'BAU', label: 'কৃষি গুচ্ছ (Agri)', icon: '🌱' },
+                  ].map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => setSelectedUni(u.id)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                        selectedUni === u.id
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-600/25 ring-2 ring-blue-600/20'
+                          : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-blue-300'
+                      }`}
+                    >
+                      <span>{u.icon}</span>
+                      <span>{u.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Dynamic Available Buses Grid */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1.5">
+                    <Bus className="w-3.5 h-3.5 text-blue-500" />
+                    {language === 'bn' ? 'চলমান ভর্তি স্পেশাল এক্সপ্রেস বাসের তালিকা' : 'Available Admission Special Buses'}
+                  </h3>
+                  <Link href="/" className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
+                    <span>হোম পেজ ম্যাপ</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </Link>
+                </div>
+
+                {loadingTrips ? (
+                  <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800">
+                    <RefreshCw className="w-6 h-6 text-blue-600 animate-spin mx-auto mb-2" />
+                    <p className="text-xs text-slate-500 font-bold">বাসের শিডিউল ও লাইভ সিট তথ্য লোড হচ্ছে...</p>
+                  </div>
+                ) : publicTrips.length === 0 ? (
+                  <div className="p-10 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-3">
+                    <Bus className="w-10 h-10 text-slate-400 mx-auto" />
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                      বর্তমানে সরাসরি কোনো শিডিউল বাস পাওয়া যায়নি।
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      কাউন্টার থেকে বাসের নতুন ট্রিপ শিডিউল করা মাত্রই এখানে লাইভ সিট আপডেট দেখতে পাবেন।
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {publicTrips
+                      .filter((trip) => {
+                        if (selectedUni === 'ALL') return true;
+                        const str = `${trip.route?.destination || ''} ${trip.targetUniversity || ''} ${trip.notes || ''} ${trip.tripCode || ''} ${trip.bus?.busName || ''}`.toUpperCase();
+                        return str.includes(selectedUni);
+                      })
+                      .map((trip: any) => {
+                        const totalSeats = trip.bus?.capacity || trip.bus?.seatLayout?.totalSeats || 40;
+                        const bookedCount = trip.bookings?.length || 0;
+                        const avail = Math.max(0, totalSeats - bookedCount);
+                        const isSoldOut = avail === 0;
+
+                        return (
+                          <div
+                            key={trip.id}
+                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs hover:shadow-lg transition-all flex flex-col justify-between space-y-4 hover:border-blue-400 dark:hover:border-blue-700"
+                          >
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-950/60 dark:text-blue-400 px-2.5 py-0.5 rounded-full border border-blue-200 dark:border-blue-800">
+                                  {trip.tripCode || 'ADMISSION-SPECIAL'}
+                                </span>
+                                <Badge variant={trip.tripBusType === 'FEMALE' ? 'danger' : trip.tripBusType === 'MALE' ? 'primary' : 'default'} className="text-[10px] font-bold">
+                                  {trip.tripBusType === 'FEMALE' ? '👩 ছাত্রী স্পেশাল' : trip.tripBusType === 'MALE' ? '👨 ছাত্র স্পেশাল' : '👥 মিক্সড কোচ'}
+                                </Badge>
+                              </div>
+
+                              <div>
+                                <h4 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                                  <span>{trip.route?.origin || 'ঢাকা'}</span>
+                                  <span className="text-blue-600 font-bold">➔</span>
+                                  <span className="text-blue-600">{trip.route?.destination || 'বিশ্ববিদ্যালয় ক্যাম্পাস'}</span>
+                                </h4>
+                                <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
+                                  <span>{trip.bus?.busName || 'Express Bus'}</span>
+                                  <span>•</span>
+                                  <span className="font-mono">{trip.bus?.busNumber || 'DHAKA-METRO'}</span>
+                                </div>
+                              </div>
+
+                              <div className="bg-slate-50 dark:bg-slate-950/80 p-3 rounded-2xl border border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs font-medium">
+                                <div className="flex items-center gap-1.5">
+                                  <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                                  <span>{formatDate(trip.departureDate || trip.departure_date)}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 font-bold font-mono text-slate-800 dark:text-slate-200">
+                                  <Clock className="w-3.5 h-3.5 text-blue-500" />
+                                  <span>{formatTime(trip.departureTime || trip.departure_time)}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-between gap-3">
+                              <div>
+                                <span className="text-[10px] text-slate-400 font-bold block uppercase font-mono">ভাড়া (প্রতি সিট)</span>
+                                <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                                  {formatCurrency(trip.basePrice || 550)}
+                                </span>
+                              </div>
+
+                              <div className="text-right">
+                                <span className={`text-xs font-black font-mono block ${isSoldOut ? 'text-red-500' : avail <= 5 ? 'text-amber-500' : 'text-emerald-600'}`}>
+                                  {isSoldOut ? 'সিট নেই' : `${avail} টি সিট খালি`}
+                                </span>
+                                <Link
+                                  href={`/book/${trip.id}`}
+                                  className={`mt-1 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                                    isSoldOut
+                                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed pointer-events-none'
+                                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/20 hover:shadow-lg'
+                                  }`}
+                                >
+                                  <span>সিট পছন্দ ও টিকিট</span>
+                                  <ArrowRight className="w-3.5 h-3.5" />
+                                </Link>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+
+              {/* 3-Step Simple Guide Box */}
+              <div className="p-5 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-slate-900 dark:via-blue-950/30 dark:to-indigo-950/30 rounded-3xl border border-blue-200 dark:border-blue-900/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black shrink-0 shadow-md">
+                    ✓
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-900 dark:text-white text-sm">অনলাইনে সরাসরি টিকিট কাটার সহজ নিয়ম</h4>
+                    <p className="text-slate-600 dark:text-slate-400 mt-0.5">
+                      ১. আপনার পছন্দের বাসে ‘সিট পছন্দ ও টিকিট’ ক্লিক করুন ➔ ২. সিট ম্যাপ থেকে সিট বাছাই করে রোল ও ফোন দিন ➔ ৩. বিকাশ/নগদ পেমেন্ট অথবা অন-বোর্ডিং বেছে নিন ➔ তাৎক্ষণিক ডিজিটাল টিকিট পেয়ে যাবেন।
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ═══════ TAB B: FIND MY TICKET & LOGIN FLOW ═══════ */}
+          {guestPortalMode === 'track_login' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="max-w-xl mx-auto space-y-6"
+            >
+              {accessMode === 'smart_flow' ? (
+                <Card className="border-slate-200 dark:border-slate-800 shadow-2xl bg-white dark:bg-slate-900/95 backdrop-blur-md overflow-hidden">
+                  <div className={`h-1.5 bg-gradient-to-r ${isPinRegisteredForPhone ? 'from-blue-600 via-indigo-600 to-blue-500' : 'from-indigo-600 via-purple-600 to-pink-500'}`} />
+                  
+                  <CardHeader className="text-center pb-2 pt-6">
                 <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center mb-2 shadow-inner ${isPinRegisteredForPhone ? 'bg-blue-600/10 text-blue-600 dark:text-blue-400' : 'bg-indigo-600/10 text-indigo-600 dark:text-indigo-400'}`}>
                   {isPinRegisteredForPhone ? <Lock className="w-6 h-6" /> : <Key className="w-6 h-6" />}
                 </div>
@@ -1137,7 +1372,9 @@ export function PassengerPortalClient({ initialPhoneOrCode = '' }: PassengerPort
               </Button>
             </Link>
           </div>
-        </motion.div>
+            </motion.div>
+          )}
+        </div>
       )}
 
       {/* ═══════ 3. AUTHENTICATED DASHBOARD ═══════ */}

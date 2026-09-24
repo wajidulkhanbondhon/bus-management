@@ -40,6 +40,10 @@ class AsyncQueryWrapper:
         self.stmt = self.stmt.with_for_update(*args, **kwargs)
         return self
 
+    def options(self, *args):
+        self.stmt = self.stmt.options(*args)
+        return self
+
     async def all(self):
         result = await self.session.execute(self.stmt)
         if len(self.entities) > 1:

@@ -3,78 +3,58 @@
 import React from 'react';
 
 /**
- * Standard Code 39 Barcode SVG Generator
- * Code 39 supports uppercase letters A-Z, digits 0-9, and symbols: - . $ / + % SPACE *
+ * Code 39 Barcode — verified standard implementation.
+ *
+ * Each character is encoded as 9 elements alternating bar/space:
+ *   index 0,2,4,6,8 → bar
+ *   index 1,3,5,7   → space
+ *   '0' = narrow (1 unit), '1' = wide (3 units)
+ *
+ * Source: ISO/IEC 16388:2007 Code 39 specification.
  */
-const CODE39_PATTERNS: Record<string, string> = {
-  '0': 'bwbwbwBwb',
-  '1': 'BwbwbwBwb',
-  '2': 'bwBwbwBwb',
-  '3': 'BwBwbwbwb',
-  '4': 'bwbwBwBwb',
-  '5': 'BwbwBwbwb',
-  '6': 'bwBwBwbwb',
-  '7': 'bwbwbwBwB',
-  '8': 'BwbwbwBwB',
-  '9': 'bwBwbwBwB',
-  'A': 'BwbwbwbwB',
-  'B': 'bwBwbwbwB',
-  'C': 'BwBwbwbwb',
-  'D': 'bwbwBwbwB',
-  'E': 'BwbwBwbwb',
-  'F': 'bwBwBwbwb',
-  'G': 'bwbwbwBwB',
-  'H': 'BwbwbwBwb',
-  'I': 'bwBwbwBwb',
-  'J': 'bwbwBwBwb',
-  'K': 'Bwbwbwbwb',
-  'L': 'bwBwbwbwb',
-  'M': 'BwBwbwbwb',
-  'N': 'bwbwBwbwb',
-  'O': 'BwbwBwbwb',
-  'P': 'bwBwBwbwb',
-  'Q': 'bwbwbwBwb',
-  'R': 'BwbwbwBwb',
-  'S': 'bwBwbwBwb',
-  'T': 'bwbwBwBwb',
-  'U': 'Bwbwbwbwb',
-  'V': 'bwBwbwbwb',
-  'W': 'BwBwbwbwb',
-  'X': 'bwbwBwbwb',
-  'Y': 'BwbwBwbwb',
-  'Z': 'bwBwBwbwb',
-  '-': 'bwbwbwBwb',
-  '.': 'Bwbwbwbwb',
-  ' ': 'bwBwbwbwb',
-  '$': 'bwbwbwbwb',
-  '/': 'bwbwbwbwb',
-  '+': 'bwbwbwbwb',
-  '%': 'bwbwbwbwb',
-  '*': 'bwbwBwbwB' // Start / Stop delimiter
+const C39: Record<string, string> = {
+  '0': '000110100', '1': '100100001', '2': '001100001',
+  '3': '101100000', '4': '000110001', '5': '100110000',
+  '6': '001110000', '7': '000100101', '8': '100100100',
+  '9': '001100100',
+  'A': '100001001', 'B': '001001001', 'C': '101001000',
+  'D': '000011001', 'E': '100011000', 'F': '001011000',
+  'G': '000001101', 'H': '100001100', 'I': '001001100',
+  'J': '000011100', 'K': '100000011', 'L': '001000011',
+  'M': '101000010', 'N': '000010011', 'O': '100010010',
+  'P': '001010010', 'Q': '000000111', 'R': '100000110',
+  'S': '001000110', 'T': '000010110', 'U': '110000001',
+  'V': '011000001', 'W': '111000000', 'X': '010010001',
+  'Y': '110010000', 'Z': '011010000',
+  '-': '010000101', '.': '110000100', ' ': '011000100',
+  '$': '010101000', '/': '010100010', '+': '010001010',
+  '%': '000101010', '*': '010010100',
 };
 
-// Convert pattern (b = narrow bar, B = wide bar, w = narrow space, W = wide space)
-function encodeToBars(text: string): boolean[] {
-  const clean = '*' + (text.toUpperCase().replace(/[^A-Z0-9\-\.\ \$\/\+\%]/g, '-') || 'TICKET') + '*';
-  const bars: boolean[] = [];
+const NARROW = 1;
+const WIDE   = 3;
+const INTER_CHAR_GAP = 1; // narrow space between characters
 
-  for (let i = 0; i < clean.length; i++) {
-    const char = clean[i];
-    const pattern = CODE39_PATTERNS[char] || CODE39_PATTERNS['-'];
-    
-    for (let p = 0; p < pattern.length; p++) {
-      const isBar = pattern[p] === 'b' || pattern[p] === 'B';
-      const isWide = pattern[p] === 'B' || pattern[p] === 'W';
-      const width = isWide ? 3 : 1;
-      for (let w = 0; w < width; w++) {
-        bars.push(isBar);
-      }
+/** Encode text → flat array of unit widths, true=bar false=space */
+function encodeC39(text: string): { isBar: boolean; units: number }[] {
+  const clean = '*' + (text.toUpperCase().replace(/[^A-Z0-9\-\. \$\/\+\%]/g, '-') || 'TICKET') + '*';
+  const result: { isBar: boolean; units: number }[] = [];
+
+  for (let ci = 0; ci < clean.length; ci++) {
+    const bits = C39[clean[ci]] ?? C39['-'];
+    for (let bi = 0; bi < bits.length; bi++) {
+      result.push({
+        isBar: bi % 2 === 0,          // even positions are bars
+        units: bits[bi] === '1' ? WIDE : NARROW,
+      });
     }
-    // Inter-character narrow space
-    bars.push(false);
+    // narrow inter-character gap (space) — except after last char
+    if (ci < clean.length - 1) {
+      result.push({ isBar: false, units: INTER_CHAR_GAP });
+    }
   }
 
-  return bars;
+  return result;
 }
 
 interface BarcodeProps {
@@ -90,37 +70,41 @@ export function BarcodeView({
   height = 36,
   showText = true,
   className = '',
-  barColor = '#0f172a'
+  barColor = '#0f172a',
 }: BarcodeProps) {
   if (!value) return null;
 
-  const bars = encodeToBars(value);
-  const totalUnits = bars.length;
+  const elements = encodeC39(value);
+  const totalUnits = elements.reduce((sum, e) => sum + e.units, 0);
+
+  // Build rect list — only bars
+  const rects: { x: number; w: number }[] = [];
+  let x = 0;
+  for (const el of elements) {
+    if (el.isBar) rects.push({ x, w: el.units });
+    x += el.units;
+  }
 
   return (
     <div className={`flex flex-col items-center select-none ${className}`}>
       <svg
         viewBox={`0 0 ${totalUnits} ${height}`}
-        className="w-full h-auto overflow-hidden"
-        style={{ maxHeight: height }}
+        width="100%"
+        height={height}
+        style={{ display: 'block' }}
         preserveAspectRatio="none"
         shapeRendering="crispEdges"
+        aria-label={`Barcode: ${value}`}
       >
-        {bars.map((isBar, idx) =>
-          isBar ? (
-            <rect
-              key={idx}
-              x={idx}
-              y={0}
-              width={1}
-              height={height}
-              fill={barColor}
-            />
-          ) : null
-        )}
+        {rects.map((r, i) => (
+          <rect key={i} x={r.x} y={0} width={r.w} height={height} fill={barColor} />
+        ))}
       </svg>
       {showText && (
-        <span className="font-mono text-[9px] tracking-[0.25em] uppercase text-slate-700 dark:text-slate-300 mt-0.5 font-bold">
+        <span
+          className="font-mono text-[8px] tracking-[0.15em] uppercase text-slate-700 mt-0.5 font-bold"
+          style={{ letterSpacing: '0.15em' }}
+        >
           *{value}*
         </span>
       )}

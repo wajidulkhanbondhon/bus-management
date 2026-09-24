@@ -1,11 +1,12 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Header, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.db.async_wrapper import WrappedAsyncSession
 from app.db.session import get_db
 from app.core.deps import get_current_tenant_id, require_role, apply_tenant_filter, get_optional_user, get_current_user
 from app.core.rate_limiter import rate_limit
 from app.models.booking import Booking
+from app.models.trip import Trip
 from app.models.user import User
 from app.schemas.booking import (
     CreateBookingRequest,
@@ -156,7 +157,11 @@ async def track_booking(
     current_user: Optional[User] = Depends(get_optional_user)
 ):
     clean_query = query_str.strip()
-    booking = await db.query(Booking).filter(
+    booking = await db.query(Booking).options(
+        joinedload(Booking.trip).joinedload(Trip.route),
+        joinedload(Booking.trip).joinedload(Trip.bus),
+        joinedload(Booking.passengers)
+    ).filter(
         (Booking.booking_number == clean_query) |
         (Booking.contact_phone == clean_query) |
         (Booking.id == clean_query)
@@ -181,13 +186,17 @@ async def track_booking(
 async def get_booking_by_id(
     booking_id: str,
     db: WrappedAsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF", "ACCOUNTANT", "VIEWER"]))
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    booking = await db.query(Booking).filter(Booking.id == booking_id).first()
+    booking = await db.query(Booking).options(
+        joinedload(Booking.trip).joinedload(Trip.route),
+        joinedload(Booking.trip).joinedload(Trip.bus),
+        joinedload(Booking.passengers)
+    ).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
-    if current_user.role and current_user.role.name != "SUPER_ADMIN":
-        if booking.tenant_id != current_user.tenant_id:
+    if current_user and current_user.role and current_user.role.name != "SUPER_ADMIN":
+        if booking.tenant_id and booking.tenant_id != current_user.tenant_id:
             raise HTTPException(status_code=403, detail="Access denied for this tenant's booking")
     return booking
 

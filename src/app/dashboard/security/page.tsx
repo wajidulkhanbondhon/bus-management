@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, ShieldCheck, Activity, Slash, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useApp } from '@/lib/context';
+import { formatTime } from '@/lib/utils';
 
 interface BlockedIP {
   id: string;
@@ -145,7 +146,7 @@ export default function SecurityDashboardPage() {
                     {event.severity === 'HIGH' && <AlertTriangle size={14} className="text-red-500" />}
                     {event.event_type}
                   </div>
-                  <div className="text-xs text-slate-400">{new Date(event.created_at).toLocaleTimeString()}</div>
+                  <div suppressHydrationWarning className="text-xs text-slate-400">{formatTime(event.created_at)}</div>
                 </div>
                 <div className="text-xs text-slate-600 mt-1">IP: {event.ip_address}</div>
                 <div className="text-xs text-slate-500 mt-1 truncate">{event.details}</div>

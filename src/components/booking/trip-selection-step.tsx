@@ -39,7 +39,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
+import { cn, formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import { useApp } from '@/lib/context';
 
 export interface FareRangeSegment {
@@ -73,6 +73,22 @@ export interface FormattedUniInfo {
   unitText: string;
   unitTagColor: string;
   examDate: string;
+}
+
+export function extractDateOnly(val: any): string {
+  if (!val) return '';
+  try {
+    if (typeof val === 'string') {
+      const match = val.match(/^\d{4}-\d{2}-\d{2}/);
+      if (match) return match[0];
+      if (val.includes('T')) return val.split('T')[0];
+      if (val.includes(' ')) return val.split(' ')[0];
+    }
+    if (val instanceof Date) {
+      return val.toISOString().split('T')[0];
+    }
+  } catch {}
+  return '';
 }
 
 export function matchTripUniversityCode(t: any): string {
@@ -386,10 +402,20 @@ export function TripSelectionStep({
   const [selectedGenderFilter, setSelectedGenderFilter] = useState('ALL');
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState('ALL');
   const [selectedOccupancyFilter, setSelectedOccupancyFilter] = useState('ALL');
-  const [selectedDateFilter, setSelectedDateFilter] = useState('ALL');
+
+  // Date filters: 1) Journey Date (departureDate), 2) Bus / Trip Create Date (createdAt)
+  const [selectedJourneyDateFilter, setSelectedJourneyDateFilter] = useState('ALL');
+  const [selectedCreateDateFilter, setSelectedCreateDateFilter] = useState('ALL');
+
+  // Available seats remaining range / direct count filter
+  const [selectedSeatRangePreset, setSelectedSeatRangePreset] = useState<'ALL' | '1-10' | '11-20' | '21-30' | '31+' | 'CUSTOM'>('ALL');
+  const [minAvailableSeats, setMinAvailableSeats] = useState('');
+  const [maxAvailableSeats, setMaxAvailableSeats] = useState('');
+
   const [selectedHotelFilter, setSelectedHotelFilter] = useState('ALL');
   const [selectedFareFilter, setSelectedFareFilter] = useState('ALL');
   const [selectedSeatFilter, setSelectedSeatFilter] = useState('');
+  const [selectedBusIdFilter, setSelectedBusIdFilter] = useState('ALL');
   const [customFareInput, setCustomFareInput] = useState('');
   const [selectedSortOrder, setSelectedSortOrder] = useState('DEFAULT');
   const [selectedUnitFilter, setSelectedUnitFilter] = useState('ALL');
@@ -472,14 +498,26 @@ export function TripSelectionStep({
     return Object.entries(uMap).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
   }, [currentTabBaseTrips, trips]);
 
-  const dateOptions = useMemo(() => {
+  // Scheduled / Pre-created Journey Dates (departureDate)
+  const journeyDateOptions = useMemo(() => {
     const dateMap: Record<string, number> = {};
     const sourceTrips = currentTabBaseTrips.length > 0 ? currentTabBaseTrips : trips;
     sourceTrips.forEach((t) => {
-      const d = (t.departureDate || '').toString().split('T')[0];
+      const d = extractDateOnly(t.departureDate || t.departure_date);
       if (d) dateMap[d] = (dateMap[d] || 0) + 1;
     });
-    return Object.entries(dateMap);
+    return Object.entries(dateMap).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [currentTabBaseTrips, trips]);
+
+  // Pre-created Bus / Trip Creation Dates (createdAt)
+  const busCreateDateOptions = useMemo(() => {
+    const dateMap: Record<string, number> = {};
+    const sourceTrips = currentTabBaseTrips.length > 0 ? currentTabBaseTrips : trips;
+    sourceTrips.forEach((t) => {
+      const c = extractDateOnly(t.createdAt || t.created_at || t.bus?.createdAt || t.bus?.created_at);
+      if (c) dateMap[c] = (dateMap[c] || 0) + 1;
+    });
+    return Object.entries(dateMap).sort((a, b) => a[0].localeCompare(b[0]));
   }, [currentTabBaseTrips, trips]);
 
   const allFleetAvailableSeats = useMemo(() => {
@@ -487,6 +525,16 @@ export function TripSelectionStep({
     trips.forEach((t) => {
       (t.stats?.availableSeatNumbersPreview || []).forEach((s: string) => seatSet.add(s.toUpperCase()));
     });
+    // Fallback: If no preview loaded yet, generate standard A1..K5
+    if (seatSet.size === 0) {
+      const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
+      rows.forEach((r) => {
+        const count = r === 'K' ? 5 : 4;
+        for (let i = 1; i <= count; i++) {
+          seatSet.add(`${r}${i}`);
+        }
+      });
+    }
     return Array.from(seatSet).sort((a, b) => {
       const rowA = a.charAt(0);
       const rowB = b.charAt(0);
@@ -494,6 +542,27 @@ export function TripSelectionStep({
       return (parseInt(a.slice(1)) || 0) - (parseInt(b.slice(1)) || 0);
     });
   }, [trips]);
+
+  const busSeatAvailabilityOptions = useMemo(() => {
+    const sourceTrips = currentTabBaseTrips.length > 0 ? currentTabBaseTrips : trips;
+    return sourceTrips.map((t) => {
+      const busNum = t.bus?.busNumber || t.bus?.bus_number || '';
+      const busName = t.bus?.busName || t.bus?.bus_name || '';
+      const free = t.stats?.availableCount ?? (t.bus?.capacity || 45);
+      const total = t.stats?.totalSeats || t.bus?.capacity || 45;
+      const booked = t.stats?.bookedCount || Math.max(0, total - free);
+      const routeStr = t.route?.destination || t.targetUniversity || '';
+      return {
+        id: t.id,
+        busNum,
+        busName,
+        free,
+        booked,
+        total,
+        label: `${busNum ? `🚌 ${busNum}` : '🚌 বাস'}${busName ? ` (${busName})` : ''} — ${free}টি খালি / ${total} (${routeStr})`
+      };
+    }).sort((a, b) => b.free - a.free);
+  }, [currentTabBaseTrips, trips]);
 
   // Active filter count
   const activeFilterCount = useMemo(() => {
@@ -503,13 +572,32 @@ export function TripSelectionStep({
     if (selectedGenderFilter !== 'ALL') count++;
     if (selectedCompanyFilter !== 'ALL') count++;
     if (selectedOccupancyFilter !== 'ALL') count++;
-    if (selectedDateFilter !== 'ALL') count++;
+    if (selectedJourneyDateFilter !== 'ALL') count++;
+    if (selectedCreateDateFilter !== 'ALL') count++;
+    if (selectedSeatRangePreset !== 'ALL' || minAvailableSeats.trim() || maxAvailableSeats.trim()) count++;
     if (selectedHotelFilter !== 'ALL') count++;
     if (selectedFareFilter !== 'ALL') count++;
     if (selectedSeatFilter.trim()) count++;
+    if (selectedBusIdFilter !== 'ALL') count++;
     if (selectedUnitFilter !== 'ALL') count++;
     return count;
-  }, [busSearchQuery, selectedUniFilter, selectedGenderFilter, selectedCompanyFilter, selectedOccupancyFilter, selectedDateFilter, selectedHotelFilter, selectedFareFilter, selectedSeatFilter, selectedUnitFilter]);
+  }, [
+    busSearchQuery,
+    selectedUniFilter,
+    selectedGenderFilter,
+    selectedCompanyFilter,
+    selectedOccupancyFilter,
+    selectedJourneyDateFilter,
+    selectedCreateDateFilter,
+    selectedSeatRangePreset,
+    minAvailableSeats,
+    maxAvailableSeats,
+    selectedHotelFilter,
+    selectedFareFilter,
+    selectedSeatFilter,
+    selectedBusIdFilter,
+    selectedUnitFilter
+  ]);
 
   const hasActiveFilters = activeFilterCount > 0;
 
@@ -519,10 +607,15 @@ export function TripSelectionStep({
     setSelectedGenderFilter('ALL');
     setSelectedCompanyFilter('ALL');
     setSelectedOccupancyFilter('ALL');
-    setSelectedDateFilter('ALL');
+    setSelectedJourneyDateFilter('ALL');
+    setSelectedCreateDateFilter('ALL');
+    setSelectedSeatRangePreset('ALL');
+    setMinAvailableSeats('');
+    setMaxAvailableSeats('');
     setSelectedHotelFilter('ALL');
     setSelectedFareFilter('ALL');
     setSelectedSeatFilter('');
+    setSelectedBusIdFilter('ALL');
     setCustomFareInput('');
     setSelectedSortOrder('DEFAULT');
     setSelectedUnitFilter('ALL');
@@ -531,9 +624,31 @@ export function TripSelectionStep({
   // Filtered trips
   const filteredTrips = useMemo(() => {
     const filtered = currentTabBaseTrips.filter((t) => {
+      if (selectedBusIdFilter !== 'ALL' && t.id !== selectedBusIdFilter) return false;
+
+      // 1. Target University
       const uniInfo = getTripUniversityAndUnit(t);
       if (selectedUniFilter !== 'ALL' && uniInfo.code !== selectedUniFilter) return false;
 
+      // 2. Available Seats Remaining Range & Direct Count Filter
+      const totalSeats = t.stats?.totalSeats || t.bus?.capacity || 45;
+      const bookedCount = t.stats?.bookedCount || 0;
+      const availableCount = t.stats?.availableCount ?? (totalSeats - bookedCount);
+
+      if (selectedSeatRangePreset !== 'ALL') {
+        if (selectedSeatRangePreset === '1-10' && (availableCount < 1 || availableCount > 10)) return false;
+        if (selectedSeatRangePreset === '11-20' && (availableCount < 11 || availableCount > 20)) return false;
+        if (selectedSeatRangePreset === '21-30' && (availableCount < 21 || availableCount > 30)) return false;
+        if (selectedSeatRangePreset === '31+' && availableCount < 31) return false;
+        if (selectedSeatRangePreset === 'CUSTOM') {
+          const min = minAvailableSeats.trim() ? parseInt(minAvailableSeats.trim(), 10) : null;
+          const max = maxAvailableSeats.trim() ? parseInt(maxAvailableSeats.trim(), 10) : null;
+          if (min !== null && !isNaN(min) && availableCount < min) return false;
+          if (max !== null && !isNaN(max) && availableCount > max) return false;
+        }
+      }
+
+      // 3. Fare Budget
       const baseFare = Number(t.basePrice) || 550;
       if (selectedFareFilter !== 'ALL') {
         if (selectedFareFilter.startsWith('MAX_') && baseFare > Number(selectedFareFilter.replace('MAX_', ''))) return false;
@@ -541,20 +656,19 @@ export function TripSelectionStep({
         if (selectedFareFilter === 'CUSTOM' && customFareInput && baseFare > Number(customFareInput)) return false;
       }
 
+      // 4. Specific Seat Search
       if (selectedSeatFilter.trim()) {
         const requestedSeats = selectedSeatFilter.split(/[\s,]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
         const freeSeats: string[] = (t.stats?.availableSeatNumbersPreview || []).map((s: string) => s.toUpperCase());
         if (requestedSeats.length > 0 && !requestedSeats.every((req) => freeSeats.includes(req))) return false;
       }
 
+      // 5. Gender / Bus Type
       const busType = (t.tripBusType || t.bus?.busType || t.bus?.bus_type || 'MIXED').toUpperCase();
       if (selectedGenderFilter !== 'ALL' && busType !== selectedGenderFilter) return false;
 
-      const totalSeats = t.stats?.totalSeats || t.bus?.capacity || 45;
-      const bookedCount = t.stats?.bookedCount || 0;
-      const availableCount = t.stats?.availableCount ?? (totalSeats - bookedCount);
+      // 6. Occupancy / Status
       const soldPct = t.stats?.soldPercentage ?? (totalSeats > 0 ? Math.round((bookedCount / totalSeats) * 100) : 0);
-
       if (selectedOccupancyFilter === 'AVAILABLE' && availableCount <= 0) return false;
       if (selectedOccupancyFilter === 'SELLING_FAST' && soldPct < 40) return false;
       if (selectedOccupancyFilter === 'NEARLY_FULL' && soldPct < 80) return false;
@@ -575,25 +689,36 @@ export function TripSelectionStep({
         if (!hasDouble) return false;
       }
 
-      if (selectedDateFilter !== 'ALL') {
-        const dStr = (t.departureDate || '').toString().split('T')[0];
-        if (dStr !== selectedDateFilter) return false;
+      // 7. Journey Date (Departure Date) Filter
+      if (selectedJourneyDateFilter !== 'ALL') {
+        const dStr = extractDateOnly(t.departureDate || t.departure_date);
+        if (dStr !== selectedJourneyDateFilter) return false;
       }
 
+      // 8. Bus / Trip Creation Date Filter
+      if (selectedCreateDateFilter !== 'ALL') {
+        const cStr = extractDateOnly(t.createdAt || t.created_at || t.bus?.createdAt || t.bus?.created_at);
+        if (cStr !== selectedCreateDateFilter) return false;
+      }
+
+      // 9. Exam Unit
       if (selectedUnitFilter !== 'ALL') {
         const u = (t.examUnit || t.bus?.examUnit || '').trim();
         if (u !== selectedUnitFilter) return false;
       }
 
+      // 10. Hotel Package
       const hasHotel = !!(t.hotelPackage || (t.bus?.notes && t.bus.notes.includes('HOTEL PACKAGE:')));
       if (selectedHotelFilter === 'HOTEL_ONLY' && !hasHotel) return false;
       if (selectedHotelFilter === 'BUS_ONLY' && hasHotel) return false;
 
+      // 11. Bus Company / Operator
       if (selectedCompanyFilter !== 'ALL') {
         const op = (t.bus?.operator || '').toLowerCase();
         if (!op.includes(selectedCompanyFilter.toLowerCase())) return false;
       }
 
+      // 12. Text Search Query
       if (busSearchQuery.trim()) {
         const q = busSearchQuery.toLowerCase();
         const haystack = [
@@ -625,7 +750,26 @@ export function TripSelectionStep({
       }
       return 0;
     });
-  }, [currentTabBaseTrips, selectedUniFilter, selectedFareFilter, customFareInput, selectedSeatFilter, selectedGenderFilter, selectedOccupancyFilter, selectedDateFilter, selectedHotelFilter, selectedCompanyFilter, busSearchQuery, selectedSortOrder, selectedUnitFilter]);
+  }, [
+    currentTabBaseTrips,
+    selectedUniFilter,
+    selectedFareFilter,
+    customFareInput,
+    selectedSeatFilter,
+    selectedGenderFilter,
+    selectedOccupancyFilter,
+    selectedJourneyDateFilter,
+    selectedCreateDateFilter,
+    selectedSeatRangePreset,
+    minAvailableSeats,
+    maxAvailableSeats,
+    selectedHotelFilter,
+    selectedCompanyFilter,
+    busSearchQuery,
+    selectedSortOrder,
+    selectedUnitFilter,
+    selectedBusIdFilter
+  ]);
 
   const selectStyle = (isActive: boolean, activeColor = 'bg-blue-600 text-white shadow-md shadow-blue-500/20') =>
     `px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
@@ -939,10 +1083,44 @@ export function TripSelectionStep({
                   <button onClick={() => setSelectedOccupancyFilter('ALL')} className="hover:text-rose-500">✕</button>
                 </span>
               )}
-              {selectedDateFilter !== 'ALL' && (
+              {selectedJourneyDateFilter !== 'ALL' && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-lg">
+                  📅 যাত্রা: {formatDate(selectedJourneyDateFilter)}
+                  <button onClick={() => setSelectedJourneyDateFilter('ALL')} className="hover:text-rose-500">✕</button>
+                </span>
+              )}
+              {selectedCreateDateFilter !== 'ALL' && (
                 <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-lg">
-                  📅 {selectedDateFilter}
-                  <button onClick={() => setSelectedDateFilter('ALL')} className="hover:text-rose-500">✕</button>
+                  🕒 বাস তৈরি: {formatDate(selectedCreateDateFilter)}
+                  <button onClick={() => setSelectedCreateDateFilter('ALL')} className="hover:text-rose-500">✕</button>
+                </span>
+              )}
+              {(selectedSeatRangePreset !== 'ALL' || minAvailableSeats || maxAvailableSeats) && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-lg">
+                  💺 খালি আসন: {
+                    selectedSeatRangePreset === 'CUSTOM'
+                      ? minAvailableSeats && maxAvailableSeats
+                        ? `${minAvailableSeats} - ${maxAvailableSeats} টি`
+                        : minAvailableSeats
+                        ? `≥ ${minAvailableSeats} টি`
+                        : maxAvailableSeats
+                        ? `≤ ${maxAvailableSeats} টি`
+                        : 'কাস্টম'
+                      : selectedSeatRangePreset === '31+'
+                      ? '৩১+ টি'
+                      : `${selectedSeatRangePreset} টি`
+                  }
+                  <button onClick={() => {
+                    setSelectedSeatRangePreset('ALL');
+                    setMinAvailableSeats('');
+                    setMaxAvailableSeats('');
+                  }} className="hover:text-rose-500">✕</button>
+                </span>
+              )}
+              {selectedBusIdFilter !== 'ALL' && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded-lg">
+                  🚌 {busSeatAvailabilityOptions.find((b) => b.id === selectedBusIdFilter)?.busNum || 'নির্দিষ্ট বাস'}
+                  <button onClick={() => setSelectedBusIdFilter('ALL')} className="hover:text-rose-500">✕</button>
                 </span>
               )}
               {selectedSeatFilter && (
@@ -1065,72 +1243,342 @@ export function TripSelectionStep({
                 </div>
               )}
 
-              {/* Date & Specific Seat Finder Row */}
-              <div className="flex flex-col lg:flex-row gap-4 justify-between pt-1">
-                {/* Date filter */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5 pl-1">
-                    <Clock className="w-3.5 h-3.5 text-blue-500" />
-                    {language === 'bn' ? 'যাত্রার তারিখ' : 'Departure Date'}
-                  </label>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button type="button" onClick={() => setSelectedDateFilter('ALL')} className={selectStyle(selectedDateFilter === 'ALL')}>
-                      {language === 'bn' ? 'সকল তারিখ' : 'All'}
-                    </button>
-                    {dateOptions.map(([dStr, dCount]) => (
+              {/* ── 1. Date Filters: Journey Date & Bus Create Date ── */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                {/* A. Journey Date (যাত্রার তারিখ) */}
+                <div className="flex flex-col gap-2 bg-white dark:bg-slate-950 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4 text-blue-500 shrink-0" />
+                      <label className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1">
+                        <span>{language === 'bn' ? 'যাত্রার তারিখ' : 'Journey Date'}</span>
+                        <span className="text-[10px] text-slate-400 font-normal">(Departure Date)</span>
+                      </label>
+                    </div>
+                    {selectedJourneyDateFilter !== 'ALL' && (
                       <button
-                        key={dStr}
                         type="button"
-                        onClick={() => setSelectedDateFilter(selectedDateFilter === dStr ? 'ALL' : dStr)}
-                        className={selectStyle(selectedDateFilter === dStr)}
+                        onClick={() => setSelectedJourneyDateFilter('ALL')}
+                        className="text-[10px] font-bold text-rose-500 hover:text-rose-600 cursor-pointer"
                       >
-                        <span>{dStr}</span>
-                        <span className={`ml-1 px-1.5 py-0.5 rounded-md font-mono text-[9px] leading-none ${selectedDateFilter === dStr ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
-                          {dCount}
-                        </span>
-                      </button>
-                    ))}
-                    <input
-                      type="date"
-                      value={selectedDateFilter === 'ALL' ? '' : selectedDateFilter}
-                      onChange={(e) => setSelectedDateFilter(e.target.value || 'ALL')}
-                      className="px-2.5 py-1 text-[11px] h-[30px] font-bold rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 cursor-pointer focus:outline-none focus:border-blue-400"
-                    />
-                  </div>
-                </div>
-
-                {/* Specific Seat filter */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider flex items-center justify-between pl-1">
-                    <span className="flex items-center gap-1.5">
-                      <Armchair className="w-3.5 h-3.5 text-indigo-500" />
-                      {language === 'bn' ? 'নির্দিষ্ট সিট নম্বর দিয়ে খুঁজুন' : 'Find Specific Seats'}
-                    </span>
-                    {selectedSeatFilter && (
-                      <button onClick={() => setSelectedSeatFilter('')} className="text-rose-500 hover:text-rose-600 cursor-pointer uppercase text-[9px] font-bold">
                         {language === 'bn' ? 'মুছুন ✕' : 'Clear ✕'}
                       </button>
                     )}
-                  </label>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <input
-                      type="text"
-                      value={selectedSeatFilter}
-                      onChange={(e) => setSelectedSeatFilter(e.target.value.toUpperCase())}
-                      placeholder="Ex: A1, B3"
-                      className="w-24 px-3 py-1 text-[11px] h-[30px] font-bold font-mono rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 uppercase"
-                    />
-                    {(allFleetAvailableSeats.length > 0 ? allFleetAvailableSeats.slice(0, 8) : ['A1', 'A2', 'A3', 'B1', 'B2', 'C1']).map((seatCode) => (
-                      <button
-                        key={seatCode}
-                        type="button"
-                        onClick={() => setSelectedSeatFilter(selectedSeatFilter === seatCode ? '' : seatCode)}
-                        className={selectStyle(selectedSeatFilter === seatCode, 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20')}
-                      >
-                        {seatCode}
-                      </button>
-                    ))}
                   </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      suppressHydrationWarning
+                      value={selectedJourneyDateFilter}
+                      onChange={(e) => setSelectedJourneyDateFilter(e.target.value)}
+                      className="flex-1 bg-slate-50 dark:bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none cursor-pointer truncate appearance-none"
+                    >
+                      <option value="ALL">📅 {language === 'bn' ? `সকল যাত্রার তারিখ (${journeyDateOptions.length}টি বিদ্যমান তারিখ)` : `All Journey Dates`}</option>
+                      {journeyDateOptions.map(([dStr, dCount]) => (
+                        <option key={dStr} value={dStr}>
+                          📅 {formatDate(dStr)} — {dCount}টি বাস
+                        </option>
+                      ))}
+                    </select>
+                    <div className="relative shrink-0">
+                      <input
+                        suppressHydrationWarning
+                        type="date"
+                        value={selectedJourneyDateFilter === 'ALL' ? '' : selectedJourneyDateFilter}
+                        onChange={(e) => setSelectedJourneyDateFilter(e.target.value || 'ALL')}
+                        title={language === 'bn' ? 'ক্যালেন্ডার থেকে যাত্রার তারিখ বাছুন' : 'Pick custom journey date'}
+                        className="px-2 py-1 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 cursor-pointer focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  {/* Quick Chips for created journey dates */}
+                  {journeyDateOptions.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                      <span className="text-[10px] font-bold text-slate-400">বিদ্যমান তারিখ:</span>
+                      {journeyDateOptions.slice(0, 4).map(([dStr, dCount]) => (
+                        <button
+                          key={dStr}
+                          type="button"
+                          onClick={() => setSelectedJourneyDateFilter(dStr === selectedJourneyDateFilter ? 'ALL' : dStr)}
+                          className={cn(
+                            'px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer',
+                            selectedJourneyDateFilter === dStr
+                              ? 'bg-blue-600 text-white border-blue-500 shadow-xs'
+                              : 'bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+                          )}
+                        >
+                          {formatDate(dStr)} ({dCount})
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* B. Bus / Trip Create Date (বাস তৈরির তারিখ) */}
+                <div className="flex flex-col gap-2 bg-white dark:bg-slate-950 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                      <label className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1">
+                        <span>{language === 'bn' ? 'বাস তৈরির তারিখ' : 'Bus Create Date'}</span>
+                        <span className="text-[10px] text-slate-400 font-normal">(Created At)</span>
+                      </label>
+                    </div>
+                    {selectedCreateDateFilter !== 'ALL' && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCreateDateFilter('ALL')}
+                        className="text-[10px] font-bold text-rose-500 hover:text-rose-600 cursor-pointer"
+                      >
+                        {language === 'bn' ? 'মুছুন ✕' : 'Clear ✕'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      suppressHydrationWarning
+                      value={selectedCreateDateFilter}
+                      onChange={(e) => setSelectedCreateDateFilter(e.target.value)}
+                      className="flex-1 bg-slate-50 dark:bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none cursor-pointer truncate appearance-none"
+                    >
+                      <option value="ALL">🕒 {language === 'bn' ? `সকল তৈরির তারিখ (${busCreateDateOptions.length}টি)` : `All Create Dates`}</option>
+                      {busCreateDateOptions.map(([cStr, cCount]) => (
+                        <option key={cStr} value={cStr}>
+                          🕒 {formatDate(cStr)} তৈরি — {cCount}টি বাস
+                        </option>
+                      ))}
+                    </select>
+                    <div className="relative shrink-0">
+                      <input
+                        suppressHydrationWarning
+                        type="date"
+                        value={selectedCreateDateFilter === 'ALL' ? '' : selectedCreateDateFilter}
+                        onChange={(e) => setSelectedCreateDateFilter(e.target.value || 'ALL')}
+                        title={language === 'bn' ? 'বাস তৈরির কাস্টম তারিখ বাছুন' : 'Pick custom create date'}
+                        className="px-2 py-1 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 cursor-pointer focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  {/* Quick Chips for created dates */}
+                  {busCreateDateOptions.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                      <span className="text-[10px] font-bold text-slate-400">তৈরি করা তারিখ:</span>
+                      {busCreateDateOptions.slice(0, 4).map(([cStr, cCount]) => (
+                        <button
+                          key={cStr}
+                          type="button"
+                          onClick={() => setSelectedCreateDateFilter(cStr === selectedCreateDateFilter ? 'ALL' : cStr)}
+                          className={cn(
+                            'px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer',
+                            selectedCreateDateFilter === cStr
+                              ? 'bg-amber-600 text-white border-amber-500 shadow-xs'
+                              : 'bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+                          )}
+                        >
+                          {formatDate(cStr)} ({cCount})
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── 2. Available Seats Remaining & Range Filter ── */}
+              <div className="flex flex-col gap-2.5 bg-white dark:bg-slate-950 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Armchair className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <div>
+                      <label className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1">
+                        <span>{language === 'bn' ? 'খালি আসন সংখ্যা ফিল্টার (Available Seats Filter & Range)' : 'Available Seats Filter & Range'}</span>
+                      </label>
+                      <span className="text-[11px] text-slate-500 block leading-tight">
+                        {language === 'bn'
+                          ? 'বিশ্ববিদ্যালয় সিলেক্ট করে কত থেকে কত সিট বাকি আছে তা রেঞ্জ বা সরাসরি সংখ্যা দিয়ে ফিল্টার করুন'
+                          : 'Filter buses by remaining seat count or range for the selected university'}
+                      </span>
+                    </div>
+                  </div>
+                  {(selectedSeatRangePreset !== 'ALL' || minAvailableSeats || maxAvailableSeats) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedSeatRangePreset('ALL');
+                        setMinAvailableSeats('');
+                        setMaxAvailableSeats('');
+                      }}
+                      className="text-[10px] font-bold text-rose-500 hover:text-rose-600 cursor-pointer"
+                    >
+                      {language === 'bn' ? 'সিট রেঞ্জ রিসেট ✕' : 'Clear Seat Range ✕'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick Range Presets */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[
+                    { id: 'ALL', label: 'সকল সিট (All)' },
+                    { id: '1-10', label: '১ - ১০ টি খালি' },
+                    { id: '11-20', label: '১১ - ২০ টি খালি' },
+                    { id: '21-30', label: '২১ - ৩০ টি খালি' },
+                    { id: '31+', label: '৩১+ টি খালি' },
+                    { id: 'CUSTOM', label: '🎯 কাস্টম রেঞ্জ / সরাসরি সংখ্যা' }
+                  ].map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setSelectedSeatRangePreset(preset.id as any)}
+                      className={cn(
+                        'px-3 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer',
+                        selectedSeatRangePreset === preset.id
+                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                          : 'bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+                      )}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom Range / Direct Count Input Boxes */}
+                {selectedSeatRangePreset === 'CUSTOM' && (
+                  <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 animate-in fade-in duration-150">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                        {language === 'bn' ? 'সর্বনিম্ন খালি সিট (Min):' : 'Min Free Seats:'}
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="60"
+                        value={minAvailableSeats}
+                        onChange={(e) => setMinAvailableSeats(e.target.value)}
+                        placeholder="যেমন: ১০"
+                        className="w-24 px-2.5 py-1 text-xs font-bold font-mono rounded-lg bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                        {language === 'bn' ? 'সর্বোচ্চ খালি সিট (Max):' : 'Max Free Seats:'}
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="60"
+                        value={maxAvailableSeats}
+                        onChange={(e) => setMaxAvailableSeats(e.target.value)}
+                        placeholder="যেমন: ২৫"
+                        className="w-24 px-2.5 py-1 text-xs font-bold font-mono rounded-lg bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <span className="text-[11px] text-emerald-700 dark:text-emerald-300 font-semibold">
+                      {minAvailableSeats && maxAvailableSeats
+                        ? `(যে বাসে ${minAvailableSeats} থেকে ${maxAvailableSeats} টি সিট খালি আছে)`
+                        : minAvailableSeats
+                        ? `(কমপক্ষে ${minAvailableSeats}টি সিট খালি থাকা বাস)`
+                        : maxAvailableSeats
+                        ? `(সর্বোচ্চ ${maxAvailableSeats}টি সিট খালি থাকা বাস)`
+                        : '(সরাসরি সংখ্যা বা রেঞ্জ লিখুন)'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* ── 3. Specific Seat Number Search & Specific Bus Selection ── */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                {/* Specific Seat Number Search */}
+                <div className="flex flex-col gap-1.5 bg-white dark:bg-slate-950 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Ticket className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                        {language === 'bn' ? 'নির্দিষ্ট সিট নম্বর সার্চ' : 'Search Specific Seat'}
+                      </label>
+                    </div>
+                    {selectedSeatFilter && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSeatFilter('')}
+                        className="text-[10px] font-bold text-rose-500 hover:text-rose-600 cursor-pointer"
+                      >
+                        {language === 'bn' ? 'মুছুন ✕' : 'Clear ✕'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      suppressHydrationWarning
+                      value={selectedSeatFilter}
+                      onChange={(e) => setSelectedSeatFilter(e.target.value)}
+                      className="w-full px-3 py-2 text-xs font-bold font-mono rounded-xl bg-slate-50 dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      <option value="">
+                        🪑 {language === 'bn' ? 'ড্রপডাউন থেকে নির্দিষ্ট সিট বাছুন (সকল সিট)' : 'Select seat from dropdown (All seats)'}
+                      </option>
+                      {allFleetAvailableSeats.map((s) => (
+                        <option key={s} value={s}>
+                          সিট নম্বর: {s} {s.startsWith('A') ? '(সামনের সারি)' : s.startsWith('K') ? '(শেষ সারি/অতিরিক্ত)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Extra quick-add seat chips for 1-click selection */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                    <span className="text-[9px] font-bold text-slate-500">{language === 'bn' ? 'কুইক যোগ:' : 'Quick Add:'}</span>
+                    {['A1', 'A2', 'A3', 'A4', 'B1', 'B2', 'C1', 'D1', 'K3', 'K5'].map((chip) => {
+                      const isAct = selectedSeatFilter === chip;
+                      return (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => setSelectedSeatFilter(isAct ? '' : chip)}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition-all border ${
+                            isAct
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                          }`}
+                        >
+                          +{chip}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Specific Bus Selection */}
+                <div className="flex flex-col gap-1.5 bg-white dark:bg-slate-950 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Bus className="w-3.5 h-3.5 text-teal-500 shrink-0" />
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                        {language === 'bn' ? 'নির্দিষ্ট বাস নির্বাচন' : 'Select Specific Bus'}
+                      </label>
+                    </div>
+                    {selectedBusIdFilter !== 'ALL' && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBusIdFilter('ALL')}
+                        className="text-[10px] font-bold text-rose-500 hover:text-rose-600 cursor-pointer"
+                      >
+                        {language === 'bn' ? 'মুছুন ✕' : 'Clear ✕'}
+                      </button>
+                    )}
+                  </div>
+                  <select
+                    suppressHydrationWarning
+                    value={selectedBusIdFilter}
+                    onChange={(e) => setSelectedBusIdFilter(e.target.value)}
+                    className="w-full bg-transparent text-xs font-bold text-slate-900 dark:text-white focus:outline-none cursor-pointer truncate appearance-none"
+                  >
+                    <option value="ALL">
+                      💺 {language === 'bn' ? `সকল বাস (মোট ${fleetStats.totalAvailable}টি আসন খালি)` : `All Buses (${fleetStats.totalAvailable} free)`}
+                    </option>
+                    {busSeatAvailabilityOptions.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.free > 0 ? '🟢' : '🔴'} {b.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

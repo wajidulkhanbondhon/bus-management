@@ -254,6 +254,7 @@ export function PassengerDetailsStep({
       {
         passengerName?: string;
         passengerPhone?: string;
+        email?: string;
         duplicatePhone?: string;
         guardianPhone?: string;
         guardianRelationship?: string;
@@ -557,6 +558,15 @@ export function PassengerDetailsStep({
           }
         }
 
+        // 7. Prune email if valid or empty
+        if (updated.email) {
+          const cleanMail = (p.email || '').trim();
+          if (!cleanMail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanMail)) {
+            delete updated.email;
+            seatChanged = true;
+          }
+        }
+
         if (seatChanged) {
           changed = true;
           const hasRemaining = Object.values(updated).some(
@@ -585,6 +595,7 @@ export function PassengerDetailsStep({
       const errors: {
         passengerName?: string;
         passengerPhone?: string;
+        email?: string;
         duplicatePhone?: string;
         guardianPhone?: string;
         guardianRelationship?: string;
@@ -618,6 +629,16 @@ export function PassengerDetailsStep({
             language === 'bn'
               ? `সঠিক ১১ ডিজিটের মোবাইল নম্বর লিখুন`
               : `Invalid 11-digit phone number`;
+        }
+      }
+
+      if (p.email && p.email.trim()) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(p.email.trim())) {
+          errors.email =
+            language === 'bn'
+              ? 'সঠিক ইমেইল এড্রেস লিখুন (যেমন: student@gmail.com)'
+              : 'Please enter a valid email address (e.g. student@gmail.com)';
         }
       }
 
@@ -844,6 +865,7 @@ export function PassengerDetailsStep({
           firstErrorMessage =
             pErrors.passengerName ||
             pErrors.passengerPhone ||
+            pErrors.email ||
             pErrors.duplicatePhone ||
             pErrors.guardianRelationship ||
             pErrors.pairRuleViolation ||
@@ -1002,6 +1024,7 @@ export function PassengerDetailsStep({
             const isNameValid = !!p.passengerName.trim();
             const cleanPhone = (p.passengerPhone || '').replace(/[\s-]/g, '');
             const isPhoneValid = /^01[3-9]\d{8}$/.test(cleanPhone);
+            const isEmailValid = !p.email || !p.email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email.trim());
             const isGuardianValid =
               p.passengerType === 'STUDENT' || (p.passengerType === 'GUARDIAN' && !!p.guardianRelationship);
             const duplicateSeats = getDuplicateSeatsForPhone(p.seatId, p.passengerPhone);
@@ -1015,6 +1038,7 @@ export function PassengerDetailsStep({
               hasDuplicateUnconfirmed ||
               (!isNameValid && !!seatErrors?.passengerName) ||
               (!isPhoneValid && !!seatErrors?.passengerPhone) ||
+              (!isEmailValid && !!seatErrors?.email) ||
               (!isGuardianValid && !!seatErrors?.guardianRelationship) ||
               (!!p.guardianPhone?.trim() && !isValidBdMobile(p.guardianPhone) && !!seatErrors?.guardianPhone) ||
               (!!currentPairViolation && (!!seatErrors?.pairRuleViolation || hasAttemptedSubmit));
@@ -1022,6 +1046,7 @@ export function PassengerDetailsStep({
             const isFullyComplete =
               isNameValid &&
               isPhoneValid &&
+              isEmailValid &&
               isGuardianValid &&
               !hasDuplicateUnconfirmed &&
               !currentPairViolation &&
@@ -1072,6 +1097,8 @@ export function PassengerDetailsStep({
                               ? (language === 'bn' ? 'নাম আবশ্যক' : 'Name Required')
                               : !isPhoneValid && seatErrors?.passengerPhone
                               ? (language === 'bn' ? '১১ ডিজিট মোবাইল ভুল/বাকি' : '11-digit Mobile')
+                              : !isEmailValid && seatErrors?.email
+                              ? (language === 'bn' ? 'সঠিক ইমেইল দিন' : 'Invalid Email')
                               : !isGuardianValid && seatErrors?.guardianRelationship
                               ? (language === 'bn' ? 'সম্পর্ক আবশ্যক' : 'Select Relationship')
                               : currentPairViolation
@@ -1362,8 +1389,44 @@ export function PassengerDetailsStep({
                       type="email"
                       label={language === 'bn' ? 'ইমেইল এড্রেস (ঐচ্ছিক — ইমেইলে টিকিট ও ইনভয়েস পেতে)' : 'Email Address (Optional — to receive ticket & invoice)'}
                       value={p.email || ''}
-                      onChange={(e) => handleFieldChange(p.seatId, 'email', e.target.value)}
-                      placeholder="e.g. name@example.com (ঐচ্ছিক)"
+                      error={fieldErrors[p.seatId]?.email}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        handleFieldChange(p.seatId, 'email', val);
+                        const clean = val.trim();
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        setFieldErrors((prev) => {
+                          const next = { ...prev };
+                          const seatErr = { ...(next[p.seatId] || {}) };
+                          if (clean && !emailRegex.test(clean)) {
+                            seatErr.email = language === 'bn'
+                              ? 'সঠিক ইমেইল এড্রেস লিখুন (যেমন: student@gmail.com)'
+                              : 'Please enter a valid email address (e.g. student@gmail.com)';
+                            next[p.seatId] = seatErr;
+                          } else {
+                            delete seatErr.email;
+                            if (Object.keys(seatErr).length === 0) delete next[p.seatId];
+                            else next[p.seatId] = seatErr;
+                          }
+                          return next;
+                        });
+                      }}
+                      onBlur={(e) => {
+                        const clean = e.target.value.trim();
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        if (clean && !emailRegex.test(clean)) {
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            [p.seatId]: {
+                              ...(prev[p.seatId] || {}),
+                              email: language === 'bn'
+                                ? 'সঠিক ইমেইল এড্রেস লিখুন (যেমন: student@gmail.com)'
+                                : 'Please enter a valid email address (e.g. student@gmail.com)'
+                            }
+                          }));
+                        }
+                      }}
+                      placeholder="e.g. student@gmail.com (ঐচ্ছিক)"
                     />
                   </div>
 

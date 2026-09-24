@@ -45,6 +45,7 @@ export interface SeatStepProps {
   selectedSeatIds: string[];
   isLoadingSeats: boolean;
   dynamicAdjacentLocks: Map<string, { genderAllowed: string; adjacentBookedSeat: string; reason: string }>;
+  currentUser?: any;
   onToggleSeat: (seatId: string, status: string) => void;
   onAddExtraSeat: () => void;
   onRemoveExtraSeat: (seatId: string) => void;
@@ -109,6 +110,7 @@ export function SeatSelectionStep({
   selectedSeatIds,
   isLoadingSeats,
   dynamicAdjacentLocks,
+  currentUser,
   onToggleSeat,
   onAddExtraSeat,
   onRemoveExtraSeat,
@@ -180,16 +182,40 @@ function LuxuryCoachSeatItem({
   const [hovered, setHovered] = useState(false);
 
   if (!seatObj) {
-    return <div className="w-[4.25rem] h-[4.25rem] sm:w-[4.75rem] sm:h-[4.75rem] shrink-0" aria-hidden />;
+    return <div className="w-14 h-15 xs:w-16 xs:h-16 sm:w-[4.75rem] sm:h-[4.75rem] shrink-0" aria-hidden />;
   }
 
   const isBooked = seatObj.status === 'BOOKED';
-  const isHeld = seatObj.status === 'HELD';
-  const isAvailable = seatObj.status === 'AVAILABLE' || (!isBooked && !isHeld);
+  const isHeld = seatObj.status === 'HELD' || seatObj.status === 'HOLD' || seatObj.status === 'PROCESSING';
+  const isOfficeLocked =
+    seatObj.status === 'LOCKED' ||
+    seatObj.status === 'ADMIN_HOLD' ||
+    seatObj.status === 'BLOCKED' ||
+    !!seatObj.isOfficeLocked ||
+    !!seatObj.locked;
+
+  const rawRole = typeof currentUser?.role === 'string'
+    ? currentUser.role
+    : currentUser?.role?.name || '';
+  const userRole = String(rawRole || '').toUpperCase();
+
+  const isAdminOrStaff = ['ADMIN', 'SUPER_ADMIN', 'MANAGER', 'STAFF', 'OPERATOR'].includes(userRole);
+
+  const showAsOfficeLocked = isOfficeLocked && isAdminOrStaff;
+  const showAsPublicProcessing = isOfficeLocked && !isAdminOrStaff;
+
+  const isUnavailable = isBooked || isHeld || isOfficeLocked;
+  const isAvailable = !isUnavailable;
 
   const seatNum = (seatObj.seatNumber || (seatObj as any).seat_number || (seatObj as any).label || '').trim().toUpperCase();
   const isFemaleOnly = seatObj.genderAllowed === 'FEMALE_ONLY' || dynamicLock?.genderAllowed === 'FEMALE_ONLY';
   const isMaleOnly = seatObj.genderAllowed === 'MALE_ONLY' || dynamicLock?.genderAllowed === 'MALE_ONLY';
+
+  // Smart Back-Seat Management: rear row or rows >= totalRows - 2
+  const isBackSeat = (seatObj.rowIndex !== undefined && seatObj.rowIndex >= totalRows - 2) ||
+                     seatNum.startsWith('J') ||
+                     seatNum.startsWith('K') ||
+                     (seatObj.rowIndex === totalRows - 1);
 
   const segColorCfg = segment ? COLOR_OPTIONS.find((c) => c.id === segment.color) : undefined;
   const seatPrice = seatObj.fare || segment?.fare || 550;
@@ -208,9 +234,9 @@ function LuxuryCoachSeatItem({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Floating Holographic Tooltip on Hover */}
+      {/* Floating Holographic Tooltip on Hover (Desktop Only) */}
       {hovered && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-150">
+        <div className="hidden sm:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-150">
           <div className="bg-slate-950 text-white text-[11px] rounded-2xl p-3 whitespace-nowrap shadow-2xl border border-slate-700 leading-snug min-w-[140px] text-center backdrop-blur-md">
             <div className="flex items-center justify-center gap-1.5 mb-1">
               <span className="font-mono font-black text-sm text-amber-300">{seatNum}</span>
@@ -227,13 +253,17 @@ function LuxuryCoachSeatItem({
               {isSelected
                 ? '✔️ নির্বাচিত আসন'
                 : isBooked
-                ? '🔴 টিকিট বুকড'
-                : isHeld
-                ? '⏳ সাময়িক হোল্ড'
+                ? '🔒 বুকড আসন (Booked Seat)'
+                : showAsOfficeLocked
+                ? '🔐 অফিস লক (Office Lock)'
+                : isHeld || showAsPublicProcessing
+                ? '⏳ বুকিং চলছে / প্রসেসিং'
                 : isFemaleOnly
-                ? '🩷 নারী সংরক্ষিত (লক)'
+                ? '👩 নারী সংরক্ষিত আসন'
                 : isMaleOnly
-                ? '💙 পুরুষ সংরক্ষিত (লক)'
+                ? '👨 পুরুষ সংরক্ষিত আসন'
+                : isBackSeat
+                ? `🏷️ সাশ্রয়ী পেছনের সিট • বিশেষ ছাড় (-৳৫০) • ভাড়া ৳${Math.max(0, seatPrice - 50)}`
                 : `✅ খালি আসন • ভাড়া ৳${seatPrice}`}
             </p>
             {dynamicLock && (
@@ -249,17 +279,21 @@ function LuxuryCoachSeatItem({
       {/* 3D Left Armrest */}
       <div
         className={cn(
-          'absolute -left-1.5 top-3.5 bottom-3.5 w-1.5 rounded-full transition-all duration-200 z-10',
+          'absolute -left-1 sm:-left-1.5 top-2.5 sm:top-3.5 bottom-2.5 sm:bottom-3.5 w-1 sm:w-1.5 rounded-full transition-all duration-200 z-10',
           isSelected
             ? 'bg-blue-400 shadow-sm shadow-blue-500/50'
             : isBooked
-            ? 'bg-rose-300 dark:bg-rose-800'
-            : isHeld
-            ? 'bg-amber-300 dark:bg-amber-800'
+            ? 'bg-slate-600 dark:bg-slate-700'
+            : showAsOfficeLocked
+            ? 'bg-rose-700 dark:bg-rose-900'
+            : isHeld || showAsPublicProcessing
+            ? 'bg-amber-400 dark:bg-amber-600 animate-pulse'
             : isFemaleOnly
-            ? 'bg-pink-300 dark:bg-pink-800'
+            ? 'bg-purple-500 dark:bg-purple-700'
             : isMaleOnly
-            ? 'bg-blue-300 dark:bg-blue-800'
+            ? 'bg-sky-400 dark:bg-sky-700'
+            : isBackSeat
+            ? 'bg-emerald-400 dark:bg-emerald-600'
             : 'bg-slate-300 dark:bg-slate-700 shadow-2xs group-hover:bg-indigo-400'
         )}
       />
@@ -267,17 +301,21 @@ function LuxuryCoachSeatItem({
       {/* 3D Right Armrest */}
       <div
         className={cn(
-          'absolute -right-1.5 top-3.5 bottom-3.5 w-1.5 rounded-full transition-all duration-200 z-10',
+          'absolute -right-1 sm:-right-1.5 top-2.5 sm:top-3.5 bottom-2.5 sm:bottom-3.5 w-1 sm:w-1.5 rounded-full transition-all duration-200 z-10',
           isSelected
             ? 'bg-blue-400 shadow-sm shadow-blue-500/50'
             : isBooked
-            ? 'bg-rose-300 dark:bg-rose-800'
-            : isHeld
-            ? 'bg-amber-300 dark:bg-amber-800'
+            ? 'bg-slate-600 dark:bg-slate-700'
+            : showAsOfficeLocked
+            ? 'bg-rose-700 dark:bg-rose-900'
+            : isHeld || showAsPublicProcessing
+            ? 'bg-amber-400 dark:bg-amber-600 animate-pulse'
             : isFemaleOnly
-            ? 'bg-pink-300 dark:bg-pink-800'
+            ? 'bg-purple-500 dark:bg-purple-700'
             : isMaleOnly
-            ? 'bg-blue-300 dark:bg-blue-800'
+            ? 'bg-sky-400 dark:bg-sky-700'
+            : isBackSeat
+            ? 'bg-emerald-400 dark:bg-emerald-600'
             : 'bg-slate-300 dark:bg-slate-700 shadow-2xs group-hover:bg-indigo-400'
         )}
       />
@@ -285,25 +323,28 @@ function LuxuryCoachSeatItem({
       {/* REALISTIC HIGH-DECK SEAT BUTTON */}
       <button
         type="button"
+        suppressHydrationWarning
         disabled={!isAvailable}
         onClick={() => onToggle(seatObj.seatId, seatObj.status)}
         className={cn(
-          'w-[4.25rem] h-[4.25rem] sm:w-[4.75rem] sm:h-[4.75rem] shrink-0 p-1.5 rounded-2xl flex flex-col items-center justify-between text-base font-black transition-all duration-200 ease-out relative select-none cursor-pointer overflow-hidden border-2',
+          'w-14 h-15 xs:w-16 xs:h-16 sm:w-[4.75rem] sm:h-[4.75rem] shrink-0 p-1 xs:p-1.5 sm:p-1.5 rounded-xl xs:rounded-2xl sm:rounded-2xl flex flex-col items-center justify-between font-black transition-all duration-200 ease-out relative select-none overflow-hidden border-2',
           isSelected
-            ? 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 text-white border-2 border-blue-300 shadow-xl shadow-blue-500/40 ring-4 ring-blue-400/40 -translate-y-1 z-10'
+            ? 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 text-white border-2 border-blue-300 shadow-xl shadow-blue-500/40 ring-2 sm:ring-4 ring-blue-400/40 -translate-y-0.5 sm:-translate-y-1 z-10 cursor-pointer'
             : isBooked
-            ? 'bg-gradient-to-b from-rose-50 via-rose-100 to-rose-200 dark:from-rose-950/80 dark:via-rose-900/80 dark:to-rose-950/90 text-rose-950 dark:text-rose-200 border-2 border-rose-400 dark:border-rose-700 opacity-80 shadow-xs cursor-not-allowed'
-            : isHeld
-            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/80 dark:via-amber-900/80 dark:to-amber-950/90 text-amber-950 dark:text-amber-200 border-2 border-amber-400 opacity-85 shadow-xs cursor-not-allowed'
+            ? 'bg-gradient-to-b from-rose-50 via-rose-100 to-rose-200 dark:from-rose-950/80 dark:via-rose-900/80 dark:to-rose-950/90 text-rose-950 dark:text-rose-200 border-rose-300 dark:border-rose-700 shadow-xs cursor-not-allowed opacity-85'
+            : showAsOfficeLocked
+            ? 'bg-gradient-to-b from-slate-800 via-rose-950/70 to-slate-900 text-rose-200 border-rose-500/80 shadow-xs cursor-not-allowed opacity-90'
+            : isHeld || showAsPublicProcessing
+            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/80 dark:via-amber-900/80 dark:to-amber-950/90 text-amber-950 dark:text-amber-100 border-amber-400 dark:border-amber-500 animate-pulse shadow-sm shadow-amber-500/20 cursor-not-allowed'
             : isFemaleOnly
-            ? 'bg-gradient-to-b from-pink-50 via-pink-100 to-pink-200 dark:from-pink-950/80 dark:to-pink-900/80 text-pink-950 dark:text-pink-100 border-2 border-pink-400 dark:border-pink-500 shadow-sm shadow-pink-500/10 hover:shadow-lg hover:shadow-pink-500/30 hover:border-pink-500 hover:-translate-y-1 active:translate-y-0.5 active:scale-95'
+            ? 'bg-gradient-to-b from-purple-100 via-purple-200 to-fuchsia-100 dark:from-purple-950/90 dark:via-purple-900/90 dark:to-fuchsia-950/90 text-purple-950 dark:text-purple-100 border-purple-500 dark:border-purple-400 shadow-sm shadow-purple-500/25 hover:shadow-lg hover:shadow-purple-500/35 hover:border-purple-600 hover:-translate-y-1 active:translate-y-0.5 active:scale-95 cursor-pointer'
             : isMaleOnly
-            ? 'bg-gradient-to-b from-blue-50 via-blue-100 to-blue-200 dark:from-blue-950/80 dark:to-blue-900/80 text-blue-950 dark:text-blue-100 border-2 border-blue-400 dark:border-blue-500 shadow-sm shadow-blue-500/10 hover:shadow-lg hover:shadow-blue-500/30 hover:border-blue-500 hover:-translate-y-1 active:translate-y-0.5 active:scale-95'
+            ? 'bg-gradient-to-b from-sky-50 via-sky-100 to-blue-100 dark:from-sky-950/80 dark:via-blue-900/80 text-sky-950 dark:text-sky-100 border-sky-400 dark:border-sky-500 shadow-sm hover:shadow-lg hover:border-sky-500 hover:-translate-y-1 active:translate-y-0.5 active:scale-95 cursor-pointer'
             : isMiddleSeat
-            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/80 dark:to-amber-900/80 text-amber-950 dark:text-amber-100 border-2 border-amber-400 dark:border-amber-500 shadow-sm hover:shadow-lg hover:shadow-amber-500/25 hover:-translate-y-1 active:translate-y-0.5 active:scale-95'
+            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/80 dark:via-amber-900/80 text-amber-950 dark:text-amber-100 border-amber-400 dark:border-amber-500 shadow-sm hover:shadow-lg hover:shadow-amber-500/25 hover:-translate-y-1 active:translate-y-0.5 active:scale-95 cursor-pointer'
             : segColorCfg
-            ? `bg-gradient-to-b ${segColorCfg.bgClass} ${segColorCfg.textClass} border-2 ${segColorCfg.borderClass} shadow-sm hover:shadow-lg hover:-translate-y-1 active:translate-y-0.5 active:scale-95`
-            : 'bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-850 dark:to-slate-900 text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-600 shadow-sm hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-1 active:translate-y-0.5 active:scale-95'
+            ? `bg-gradient-to-b ${segColorCfg.bgClass} ${segColorCfg.textClass} border-2 ${segColorCfg.borderClass} shadow-sm hover:shadow-lg hover:-translate-y-1 active:translate-y-0.5 active:scale-95 cursor-pointer`
+            : 'bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-850 dark:to-slate-900 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-600 shadow-sm hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-1 active:translate-y-0.5 active:scale-95 cursor-pointer'
         )}
       >
         {/* Subtle Glassmorphic Sheen Highlight */}
@@ -312,74 +353,99 @@ function LuxuryCoachSeatItem({
         {/* Ergonomic Headrest Cushion Detail */}
         <div
           className={cn(
-            'w-10 h-1.5 rounded-full shadow-inner transition-all',
+            'w-6 xs:w-8 sm:w-10 h-1 sm:h-1.5 rounded-full shadow-inner transition-all',
             isSelected
               ? 'bg-white/95 shadow-white/40'
               : isBooked
+              ? 'bg-rose-400'
+              : showAsOfficeLocked
               ? 'bg-rose-500'
-              : isHeld
+              : isHeld || showAsPublicProcessing
               ? 'bg-amber-500'
               : isFemaleOnly
-              ? 'bg-pink-500'
+              ? 'bg-purple-500'
               : isMaleOnly
-              ? 'bg-blue-500'
+              ? 'bg-sky-500'
               : segColorCfg
               ? segColorCfg.dotClass
               : 'bg-slate-400'
           )}
         />
 
-        {/* EXTRA LARGE CRISP SEAT NUMBER & POSITION BADGE */}
-        <div className="flex items-center justify-center gap-1 my-auto">
+        {/* EXTRA CRISP SEAT NUMBER & POSITION BADGE */}
+        <div className="flex items-center justify-center gap-0.5 sm:gap-1 my-auto">
           <span
             className={cn(
-              'text-base sm:text-lg font-black tracking-tight leading-none font-mono drop-shadow-xs',
-              isSelected ? 'text-white' : 'text-slate-900 dark:text-slate-100'
+              'text-xs xs:text-sm sm:text-lg font-black tracking-tight leading-none font-mono drop-shadow-xs',
+              isSelected ? 'text-white' : isBooked ? 'text-rose-900 dark:text-rose-200' : 'text-slate-900 dark:text-slate-100'
             )}
           >
             {seatNum}
           </span>
-          {positionType === 'WINDOW' && (
-            <span className="text-[10px] opacity-75 select-none" title="জানালা সংলগ্ন আসন (Window)">
+          {isBooked && (
+            <span className="text-[9px] sm:text-xs text-rose-600 dark:text-rose-400 select-none" title="বুকড আসন">
+              🔒
+            </span>
+          )}
+          {isFemaleOnly && !isBooked && !isSelected && (
+            <span className="text-[9px] sm:text-xs text-purple-600 dark:text-purple-300 select-none" title="নারী সংরক্ষিত আসন">
+              👩
+            </span>
+          )}
+          {positionType === 'WINDOW' && !isBooked && (
+            <span className="text-[8px] sm:text-[10px] opacity-75 select-none" title="জানালা সংলগ্ন আসন (Window)">
               🪟
             </span>
           )}
         </div>
 
-        {/* PROMINENT HIGH-CONTRAST AMOUNT BADGE */}
+        {/* PROMINENT HIGH-CONTRAST AMOUNT / STATUS BADGE */}
         <div
           className={cn(
-            'w-full flex items-center justify-center gap-1 px-1 py-0.5 rounded-lg overflow-hidden backdrop-blur-xs transition-colors',
+            'w-full flex items-center justify-center gap-0.5 xs:gap-1 px-0.5 sm:px-1 py-0.5 rounded xs:rounded-md sm:rounded-lg overflow-hidden backdrop-blur-xs transition-colors',
             isSelected
               ? 'bg-black/25 text-white border border-white/20'
+              : isBooked
+              ? 'bg-rose-100/90 dark:bg-rose-950/90 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
+              : showAsOfficeLocked
+              ? 'bg-rose-950/90 text-rose-200 border border-rose-600'
+              : isHeld || showAsPublicProcessing
+              ? 'bg-amber-500/25 text-amber-900 dark:text-amber-200 border border-amber-400'
+              : isFemaleOnly
+              ? 'bg-purple-600/20 text-purple-900 dark:text-purple-100 border border-purple-400'
               : 'bg-black/5 dark:bg-white/10 border border-black/5 dark:border-white/5'
           )}
         >
           {isSelected ? (
-            <span className="text-xs sm:text-sm font-black font-mono leading-none tracking-tight flex items-center gap-0.5 text-white">
-              <Check className="w-3.5 h-3.5 stroke-[3]" /> ৳{seatPrice}
+            <span className="text-[9px] xs:text-xs sm:text-sm font-black font-mono leading-none tracking-tight flex items-center gap-0.5 text-white">
+              <Check className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 stroke-[3]" /> ৳{seatPrice}
             </span>
           ) : isBooked ? (
-            <span className="text-[10px] sm:text-xs font-black tracking-tight text-rose-800 dark:text-rose-200 leading-none">
-              বুকড
+            <span className="text-[8px] xs:text-[9px] sm:text-xs font-black tracking-tight text-rose-800 dark:text-rose-200 leading-none flex items-center gap-0.5">
+              🔒 <span>বুকড</span>
             </span>
-          ) : isHeld ? (
-            <span className="text-[10px] sm:text-xs font-black tracking-tight text-amber-800 dark:text-amber-200 leading-none">
-              হোল্ড
+          ) : showAsOfficeLocked ? (
+            <span className="text-[8px] xs:text-[9px] sm:text-[10px] font-black tracking-tight text-rose-300 leading-none flex items-center gap-0.5">
+              🔐 <span>লক</span>
+            </span>
+          ) : isHeld || showAsPublicProcessing ? (
+            <span className="text-[8px] xs:text-[9px] sm:text-[10px] font-black tracking-tight text-amber-900 dark:text-amber-200 leading-none flex items-center gap-0.5 animate-pulse">
+              ⏳ <span>প্রসেসিং</span>
             </span>
           ) : (
-            <div className="flex items-center justify-center gap-1">
-              <span className="text-xs sm:text-sm font-black font-mono leading-none tracking-tight">
+            <div className="flex items-center justify-center gap-0.5 xs:gap-1">
+              <span className="text-[9px] xs:text-xs sm:text-sm font-black font-mono leading-none tracking-tight">
                 ৳{seatPrice}
               </span>
               {!isSelected && isFemaleOnly && (
-                <span className="text-[9px] text-pink-800 dark:text-pink-300 font-black leading-none">F</span>
+                <span className="text-[8px] sm:text-[9px] px-0.5 sm:px-1 py-0.2 rounded bg-purple-600 text-white font-black leading-none">
+                  👩<span className="hidden sm:inline"> নারী</span>
+                </span>
               )}
               {!isSelected && isMaleOnly && (
-                <span className="text-[9px] text-blue-800 dark:text-blue-300 font-black leading-none">M</span>
-              )}
-              {!isSelected && isMiddleSeat && (
-                <span className="text-[8px] text-amber-800 dark:text-amber-200 font-black leading-none">MID</span>
+                <span className="text-[8px] sm:text-[9px] px-0.5 sm:px-1 py-0.2 rounded bg-blue-600 text-white font-black leading-none">
+                  👨<span className="hidden sm:inline"> পুরুষ</span>
+                </span>
               )}
             </div>
           )}
@@ -403,12 +469,12 @@ function LuxuryCoachSeatItem({
 
     if (!seatObj) {
       if (isMiddle) return null;
-      return <div className="w-[4.25rem] h-[4.25rem] sm:w-[4.75rem] sm:h-[4.75rem] shrink-0" />;
+      return <div className="w-14 h-15 xs:w-16 xs:h-16 sm:w-[4.75rem] sm:h-[4.75rem] shrink-0" />;
     }
 
     if (seatObj.type === 'EMPTY') {
       return (
-        <div className="min-w-[4.25rem] min-h-[4.25rem] sm:min-w-[4.75rem] sm:min-h-[4.75rem] rounded-2xl border-2 border-dashed border-transparent flex items-center justify-center text-xs text-slate-300 dark:text-slate-700">
+        <div className="w-14 h-15 xs:w-16 xs:h-16 sm:w-[4.75rem] sm:h-[4.75rem] rounded-2xl border-2 border-dashed border-transparent flex items-center justify-center text-xs text-slate-300 dark:text-slate-700">
           ·
         </div>
       );
@@ -416,7 +482,7 @@ function LuxuryCoachSeatItem({
 
     if (seatObj.type === 'AISLE') {
       return (
-        <div className="w-[4.25rem] h-[4.25rem] sm:w-[4.75rem] sm:h-[4.75rem] shrink-0 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-center text-[10px] font-black text-slate-400 dark:text-slate-600">
+        <div className="w-14 h-15 xs:w-16 xs:h-16 sm:w-[4.75rem] sm:h-[4.75rem] shrink-0 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-center text-[10px] font-black text-slate-400 dark:text-slate-600">
           AISLE
         </div>
       );
@@ -617,20 +683,20 @@ function LuxuryCoachSeatItem({
               <span className="text-slate-900 dark:text-white font-bold">{language === 'bn' ? 'নির্বাচিত' : 'Selected'}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded-md bg-pink-100 dark:bg-pink-950/80 border-2 border-pink-400"></span>
-              <span className="text-pink-700 dark:text-pink-300 font-bold">{language === 'bn' ? '♀ নারী লক' : 'Female Protected'}</span>
+              <span className="w-3.5 h-3.5 rounded-md bg-purple-100 dark:bg-purple-950/80 border-2 border-purple-500"></span>
+              <span className="text-purple-700 dark:text-purple-300 font-bold">{language === 'bn' ? '👩 নারী' : 'Female'}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded-md bg-blue-100 dark:bg-blue-950/80 border-2 border-blue-400"></span>
-              <span className="text-blue-700 dark:text-blue-300 font-bold">{language === 'bn' ? '♂ পুরুষ লক' : 'Male Protected'}</span>
+              <span className="w-3.5 h-3.5 rounded-md bg-rose-100 dark:bg-rose-950 border-2 border-rose-500 flex items-center justify-center text-[9px] text-rose-700 dark:text-rose-300 font-bold">🔒</span>
+              <span className="text-rose-700 dark:text-rose-300 font-bold">{language === 'bn' ? 'বুকড' : 'Booked'}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded-md bg-rose-500"></span>
-              <span className="text-slate-600 dark:text-slate-300">{language === 'bn' ? 'বুকড' : 'Booked'}</span>
+              <span className="w-3.5 h-3.5 rounded-md bg-amber-400 border-2 border-amber-500 animate-pulse"></span>
+              <span className="text-amber-700 dark:text-amber-300 font-bold">{language === 'bn' ? '⏳ প্রসেসিং / হোল্ড' : 'Processing / Hold'}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded-md bg-amber-500"></span>
-              <span className="text-slate-600 dark:text-slate-300">{language === 'bn' ? 'হোল্ড' : 'Held'}</span>
+              <span className="w-3.5 h-3.5 rounded-md bg-rose-900 border-2 border-rose-600 flex items-center justify-center text-[9px] text-white">🔐</span>
+              <span className="text-rose-700 dark:text-rose-300 font-bold">{language === 'bn' ? 'অফিস লক' : 'Office Lock'}</span>
             </div>
           </div>
 
@@ -661,7 +727,7 @@ function LuxuryCoachSeatItem({
           </div>
         </div>
 
-        <CardContent className="flex flex-col items-center justify-center p-6 sm:p-10 bg-slate-100/70 dark:bg-slate-950/70 overflow-x-auto min-h-[600px]">
+        <CardContent className="flex flex-col items-center justify-center p-1.5 xs:p-2.5 sm:p-6 lg:p-10 bg-slate-100/70 dark:bg-slate-950/70 overflow-x-auto min-h-[460px]">
           {isLoadingSeats ? (
             <div className="py-20 text-center text-slate-400 font-medium text-xs flex flex-col items-center gap-3">
               <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -669,55 +735,55 @@ function LuxuryCoachSeatItem({
             </div>
           ) : (
             /* REALISTIC HIGH-DECK COACH FRAME (MATCHING LAYOUT SECTION EXACTLY) */
-            <div className="bg-white dark:bg-slate-900 p-6 sm:p-9 rounded-[3.5rem] border-4 border-slate-300 dark:border-slate-700 shadow-2xl w-full max-w-xl relative">
+            <div className="bg-white dark:bg-slate-900 p-1.5 xs:p-2 sm:p-5 lg:p-8 rounded-2xl sm:rounded-[3.5rem] border-2 sm:border-4 border-slate-300 dark:border-slate-700 shadow-xl w-full max-w-xl mx-auto relative">
               {/* Bus Exterior Roof Marker & Mirrors */}
               <div className="absolute -top-3.5 left-12 right-12 h-3.5 bg-slate-300 dark:bg-slate-700 rounded-t-2xl opacity-70" />
-              <div className="absolute -left-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-l-md shadow-xs" title="Left Rearview Mirror" />
-              <div className="absolute -right-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-r-md shadow-xs" title="Right Rearview Mirror" />
+              <div className="hidden sm:block absolute -left-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-l-md shadow-xs" title="Left Rearview Mirror" />
+              <div className="hidden sm:block absolute -right-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-r-md shadow-xs" title="Right Rearview Mirror" />
 
               {/* COCKPIT SECTION: Bonnet Engine Grill + Front Windshield + Driver Cabin + Door Steps */}
-              <div className="mb-5 pb-3.5 border-b-2 border-dashed border-slate-200 dark:border-slate-800">
+              <div className="mb-3.5 sm:mb-5 pb-2.5 sm:pb-3.5 border-b-2 border-dashed border-slate-200 dark:border-slate-800">
                 {/* Windshield Glass */}
-                <div className="h-6 sm:h-7 bg-blue-100/80 dark:bg-blue-950/60 rounded-t-2xl border-t-2 border-blue-300 dark:border-blue-800 mb-2.5 flex items-center justify-center">
-                  <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-blue-700 dark:text-blue-300 font-mono">
+                <div className="h-5 sm:h-7 bg-blue-100/80 dark:bg-blue-950/60 rounded-t-xl sm:rounded-t-2xl border-t-2 border-blue-300 dark:border-blue-800 mb-2 sm:mb-2.5 flex items-center justify-center">
+                  <span className="text-[10px] sm:text-sm font-black uppercase tracking-widest text-blue-700 dark:text-blue-300 font-mono">
                     {language === 'bn' ? 'সামনের উইন্ডশিল্ড গ্লাস' : 'FRONT WINDSHIELD GLASS'}
                   </span>
                 </div>
 
                 {/* Dashboard & Cockpit: Door, Bonnet, and Driver Cabins */}
-                <div className="bg-slate-900 dark:bg-slate-950 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between text-white shadow-inner relative overflow-hidden">
+                <div className="bg-slate-900 dark:bg-slate-950 rounded-xl sm:rounded-2xl p-1.5 xs:p-2 sm:p-3.5 flex items-center justify-between text-white shadow-inner relative overflow-hidden gap-1 sm:gap-2">
                   {/* Left: Passenger Entry Door / Gate */}
-                  <div className="flex items-center gap-2.5 bg-emerald-950 border-2 border-emerald-500/80 px-3.5 py-2 rounded-xl shadow-md">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                  <div className="flex items-center gap-1 sm:gap-2.5 bg-emerald-950 border sm:border-2 border-emerald-500/80 px-2 sm:px-3.5 py-1 sm:py-2 rounded-lg sm:rounded-xl shadow-md shrink-0">
+                    <span className="w-1.5 h-1.5 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
                     <div>
-                      <div className="text-xs sm:text-sm font-black text-emerald-400 leading-tight">
-                        {language === 'bn' ? 'বাসের গেট' : 'ENTRY DOOR'}
+                      <div className="text-[10px] sm:text-sm font-black text-emerald-400 leading-tight">
+                        🚪 <span className="hidden xs:inline">{language === 'bn' ? 'বাসের গেট' : 'ENTRY DOOR'}</span><span className="xs:hidden">{language === 'bn' ? 'গেট' : 'GATE'}</span>
                       </div>
-                      <div className="text-[10px] sm:text-[11px] text-emerald-300 font-bold leading-none mt-0.5">
+                      <div className="hidden sm:block text-[10px] sm:text-[11px] text-emerald-300 font-bold leading-none mt-0.5">
                         {language === 'bn' ? 'প্রবেশদ্বার (Entry)' : 'Entry Gate'}
                       </div>
                     </div>
                   </div>
 
                   {/* Center: Bonnet / Engine Hood */}
-                  <div className="text-center px-3.5 py-1.5 bg-slate-800 rounded-xl border-2 border-slate-600 shadow-md">
-                    <div className="text-xs sm:text-sm font-black text-amber-400 font-mono tracking-wide">
-                      {language === 'bn' ? 'বনেট / ইঞ্জিন' : 'ENGINE BONNET'}
+                  <div className="text-center px-2 sm:px-3.5 py-1 sm:py-1.5 bg-slate-800 rounded-lg sm:rounded-xl border sm:border-2 border-slate-600 shadow-md">
+                    <div className="text-[10px] sm:text-sm font-black text-amber-400 font-mono tracking-wide">
+                      {language === 'bn' ? 'বনেট' : 'BONNET'}
                     </div>
-                    <div className="text-[9px] text-slate-300 font-bold mt-0.5">Front Chassis</div>
+                    <div className="hidden sm:block text-[9px] text-slate-300 font-bold mt-0.5">Front Chassis</div>
                   </div>
 
                   {/* Right: Driver Cabin & Steering Wheel */}
-                  <div className="flex items-center gap-2.5 bg-blue-950 border-2 border-blue-500/80 px-3.5 py-2 rounded-xl text-right shadow-md">
+                  <div className="flex items-center gap-1 sm:gap-2.5 bg-blue-950 border sm:border-2 border-blue-500/80 px-2 sm:px-3.5 py-1 sm:py-2 rounded-lg sm:rounded-xl text-right shadow-md shrink-0">
                     <div>
-                      <div className="text-xs sm:text-sm font-black text-blue-400 leading-tight">
-                        {language === 'bn' ? 'ড্রাইভার কেবিন' : 'DRIVER CABIN'}
+                      <div className="text-[10px] sm:text-sm font-black text-blue-400 leading-tight">
+                        <span className="hidden xs:inline">{language === 'bn' ? 'ড্রাইভার কেবিন' : 'DRIVER CABIN'}</span><span className="xs:hidden">{language === 'bn' ? 'ড্রাইভার' : 'DRIVER'}</span>
                       </div>
-                      <div className="text-[10px] sm:text-[11px] text-blue-300 font-bold leading-none mt-0.5">
+                      <div className="hidden sm:block text-[10px] sm:text-[11px] text-blue-300 font-bold leading-none mt-0.5">
                         {language === 'bn' ? 'কন্ট্রোল (Cockpit)' : 'Cockpit'}
                       </div>
                     </div>
-                    <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600/50 border-2 border-blue-300 flex items-center justify-center text-xs font-black text-blue-100">
+                    <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-full bg-blue-600/50 border sm:border-2 border-blue-300 flex items-center justify-center text-[10px] sm:text-xs font-black text-blue-100 shrink-0">
                       ✇
                     </div>
                   </div>
@@ -725,7 +791,7 @@ function LuxuryCoachSeatItem({
               </div>
 
               {/* REALISTIC SEATING GRID */}
-              <div className="space-y-3.5">
+              <div className="space-y-2 xs:space-y-2.5 sm:space-y-3.5">
                 {Array.from({ length: totalRows }).map((_, r) => {
                   const rowCells = tripSeats.filter((c) => c.rowIndex === r);
                   const isLastRow = r === totalRows - 1;
@@ -733,24 +799,24 @@ function LuxuryCoachSeatItem({
                   const rowSegment = getSegmentForRow(rowLabel, activeSegments, rowLetters);
 
                   return (
-                    <div key={r} className="flex items-center justify-between gap-3">
+                    <div key={r} className="flex items-center justify-between gap-1 sm:gap-2.5">
                       {/* Left Seats: Col 0 & Col 1 */}
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-1 sm:gap-2">
                         {renderSeatSlot(rowCells, r, 0, false, rowSegment)}
                         {renderSeatSlot(rowCells, r, 1, false, rowSegment)}
                       </div>
 
                       {/* Middle Aisle Walkway OR 45-Seat Middle Seat (K3 on Row K) OR Custom Middle Seat */}
-                      <div className="flex-1 text-center font-mono flex items-center justify-center">
+                      <div className="flex-1 text-center font-mono flex items-center justify-center px-0.5">
                         {((isLastRow && (activeCapacity === 45 || activeCapacity === 42)) || rowCells.some(c => c.colIndex === 2 && (c.type === 'SEAT' || c.seatType === 'SEAT' || !c.type))) ? (
                           renderSeatSlot(rowCells, r, 2, true, rowSegment)
                         ) : (
-                          <div className="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 min-w-[3.75rem]">
-                            <span className="text-sm sm:text-base font-black tracking-wider text-slate-800 dark:text-slate-100 leading-none">
+                          <div className="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800/80 px-1 py-1 rounded-md sm:rounded-xl border border-slate-200 dark:border-slate-700 min-w-[1.5rem] sm:min-w-[3rem]">
+                            <span className="text-[11px] sm:text-sm font-black tracking-wider text-slate-800 dark:text-slate-200 leading-none">
                               {rowLabel}
                             </span>
                             {rowSegment && (
-                              <span className="text-[11px] font-black font-mono text-blue-600 dark:text-blue-400 mt-1 leading-none">
+                              <span className="text-[8px] sm:text-[10px] font-black font-mono text-blue-600 dark:text-blue-400 mt-0.5 leading-none">
                                 ৳{rowSegment.fare}
                               </span>
                             )}
@@ -759,7 +825,7 @@ function LuxuryCoachSeatItem({
                       </div>
 
                       {/* Right Seats: Col 3 & Col 4 */}
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-1 sm:gap-2">
                         {renderSeatSlot(rowCells, r, 3, false, rowSegment)}
                         {renderSeatSlot(rowCells, r, 4, false, rowSegment)}
                       </div>

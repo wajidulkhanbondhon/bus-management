@@ -11,8 +11,11 @@ from app.models.user import User
 security_scheme = HTTPBearer(auto_error=False)
 
 
+import inspect
+from typing import Optional, List, Any
+
 def extract_token_from_request(
-    request: Request,
+    request: Optional[Request] = None,
     credentials: Optional[HTTPAuthorizationCredentials] = None
 ) -> Optional[str]:
     """
@@ -23,13 +26,14 @@ def extract_token_from_request(
     if credentials and credentials.credentials:
         return credentials.credentials
     
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        return auth_header.split(" ", 1)[1].strip()
+    if request:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            return auth_header.split(" ", 1)[1].strip()
 
-    cookie_token = request.cookies.get("access_token")
-    if cookie_token:
-        return cookie_token
+        cookie_token = request.cookies.get("access_token")
+        if cookie_token:
+            return cookie_token
 
     return None
 
@@ -39,9 +43,14 @@ async def get_current_tenant_id(
     x_tenant_id: Optional[str] = Header(None),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)
 ) -> Optional[str]:
-    """Resolves current Tenant ID from Header or JWT token."""
+    """
+    Extracts tenant_id from:
+    1. Explicit X-Tenant-ID HTTP header
+    2. JWT Claims payload
+    """
     if x_tenant_id:
         return x_tenant_id
+
     token = extract_token_from_request(request, credentials)
     if token:
         payload = decode_token(token)
@@ -51,13 +60,15 @@ async def get_current_tenant_id(
 
 
 async def get_current_user(
-    request: Request,
-    db: WrappedAsyncSession = Depends(get_db),
+    request: Request = None,
+    db: Any = Depends(get_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)
 ) -> User:
     token = extract_token_from_request(request, credentials)
     if not token:
-        logger.warning("auth_failed_missing_token", path=request.url.path, client_ip=request.client.host if request.client else "unknown")
+        path = request.url.path if request else "internal"
+        client_ip = request.client.host if request and request.client else "unknown"
+        logger.warning("auth_failed_missing_token", path=path, client_ip=client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication credentials required",
@@ -66,7 +77,8 @@ async def get_current_user(
 
     payload = decode_token(token)
     if not payload or not payload.get("sub"):
-        logger.warning("auth_failed_invalid_token", path=request.url.path)
+        path = request.url.path if request else "internal"
+        logger.warning("auth_failed_invalid_token", path=path)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired authentication token",
@@ -74,7 +86,9 @@ async def get_current_user(
         )
 
     user_id = payload["sub"]
-    user = await db.query(User).filter((User.id == user_id) | (User.email == user_id), User.is_active == True).first()
+    query = db.query(User).filter((User.id == user_id) | (User.email == user_id), User.is_active == True)
+    res = query.first()
+    user = await res if inspect.iscoroutine(res) else res
     if not user:
         logger.warning("auth_user_not_found", user_id=user_id)
         raise HTTPException(

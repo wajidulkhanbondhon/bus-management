@@ -172,7 +172,21 @@ async def verify_otp(
 
 @router.get("/me", response_model=UserOut)
 async def get_me(current_user: User = Depends(get_current_user)):
-    return current_user
+    role_name = current_user.role.name if getattr(current_user, "role", None) else "STAFF"
+    permissions = []
+    if getattr(current_user, "role", None) and getattr(current_user.role, "permissions", None):
+        permissions = [p.code for p in current_user.role.permissions if hasattr(p, "code")]
+    return UserOut(
+        id=current_user.id,
+        email=current_user.email,
+        full_name=current_user.full_name,
+        phone=current_user.phone,
+        role=role_name,
+        tenant_id=current_user.tenant_id,
+        discount_limit=current_user.discount_limit or 0.0,
+        is_active=current_user.is_active,
+        permissions=permissions
+    )
 
 
 @router.post("/passenger-verify", response_model=PassengerVerifyResponse)

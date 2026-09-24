@@ -552,7 +552,13 @@ async def resolve_requested_seats(
                 cell = by_label[lbl]
 
         # Extra seat auto-materialization:
-        if not cell and (label_in.startswith("EX") or "EX" in raw_id.upper() or label_in.isdigit() or r.get("is_extra")):
+        is_extra = bool(
+            re.match(r'^(?:EX|EXTRA)[-_]?\d+$', raw_id.strip(), re.IGNORECASE)
+            or re.match(r'^(?:EX|EXTRA)[-_]?\d+$', label_in.strip(), re.IGNORECASE)
+            or label_in.isdigit()
+            or r.get("is_extra")
+        )
+        if not cell and is_extra:
             effective_ex_label = label_in if label_in.startswith("EX") else (f"EX-{label_in}" if label_in.isdigit() else seat_label_of(raw_id))
             if not effective_ex_label.startswith("EX"):
                 m_dig = re.search(r'\d+', effective_ex_label)
@@ -832,7 +838,10 @@ async def validate_booking_request_seats(
 
     cells = await layout_cells(db, trip)
     by_label: Dict[str, Dict[str, Any]] = {}
+    by_id: Dict[str, Dict[str, Any]] = {}
     for c in cells:
+        if c.get("seat_id"):
+            by_id[c["seat_id"].upper()] = c
         if c.get("seat_number"):
             by_label[c["seat_number"].upper()] = c
 
@@ -849,10 +858,22 @@ async def validate_booking_request_seats(
     for p in passengers:
         raw_id = (p.seat_id or "").strip()
         label = canonicalize_seat_label(p.seat_number or seat_label_of(raw_id))
-        cell = by_label.get(label) or (by_label.get(canonicalize_seat_label(raw_id)) if raw_id else None)
+        cell = None
+        if label and label in by_label:
+            cell = by_label[label]
+        elif raw_id and raw_id.upper() in by_id:
+            cell = by_id[raw_id.upper()]
+        elif raw_id:
+            cell = by_label.get(canonicalize_seat_label(raw_id))
 
         # Extra seat auto-materialization:
-        if not cell and (label.startswith("EX") or "EX" in raw_id.upper() or label.isdigit() or getattr(p, "is_extra", False)):
+        is_extra = bool(
+            re.match(r'^(?:EX|EXTRA)[-_]?\d+$', raw_id.strip(), re.IGNORECASE)
+            or re.match(r'^(?:EX|EXTRA)[-_]?\d+$', label.strip(), re.IGNORECASE)
+            or label.isdigit()
+            or getattr(p, "is_extra", False)
+        )
+        if not cell and is_extra:
             effective_ex_label = label if label.startswith("EX") else (f"EX-{label}" if label.isdigit() else seat_label_of(raw_id))
             if not effective_ex_label.startswith("EX"):
                 m_dig = re.search(r'\d+', effective_ex_label)

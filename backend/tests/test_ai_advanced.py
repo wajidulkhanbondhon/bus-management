@@ -7,12 +7,12 @@ Automated test suite for AI advanced features:
 """
 
 import json
-from app.db.session import SessionLocal, engine
-from app.db.session import Base
+from app.db.session import SessionLocal, sync_engine, Base
 import app.models  # Ensure models are loaded
 
 # Create all tables before running tests
-Base.metadata.create_all(bind=engine)
+if sync_engine:
+    Base.metadata.create_all(bind=sync_engine)
 
 from app.ai.context import AIContext, DataConfidence
 from app.ai.orchestrator import AIOrchestrator

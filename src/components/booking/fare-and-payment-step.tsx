@@ -59,6 +59,12 @@ export interface FarePaymentProps {
   netAmount: number;
   dueAmount: number;
   paymentMethod: PaymentMethod;
+  processingFee?: number;
+  onProcessingFeeChange?: (fee: number) => void;
+  vatTaxAmount?: number;
+  onVatTaxAmountChange?: (tax: number) => void;
+  cashoutCharge?: number;
+  onCashoutChargeChange?: (charge: number) => void;
   senderSourceType: SenderSourceType;
   selectedBankName: string;
   paidAmount: number;
@@ -129,6 +135,12 @@ export function FareAndPaymentStep({
   netAmount,
   dueAmount,
   paymentMethod,
+  processingFee = 0,
+  onProcessingFeeChange,
+  vatTaxAmount = 0,
+  onVatTaxAmountChange,
+  cashoutCharge = 0,
+  onCashoutChargeChange,
   senderSourceType,
   selectedBankName,
   paidAmount,
@@ -536,7 +548,165 @@ export function FareAndPaymentStep({
             )}
           </div>
 
-          {/* Fare summary */}
+          {/* Fee, VAT & MFS Cashout Inputs (Always Visible, Default 0) */}
+          {(onProcessingFeeChange || onVatTaxAmountChange || onCashoutChargeChange) && (
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-200 dark:border-slate-800 text-xs font-black text-slate-800 dark:text-slate-200">
+                <span className="flex items-center gap-2">
+                  <span>⚙️</span>
+                  <span>{language === 'bn' ? 'প্রসেসিং ফি, ভ্যাট ও ক্যাশআউট চার্জ সমন্বয়' : 'Fees, VAT & Cashout Charges'}</span>
+                </span>
+                <span className="text-[11px] font-normal text-slate-500 font-mono">
+                  {language === 'bn' ? 'ডিফল্ট ০৳ (প্রয়োজনে পরিবর্তন করুন)' : 'Default ৳0 (Editable)'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Processing Fee */}
+                {onProcessingFeeChange && (
+                  <div className="space-y-1.5 bg-white dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                        {language === 'bn' ? 'প্রসেসিং ফি' : 'Processing Fee'}
+                      </label>
+                      <span className="text-[10px] font-mono text-slate-400 font-medium">টাকা</span>
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1.5 font-bold text-blue-600 text-xs">৳</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={processingFee === 0 ? '' : processingFee}
+                        onChange={(e) => onProcessingFeeChange(Math.max(0, Number(e.target.value) || 0))}
+                        placeholder="০ টাকা"
+                        className="w-full pl-6 pr-10 py-1.5 text-xs font-mono font-black bg-slate-50 dark:bg-slate-900 border rounded-lg focus:border-blue-500"
+                      />
+                      <span className="absolute right-2 top-2 text-[10px] font-bold text-slate-400 font-mono">টাকা</span>
+                    </div>
+                    <div className="flex gap-1 pt-0.5">
+                      {[0, 10, 20, 30, 50].map((f) => (
+                        <button
+                          key={f}
+                          type="button"
+                          onClick={() => onProcessingFeeChange(f)}
+                          className={`flex-1 py-0.5 rounded text-[9px] font-mono font-bold transition-all cursor-pointer ${
+                            processingFee === f
+                              ? 'bg-blue-600 text-white shadow-2xs'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-950 hover:text-blue-600'
+                          }`}
+                        >
+                          ৳{f}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* VAT / Tax */}
+                {onVatTaxAmountChange && (
+                  <div className="space-y-1.5 bg-white dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                        {language === 'bn' ? 'ভ্যাট / ট্যাক্স' : 'VAT / Tax'}
+                      </label>
+                      <span className="text-[10px] font-mono text-slate-400 font-medium">টাকা</span>
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1.5 font-bold text-indigo-600 text-xs">৳</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={vatTaxAmount === 0 ? '' : vatTaxAmount}
+                        onChange={(e) => onVatTaxAmountChange(Math.max(0, Number(e.target.value) || 0))}
+                        placeholder="০ টাকা"
+                        className="w-full pl-6 pr-10 py-1.5 text-xs font-mono font-black bg-slate-50 dark:bg-slate-900 border rounded-lg focus:border-indigo-500"
+                      />
+                      <span className="absolute right-2 top-2 text-[10px] font-bold text-slate-400 font-mono">টাকা</span>
+                    </div>
+                    <div className="flex gap-1 pt-0.5">
+                      {[0, 10, 25, 50].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => onVatTaxAmountChange(v)}
+                          className={`flex-1 py-0.5 rounded text-[9px] font-mono font-bold transition-all cursor-pointer ${
+                            vatTaxAmount === v
+                              ? 'bg-indigo-600 text-white shadow-2xs'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950 hover:text-indigo-600'
+                          }`}
+                        >
+                          ৳{v}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => onVatTaxAmountChange(Math.round(grossAmount * 0.05))}
+                        className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[9px] font-mono font-bold text-slate-700 dark:text-slate-300 hover:bg-indigo-600 hover:text-white transition-colors cursor-pointer"
+                        title="৫% ভ্যাট"
+                      >
+                        ৫%
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cashout Fee */}
+                {onCashoutChargeChange && (
+                  <div className={`space-y-1.5 p-2.5 rounded-xl border ${
+                    paymentMethod === 'BKASH' || paymentMethod === 'NAGAD' || paymentMethod === 'ROCKET'
+                      ? 'bg-pink-50/70 dark:bg-pink-950/20 border-pink-200 dark:border-pink-800'
+                      : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-pink-900 dark:text-pink-300 flex items-center gap-1">
+                        <span>📱</span>
+                        <span>{language === 'bn' ? 'বিকাশ/নগদ ক্যাশআউট চার্জ' : 'Cashout Charge'}</span>
+                      </label>
+                      <span className="text-[10px] font-mono text-slate-400 font-medium">সরাসরি টাকা</span>
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1.5 font-bold text-pink-600 text-xs">৳</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={cashoutCharge === 0 ? '' : cashoutCharge}
+                        onChange={(e) => onCashoutChargeChange(Math.max(0, Number(e.target.value) || 0))}
+                        placeholder="০ টাকা"
+                        className="w-full pl-6 pr-10 py-1.5 text-xs font-mono font-black bg-slate-50 dark:bg-slate-900 border border-pink-200 dark:border-pink-900 rounded-lg focus:border-pink-500"
+                      />
+                      <span className="absolute right-2 top-2 text-[10px] font-bold text-pink-400 font-mono">টাকা</span>
+                    </div>
+                    <div className="flex gap-1 pt-0.5 items-center">
+                      {[0, 10, 15, 20].map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => onCashoutChargeChange(c)}
+                          className={`flex-1 py-0.5 rounded text-[9px] font-mono font-bold transition-all cursor-pointer ${
+                            cashoutCharge === c
+                              ? 'bg-pink-600 text-white shadow-2xs'
+                              : 'bg-pink-100/70 dark:bg-pink-900/40 text-pink-800 dark:text-pink-200 hover:bg-pink-600 hover:text-white'
+                          }`}
+                        >
+                          ৳{c}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => onCashoutChargeChange(Math.round(grossAmount * 0.015))}
+                        className="px-1.5 py-0.5 rounded bg-pink-600 text-white text-[9px] font-mono font-bold hover:bg-pink-700 transition-colors cursor-pointer shrink-0"
+                        title="১.৫% ক্যাশআউট চার্জ"
+                      >
+                        ১.৫%
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Fare summary - Always Showing Fee Rows with 0 Default */}
           <div className="p-4 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
             <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 font-medium">
               <span>{language === 'bn' ? 'মোট টিকিট মূল্য (Gross Fare):' : 'Gross Fare:'}</span>
@@ -548,6 +718,18 @@ export function FareAndPaymentStep({
                 <span className="font-mono font-bold">- {formatCurrency(Math.min(discountType === 'PERCENTAGE' ? Math.round((grossAmount * discountRate) / 100) : discountRate, grossAmount))}</span>
               </div>
             )}
+            <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 font-medium">
+              <span>{language === 'bn' ? 'অনলাইন প্রসেসিং ফি:' : 'Processing Fee:'}</span>
+              <span className="font-mono font-bold">{processingFee > 0 ? `+ ${formatCurrency(processingFee)}` : formatCurrency(0)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 font-medium">
+              <span>{language === 'bn' ? 'ভ্যাট ও সার্ভিস কর:' : 'VAT & Service Tax:'}</span>
+              <span className="font-mono font-bold">{vatTaxAmount > 0 ? `+ ${formatCurrency(vatTaxAmount)}` : formatCurrency(0)}</span>
+            </div>
+            <div className={`flex justify-between text-xs font-medium ${cashoutCharge > 0 ? 'text-pink-700 dark:text-pink-400 font-bold' : 'text-slate-600 dark:text-slate-400'}`}>
+              <span>{language === 'bn' ? 'বিকাশ/নগদ ক্যাশআউট চার্জ:' : 'MFS Cashout Charge:'}</span>
+              <span className="font-mono font-bold">{cashoutCharge > 0 ? `+ ${formatCurrency(cashoutCharge)}` : formatCurrency(0)}</span>
+            </div>
             <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex justify-between text-base font-black text-slate-900 dark:text-white">
               <span>{language === 'bn' ? 'চূড়ান্ত প্রদেয় নেট ভাড়া (Net Amount):' : 'Final Net Amount:'}</span>
               <span className="font-mono text-blue-600 dark:text-blue-400">{formatCurrency(netAmount)}</span>
@@ -1675,7 +1857,7 @@ export function FareAndPaymentStep({
             }
 
             // 2. Sender reference validation
-            if (paymentMethod !== 'HAND_CASH') {
+            if (paymentMethod !== 'HAND_CASH' && paidAmount > 0) {
               if (senderSourceType === 'MFS_WALLET') {
                 const clean = cleanAndLimitPhoneNumber(senderRef);
                 if (!clean) {

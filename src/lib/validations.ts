@@ -76,15 +76,24 @@ export const CreateBookingSchema = z.object({
   boardingPoint: z.string().max(200).optional().nullable(),
   droppingPoint: z.string().max(200).optional().nullable(),
   passengerLegsJson: z.string().optional().nullable(),
+  processingFee: z.number().min(0).optional().default(0),
+  vatAmount: z.number().min(0).optional().default(0),
+  cashoutFee: z.number().min(0).optional().default(0),
   transactionId: z.string().max(100).optional(),
   senderReference: z.string().max(100).optional(),
   notes: z.string().max(1000).optional(),
   createdById: z.string().optional(),
 }).refine(data => {
   const gross = data.seats.reduce((sum, s) => sum + s.fare, 0);
-  return data.paidAmount <= gross;
+  const discountVal = data.discountRate || 0;
+  const discountAmt = data.discountType === 'PERCENTAGE'
+    ? Math.round((gross * discountVal) / 100)
+    : discountVal;
+  const maxPayable = Math.max(0, gross - discountAmt + (data.processingFee || 0) + (data.vatAmount || 0) + (data.cashoutFee || 0));
+  // Paid amount should not exceed net total payable (with a small buffer of 1 Tk for rounding)
+  return data.paidAmount <= maxPayable + 1;
 }, {
-  message: 'Paid amount cannot exceed total gross fare',
+  message: 'Paid amount cannot exceed total payable fare including fees',
   path: ['paidAmount']
 });
 

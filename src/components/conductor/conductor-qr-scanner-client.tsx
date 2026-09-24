@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import { useApp } from '@/lib/context';
+import { fastApiClient } from '@/lib/api-client';
 
 interface Props {
   initialBookings: any[];
@@ -36,20 +37,49 @@ export function ConductorQrScannerClient({ initialBookings }: Props) {
   const [scannedResult, setScannedResult] = useState<any | null>(null);
   const [boardedRecords, setBoardedRecords] = useState<Record<string, { time: string; supervisor: string }>>({});
   const [feedbackNotice, setFeedbackNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [loadingVerify, setLoadingVerify] = useState(false);
 
   // Stats
   const totalPassengers = initialBookings.length;
   const totalBoarded = Object.keys(boardedRecords).length;
 
-  const handleVerifyTicket = (rawQuery: string) => {
+  const playSuccessBeep = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+      osc.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.15);
+    } catch {}
+  };
+
+  const handleVerifyTicket = async (rawQuery: string) => {
     const q = rawQuery.trim().toLowerCase();
     if (!q) return;
 
-    const found = initialBookings.find((b) => {
+    // 1. Try finding in memory initialBookings
+    let found = initialBookings.find((b) => {
       const bNum = (b.booking_number || b.bookingNumber || '').toLowerCase();
       const phone = (b.contact_phone || b.contactPhone || b.passengers?.[0]?.passenger_phone || '').toLowerCase();
       return bNum.includes(q) || phone.includes(q);
     });
+
+    // 2. If not found in memory, query live backend tracking API
+    if (!found) {
+      try {
+        setLoadingVerify(true);
+        const liveRes: any = await fastApiClient.trackBooking(rawQuery.trim());
+        if (liveRes && (liveRes.id || liveRes.booking_number || liveRes.data)) {
+          found = liveRes.data || liveRes;
+        }
+      } catch {
+        // tracking api error
+      } finally {
+        setLoadingVerify(false);
+      }
+    }
 
     if (found) {
       setScannedResult(found);
@@ -57,16 +87,7 @@ export function ConductorQrScannerClient({ initialBookings }: Props) {
         type: 'success',
         text: language === 'bn' ? 'টিকিট সফলভাবে সনাক্ত হয়েছে!' : 'Ticket successfully identified!'
       });
-      // Audio beep feedback if supported
-      try {
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-        osc.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.15);
-      } catch (e) {}
+      playSuccessBeep();
     } else {
       setScannedResult(null);
       setFeedbackNotice({
@@ -189,10 +210,11 @@ export function ConductorQrScannerClient({ initialBookings }: Props) {
                   />
                   <Button
                     variant="primary"
+                    disabled={loadingVerify}
                     onClick={() => handleVerifyTicket(manualCode)}
                     className="rounded-xl shrink-0 font-bold text-xs"
                   >
-                    যাচাই
+                    {loadingVerify ? 'যাচাই হচ্ছে...' : 'যাচাই'}
                   </Button>
                 </div>
               </div>

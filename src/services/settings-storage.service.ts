@@ -255,8 +255,15 @@ export interface OrganizationSettingsState {
 
   // 21. Finance & Cash Drawer
   finance: {
+    taxCalculationType?: 'FIXED' | 'PERCENTAGE';
+    taxFixedAmount?: number;
     taxRatePercent: number;
     serviceChargePercent: number;
+    defaultProcessingFee: number;
+    mfsCashoutCalculationType?: 'FIXED' | 'PERCENTAGE';
+    defaultMfsCashoutFixed?: number;
+    defaultMfsCashoutPercent: number;
+    autoApplyMfsCashout: boolean;
     businessDayClosingTime: string;
     allowReopenClosedDay: boolean;
     reopenRequiresAdmin: boolean;
@@ -677,8 +684,15 @@ export const DEFAULT_ORGANIZATION_SETTINGS: OrganizationSettingsState = {
     preventDuplicateTrxId: true
   },
   finance: {
+    taxCalculationType: 'FIXED',
+    taxFixedAmount: 0,
     taxRatePercent: 0,
     serviceChargePercent: 0,
+    defaultProcessingFee: 0,
+    mfsCashoutCalculationType: 'FIXED',
+    defaultMfsCashoutFixed: 0,
+    defaultMfsCashoutPercent: 1.5,
+    autoApplyMfsCashout: true,
     businessDayClosingTime: '23:59',
     allowReopenClosedDay: true,
     reopenRequiresAdmin: true

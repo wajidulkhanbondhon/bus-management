@@ -246,8 +246,12 @@ export function SupervisorPortalClient() {
   const loadDynamicTripData = async (targetTripId?: string) => {
     try {
       setLoadingData(true);
-      const tripsRes = await fastApiClient.getTrips();
-      const tripsList = Array.isArray(tripsRes) ? tripsRes : [];
+      const tripsRes: any = await fastApiClient.getTrips();
+      const tripsList = Array.isArray(tripsRes?.data)
+        ? tripsRes.data
+        : Array.isArray(tripsRes)
+        ? tripsRes
+        : [];
       setAvailableTrips(tripsList);
 
       const activeTrip = (targetTripId ? tripsList.find((t: any) => t.id === targetTripId) : null) || tripsList[0];
@@ -270,8 +274,12 @@ export function SupervisorPortalClient() {
         }));
 
         try {
-          const bookingsRes = await fastApiClient.getBookings();
-          const allBookings = Array.isArray(bookingsRes) ? bookingsRes : [];
+          const bookingsRes: any = await fastApiClient.getBookings();
+          const allBookings = Array.isArray(bookingsRes?.data)
+            ? bookingsRes.data
+            : Array.isArray(bookingsRes)
+            ? bookingsRes
+            : [];
           const tripBookings = allBookings.filter((b: any) => b.trip_id === activeTrip.id || b.tripId === activeTrip.id);
 
           if (tripBookings.length > 0) {
@@ -394,7 +402,7 @@ export function SupervisorPortalClient() {
   };
 
   // Collect cash due on the bus
-  const handleCollectDue = (id: string, amount: number) => {
+  const handleCollectDue = async (id: string, amount: number) => {
     const updated = passengers.map((p) =>
       p.id === id ? { ...p, paidAmount: p.totalAmount, dueAmount: 0 } : p
     );
@@ -404,6 +412,23 @@ export function SupervisorPortalClient() {
     if (typeof window !== 'undefined') {
       localStorage.setItem(`atoms_supervisor_passengers_${busInfo.id}`, JSON.stringify(updated));
     }
+
+    // Persist payment to backend database if booking exists
+    try {
+      const targetPassenger = passengers.find((p) => p.id === id);
+      const bookingId = id.includes('-') ? id.split('-')[0] : id;
+      if (bookingId && !bookingId.startsWith('p-')) {
+        await fastApiClient.recordPayment({
+          booking_id: bookingId,
+          amount: amount,
+          method: 'HAND_CASH',
+          notes: `Collected on bus by Supervisor (${busInfo.supervisorName || 'Supervisor'}) for ${targetPassenger?.name || 'Passenger'}`,
+        });
+      }
+    } catch {
+      // payment logged locally
+    }
+
     success('ক্যাশ আদায় সফল', `যাত্রী থেকে ৳${amount} ক্যাশ আদায় করা হয়েছে এবং আপনার ব্যালেন্সে যোগ হয়েছে।`);
   };
 
@@ -452,6 +477,8 @@ export function SupervisorPortalClient() {
         totalPassengers={totalPassengers}
         remainingCash={remainingCash}
         onLogout={handleLogout}
+        availableTrips={availableTrips}
+        onSelectTrip={(tripId) => loadDynamicTripData(tripId)}
       />
 
       {/* Live Assigned Bus / Trip Selector Bar */}

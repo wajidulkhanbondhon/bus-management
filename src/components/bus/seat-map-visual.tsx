@@ -77,7 +77,7 @@ export function LuxuryCoachSeatCell({
 
   if (!seat) {
     // aisle space
-    return <div className="w-14 h-15 sm:w-16 sm:h-17 shrink-0" aria-hidden />;
+    return <div className="w-11 h-12 xs:w-12 xs:h-13 sm:w-16 sm:h-17 shrink-0" aria-hidden />;
   }
 
   const isBooked =
@@ -104,7 +104,7 @@ export function LuxuryCoachSeatCell({
       {/* 3D Left Armrest */}
       <div
         className={cn(
-          'absolute -left-1.5 top-3.5 bottom-3.5 w-1.5 rounded-full transition-all duration-200 z-10',
+          'absolute -left-1 sm:-left-1.5 top-2.5 sm:top-3.5 bottom-2.5 sm:bottom-3.5 w-1 sm:w-1.5 rounded-full transition-all duration-200 z-10',
           isSelected
             ? 'bg-blue-400 shadow-sm shadow-blue-500/50'
             : isBooked
@@ -120,7 +120,7 @@ export function LuxuryCoachSeatCell({
       {/* 3D Right Armrest */}
       <div
         className={cn(
-          'absolute -right-1.5 top-3.5 bottom-3.5 w-1.5 rounded-full transition-all duration-200 z-10',
+          'absolute -right-1 sm:-right-1.5 top-2.5 sm:top-3.5 bottom-2.5 sm:bottom-3.5 w-1 sm:w-1.5 rounded-full transition-all duration-200 z-10',
           isSelected
             ? 'bg-blue-400 shadow-sm shadow-blue-500/50'
             : isBooked
@@ -133,9 +133,9 @@ export function LuxuryCoachSeatCell({
         )}
       />
 
-      {/* Floating Holographic Tooltip on Hover */}
+      {/* Floating Holographic Tooltip on Hover (Desktop Only) */}
       {hovered && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-150">
+        <div className="hidden sm:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-150">
           <div className="bg-slate-950 text-white text-[11px] rounded-2xl p-3 whitespace-nowrap shadow-2xl border border-slate-700 leading-snug min-w-[130px] text-center backdrop-blur-md">
             <div className="flex items-center justify-center gap-1.5 mb-1">
               <span className="font-mono font-black text-sm text-amber-300">{seat.label}</span>
@@ -175,10 +175,10 @@ export function LuxuryCoachSeatCell({
         disabled={!isClickable && !isSelected}
         onClick={() => isClickable && onClick?.(seat)}
         className={cn(
-          'w-14 h-15 sm:w-16 sm:h-17 shrink-0 p-1 sm:p-1.5 rounded-2xl flex flex-col items-center justify-between font-black transition-all duration-200 ease-out relative select-none cursor-pointer overflow-hidden border-2',
+          'w-11 h-12 xs:w-12 xs:h-13 sm:w-16 sm:h-17 shrink-0 p-0.5 xs:p-1 sm:p-1.5 rounded-lg xs:rounded-xl sm:rounded-2xl flex flex-col items-center justify-between font-black transition-all duration-200 ease-out relative select-none cursor-pointer overflow-hidden border xs:border-2',
           // Selected: Solid royal indigo/blue with neon glow & ring
           isSelected
-            ? 'bg-gradient-to-b from-blue-500 via-indigo-600 to-blue-700 text-white border-blue-300 shadow-xl shadow-blue-500/50 ring-4 ring-blue-400/50 -translate-y-1 z-20 scale-105'
+            ? 'bg-gradient-to-b from-blue-500 via-indigo-600 to-blue-700 text-white border-blue-300 shadow-xl shadow-blue-500/50 ring-2 sm:ring-4 ring-blue-400/50 -translate-y-0.5 sm:-translate-y-1 z-20 scale-105'
             : // Booked Female: Luxury rose-pink quilted leather
             isFemale && isBooked
             ? 'bg-gradient-to-b from-pink-50 via-pink-100 to-pink-200 dark:from-pink-950/80 dark:via-pink-900/80 dark:to-pink-950/90 text-pink-950 dark:text-pink-100 border-pink-400 dark:border-pink-600 shadow-xs cursor-not-allowed opacity-85'
@@ -190,7 +190,7 @@ export function LuxuryCoachSeatCell({
             ? 'bg-gradient-to-b from-rose-50 via-rose-100 to-rose-200 dark:from-rose-950/80 dark:via-rose-900/80 dark:to-rose-950/90 text-rose-950 dark:text-rose-200 border-rose-400 dark:border-rose-700 opacity-80 shadow-xs cursor-not-allowed'
             : // Held: Amber glow
             isHeld
-            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/80 dark:to-amber-900/80 text-amber-950 dark:text-amber-200 border-amber-400 dark:border-amber-600 opacity-85 shadow-xs cursor-not-allowed'
+            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/80 dark:via-amber-900/80 text-amber-950 dark:text-amber-200 border-amber-400 dark:border-amber-600 opacity-85 shadow-xs cursor-not-allowed'
             : // Locked
             isLocked
             ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 border-slate-300 dark:border-slate-700 opacity-55 cursor-not-allowed'
@@ -210,7 +210,7 @@ export function LuxuryCoachSeatCell({
         {/* 1. Ergonomic Contoured Headrest Pillow */}
         <div
           className={cn(
-            'w-8 sm:w-10 h-2 rounded-full shadow-md transition-all duration-200 border border-black/10 flex items-center justify-center',
+            'w-6 xs:w-8 sm:w-10 h-1 sm:h-2 rounded-full shadow-md transition-all duration-200 border border-black/10 flex items-center justify-center',
             isSelected
               ? 'bg-white text-blue-700 shadow-white/40'
               : isBooked
@@ -238,7 +238,7 @@ export function LuxuryCoachSeatCell({
         <div className="relative z-10 flex items-center justify-center my-0.5">
           <span
             className={cn(
-              'text-sm sm:text-base font-black tracking-tight leading-none font-mono drop-shadow-xs',
+              'text-xs xs:text-sm sm:text-base font-black tracking-tight leading-none font-mono drop-shadow-xs',
               isSelected
                 ? 'text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]'
                 : 'text-slate-900 dark:text-slate-100'
@@ -251,30 +251,30 @@ export function LuxuryCoachSeatCell({
         {/* 3. Luxury Inset Fare / Status Badge with Micro-Indicators */}
         <div
           className={cn(
-            'w-full flex items-center justify-center gap-0.5 px-1 py-0.5 rounded-lg overflow-hidden backdrop-blur-md transition-colors relative z-10 border',
+            'w-full flex items-center justify-center gap-0.5 px-0.5 sm:px-1 py-0.5 rounded sm:rounded-lg overflow-hidden backdrop-blur-md transition-colors relative z-10 border',
             isSelected
               ? 'bg-black/30 text-white border-white/30'
               : 'bg-black/5 dark:bg-white/10 border-black/5 dark:border-white/5'
           )}
         >
           {isSelected ? (
-            <span className="text-[10px] sm:text-xs font-black font-mono leading-none tracking-tight flex items-center gap-0.5 text-white">
-              <Check className="w-3 h-3 stroke-[3]" /> ৳{seatFare}
+            <span className="text-[9px] xs:text-[10px] sm:text-xs font-black font-mono leading-none tracking-tight flex items-center gap-0.5 text-white">
+              <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[3]" /> ৳{seatFare}
             </span>
           ) : isBooked ? (
-            <span className="text-[9px] sm:text-[10px] font-black tracking-tight text-rose-800 dark:text-rose-200 leading-none flex items-center gap-0.5">
+            <span className="text-[8px] xs:text-[9px] sm:text-[10px] font-black tracking-tight text-rose-800 dark:text-rose-200 leading-none flex items-center gap-0.5">
               {isFemale ? '♀ বুকড' : isMale ? '♂ বুকড' : 'বুকড'}
             </span>
           ) : isHeld ? (
-            <span className="text-[9px] sm:text-[10px] font-black tracking-tight text-amber-800 dark:text-amber-200 leading-none">
+            <span className="text-[8px] xs:text-[9px] sm:text-[10px] font-black tracking-tight text-amber-800 dark:text-amber-200 leading-none">
               হোল্ড
             </span>
           ) : isLocked ? (
-            <span className="text-[9px] sm:text-[10px] font-black tracking-tight text-slate-700 dark:text-slate-300 leading-none">
+            <span className="text-[8px] xs:text-[9px] sm:text-[10px] font-black tracking-tight text-slate-700 dark:text-slate-300 leading-none">
               লক
             </span>
           ) : (
-            <span className="text-[10px] sm:text-xs font-black font-mono leading-none tracking-tight flex items-center gap-0.5">
+            <span className="text-[9px] xs:text-[10px] sm:text-xs font-black font-mono leading-none tracking-tight flex items-center gap-0.5">
               <span>৳{seatFare}</span>
               {isFemale && <span className="text-[8px] text-pink-600 dark:text-pink-400">♀</span>}
               {isMale && <span className="text-[8px] text-blue-600 dark:text-blue-400">♂</span>}
@@ -387,26 +387,26 @@ export function SeatMapVisual({
       </div>
 
       {/* ── 3. Ultra-Luxury Realistic Coach Frame (Metallic Chassis) ── */}
-      <div className="relative bg-gradient-to-b from-slate-100 via-slate-50 to-slate-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-900 border-4 border-slate-300 dark:border-slate-800 rounded-3xl p-4 sm:p-7 shadow-2xl overflow-x-auto ring-1 ring-white/20">
+      <div className="relative bg-gradient-to-b from-slate-100 via-slate-50 to-slate-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-900 border-2 sm:border-4 border-slate-300 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-2 xs:p-3 sm:p-7 shadow-2xl overflow-x-auto ring-1 ring-white/20">
         {/* Exterior Aerodynamic Windshield Hood */}
-        <div className="mb-6 pb-5 border-b-2 border-dashed border-slate-300 dark:border-slate-700/80">
+        <div className="mb-4 sm:mb-6 pb-3 sm:pb-5 border-b-2 border-dashed border-slate-300 dark:border-slate-700/80">
           {/* Tinted Aerodynamic Glass Windshield with Wiper Accents */}
-          <div className="relative h-10 rounded-t-3xl bg-gradient-to-b from-blue-900/60 via-indigo-950/40 to-transparent border-t-3 border-x-3 border-blue-400/50 mb-4 flex items-center justify-between px-6 shadow-inner overflow-hidden">
-            <div className="w-12 h-1 bg-slate-400 rounded-full transform -rotate-12 opacity-40" />
-            <div className="flex items-center gap-2 px-3 py-0.5 rounded-full bg-black/40 border border-white/10 backdrop-blur-md text-[10px] font-mono text-cyan-300 font-bold tracking-widest uppercase shadow-sm">
-              <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
-              <span>LUXURY EXPRESS COACH • FRONT CABIN</span>
+          <div className="relative h-8 sm:h-10 rounded-t-2xl sm:rounded-t-3xl bg-gradient-to-b from-blue-900/60 via-indigo-950/40 to-transparent border-t-2 sm:border-t-3 border-x-2 sm:border-x-3 border-blue-400/50 mb-3 sm:mb-4 flex items-center justify-between px-3 sm:px-6 shadow-inner overflow-hidden">
+            <div className="w-8 sm:w-12 h-1 bg-slate-400 rounded-full transform -rotate-12 opacity-40" />
+            <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-0.5 rounded-full bg-black/40 border border-white/10 backdrop-blur-md text-[9px] sm:text-[10px] font-mono text-cyan-300 font-bold tracking-wider sm:tracking-widest uppercase shadow-sm truncate">
+              <Radio className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-cyan-400 animate-pulse shrink-0" />
+              <span className="truncate">LUXURY EXPRESS COACH • FRONT</span>
             </div>
-            <div className="w-12 h-1 bg-slate-400 rounded-full transform rotate-12 opacity-40" />
+            <div className="w-8 sm:w-12 h-1 bg-slate-400 rounded-full transform rotate-12 opacity-40" />
           </div>
 
           {/* Cabin Dashboard: Passenger Door vs Driver Steering Area */}
-          <div className="flex items-center justify-between px-2 sm:px-4">
+          <div className="flex items-center justify-between px-1 sm:px-4 gap-1.5">
             {/* Passenger Entry Staircase & LED Runner */}
-            <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-gradient-to-r from-emerald-500/20 to-teal-500/10 border-2 border-emerald-500/40 text-emerald-900 dark:text-emerald-200 text-xs font-black shadow-md backdrop-blur-md">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-              <Footprints className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>🚪 প্যাসেঞ্জার প্রবেশদ্বার (Entry Gate)</span>
+            <div className="flex items-center gap-1.5 sm:gap-2.5 px-2 xs:px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl bg-gradient-to-r from-emerald-500/20 to-teal-500/10 border border-emerald-500/40 text-emerald-900 dark:text-emerald-200 text-[10px] sm:text-xs font-black shadow-xs sm:shadow-md backdrop-blur-md">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <Footprints className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 hidden xs:inline" />
+              <span>🚪 গেট</span>
             </div>
 
             {/* Direction Vector */}
@@ -416,26 +416,26 @@ export function SeatMapVisual({
             </div>
 
             {/* Driver Cockpit Console */}
-            <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-gradient-to-r from-slate-200 to-slate-300 dark:from-slate-800 dark:to-slate-750 border-2 border-slate-400 dark:border-slate-600 text-slate-900 dark:text-slate-100 text-xs font-black shadow-md">
-              <span className="text-base animate-spin-slow">🛞</span>
-              <span>ড্রাইভার কন্ট্রোল কেবিন</span>
+            <div className="flex items-center gap-1.5 sm:gap-2.5 px-2 xs:px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl bg-gradient-to-r from-slate-200 to-slate-300 dark:from-slate-800 dark:to-slate-750 border border-slate-400 dark:border-slate-600 text-slate-900 dark:text-slate-100 text-[10px] sm:text-xs font-black shadow-xs sm:shadow-md">
+              <span className="text-sm sm:text-base animate-spin-slow">🛞</span>
+              <span>ড্রাইভার</span>
             </div>
           </div>
         </div>
 
         {/* ── 4. Coach Recliner Grid (2x2 with Ambient Illuminated Aisle) ── */}
-        <div className="flex flex-col gap-3.5 items-center min-w-[340px] py-1">
+        <div className="flex flex-col gap-2.5 sm:gap-3.5 items-center w-full py-1">
           {rows.map((row, rIdx) => (
-            <div key={rIdx} className="flex items-center gap-3 sm:gap-4 relative group/row">
+            <div key={rIdx} className="flex items-center gap-1.5 xs:gap-2 sm:gap-4 relative group/row justify-center w-full">
               {/* Row Letter Metallic Embossed Tag */}
-              <div className="w-6 text-right shrink-0">
-                <span className="text-xs font-black text-slate-400 dark:text-slate-500 font-mono tracking-tight group-hover/row:text-indigo-600 dark:group-hover/row:text-indigo-400 transition-colors">
+              <div className="w-4 xs:w-5 sm:w-6 text-right shrink-0">
+                <span className="text-[10px] xs:text-xs font-black text-slate-400 dark:text-slate-500 font-mono tracking-tight group-hover/row:text-indigo-600 dark:group-hover/row:text-indigo-400 transition-colors">
                   {row.rowLabel}
                 </span>
               </div>
 
               {/* Left 2 Recliners */}
-              <div className="flex gap-2.5 sm:gap-3.5">
+              <div className="flex gap-1.5 xs:gap-2 sm:gap-3.5">
                 {row.left.map((seat, sIdx) => (
                   <LuxuryCoachSeatCell
                     key={sIdx}
@@ -448,16 +448,16 @@ export function SeatMapVisual({
               </div>
 
               {/* Ambient Center Aisle Runner with Glowing Floor Guideway */}
-              <div className="w-8 sm:w-12 flex flex-col items-center justify-center shrink-0 px-1">
-                <div className="h-full w-1 rounded-full bg-gradient-to-b from-indigo-500/20 via-blue-500/40 to-indigo-500/20 shadow-xs shadow-indigo-500/20" />
-                <span className="text-[8.5px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest my-1 select-none">
+              <div className="w-5 xs:w-6 sm:w-12 flex flex-col items-center justify-center shrink-0 px-0.5 sm:px-1">
+                <div className="h-full w-0.5 sm:w-1 rounded-full bg-gradient-to-b from-indigo-500/20 via-blue-500/40 to-indigo-500/20 shadow-xs shadow-indigo-500/20" />
+                <span className="text-[7px] xs:text-[8px] sm:text-[8.5px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest my-0.5 sm:my-1 select-none">
                   AISLE
                 </span>
-                <div className="h-full w-1 rounded-full bg-gradient-to-b from-indigo-500/20 via-blue-500/40 to-indigo-500/20 shadow-xs shadow-indigo-500/20" />
+                <div className="h-full w-0.5 sm:w-1 rounded-full bg-gradient-to-b from-indigo-500/20 via-blue-500/40 to-indigo-500/20 shadow-xs shadow-indigo-500/20" />
               </div>
 
               {/* Right 2 Recliners */}
-              <div className="flex gap-2.5 sm:gap-3.5">
+              <div className="flex gap-1.5 xs:gap-2 sm:gap-3.5">
                 {row.right.map((seat, sIdx) => (
                   <LuxuryCoachSeatCell
                     key={sIdx}
@@ -473,17 +473,17 @@ export function SeatMapVisual({
         </div>
 
         {/* Rear Exit & Executive Last Lounge */}
-        <div className="mt-7 pt-4 border-t-2 border-dashed border-slate-300 dark:border-slate-700/80 flex items-center justify-between px-3 text-xs font-bold text-slate-500">
-          <span className="flex items-center gap-1.5">
+        <div className="mt-5 sm:mt-7 pt-3 sm:pt-4 border-t-2 border-dashed border-slate-300 dark:border-slate-700/80 flex items-center justify-between px-1 sm:px-3 text-[10px] sm:text-xs font-bold text-slate-500 gap-1">
+          <span className="hidden xs:flex items-center gap-1 sm:gap-1.5">
             <span>🛡️</span>
-            <span>সিট বেল্ট ও ফার্স্ট এইড বক্স</span>
+            <span className="hidden sm:inline">সিট বেল্ট ও</span> ফার্স্ট এইড
           </span>
-          <span className="px-3.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold shadow-2xs">
-            🚪 ইমার্জেন্সি রিয়ার এক্সিট
+          <span className="px-2 xs:px-3.5 py-0.5 sm:py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold shadow-2xs text-[10px] sm:text-xs mx-auto xs:mx-0">
+            🚪 ইমার্জেন্সি এক্সিট
           </span>
-          <span className="flex items-center gap-1.5">
+          <span className="hidden xs:flex items-center gap-1 sm:gap-1.5">
             <span>🧯</span>
-            <span>ফায়ার এক্সটিংগুইশার</span>
+            <span>ফায়ার সেফটি</span>
           </span>
         </div>
       </div>

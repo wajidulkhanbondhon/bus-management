@@ -209,7 +209,7 @@ async def seed_database():
             route1 = BusRoute(
                 tenant_id=tenant.id,
                 route_name="Rajshahi to Dhaka University (Curzon & TSC Gate)",
-                origin="Rajshahi (Talaimari/Bhadra/Railgate)",
+                origin="Rajshahi",
                 destination="Dhaka University Campus",
                 distance_km=248.0,
                 est_duration="6h 00m"
@@ -217,7 +217,7 @@ async def seed_database():
             route2 = BusRoute(
                 tenant_id=tenant.id,
                 route_name="Rajshahi to Jahangirnagar University (Dairy Gate)",
-                origin="Rajshahi (Talaimari/Bhadra/Railgate)",
+                origin="Rajshahi",
                 destination="Jahangirnagar University Campus",
                 distance_km=225.0,
                 est_duration="5h 15m"

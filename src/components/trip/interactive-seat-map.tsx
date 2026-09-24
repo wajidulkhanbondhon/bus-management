@@ -54,6 +54,8 @@ import {
 } from '@/services/passenger-directory.service';
 import { OfficialWhatsAppIcon } from '@/components/passenger/passenger-portal-client';
 import { BoardingPointSelector } from '@/components/booking/boarding-point-selector';
+import { PaymentReceiptModal } from '@/components/booking/payment-receipt';
+import { BkashLogo, NagadLogo } from '@/components/booking/payment-brand-icons';
 import { useApp } from '@/lib/context';
 
 interface Props {
@@ -114,6 +116,13 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
   const [createdBooking, setCreatedBooking] = useState<any | null>(null);
   const [whatsappModalData, setWhatsappModalData] = useState<{ name: string; phone: string; pin: string; waUrl: string } | null>(null);
   const [copiedPin, setCopiedPin] = useState(false);
+
+  // Student direct payment states
+  const [paymentChoice, setPaymentChoice] = useState<'BKASH_NAGAD' | 'PAY_LATER'>('BKASH_NAGAD');
+  const [selectedGateway, setSelectedGateway] = useState<'BKASH' | 'NAGAD'>('BKASH');
+  const [trxId, setTrxId] = useState('');
+  const [senderPhone, setSenderPhone] = useState('');
+  const [copiedMerchant, setCopiedMerchant] = useState(false);
 
   // Staff admin lock modal
   const [isLockModalOpen, setIsLockModalOpen] = useState(false);
@@ -283,6 +292,14 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
       }
     }
 
+    // If user selected instant digital payment, require TrxID
+    if (paymentChoice === 'BKASH_NAGAD') {
+      if (!trxId.trim()) {
+        setBookingError(language === 'bn' ? 'বিকাশ বা নগদ ট্রানজেকশন আইডি (TrxID) দিন অথবা "বাসে ওঠার পর পেমেন্ট" নির্বাচন করুন।' : 'Enter bKash/Nagad TrxID or select Pay on Boarding.');
+        return;
+      }
+    }
+
     setIsBookingSubmitting(true);
     try {
       // 1. If PIN was entered, register it server-side
@@ -296,6 +313,10 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
           waUrl
         });
       }
+
+      const paymentNoteStr = paymentChoice === 'BKASH_NAGAD'
+        ? `[ডিজিটাল পেমেন্ট: ${selectedGateway} | TrxID: ${trxId.trim().toUpperCase()} | প্রেরক: ${senderPhone.trim() || cleanPhone}]`
+        : '[পেমেন্ট: বাসে ওঠার পর বা কাউন্টারে ক্যাশ পরিশোধ]';
 
       // 2. Dispatch Pre-Booking Action with Journey Type & Boarding Points
       const res = await createPreBookingAction({
@@ -318,7 +339,7 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
             : journeyType === 'RETURN_ONLY'
             ? 'শুধুমাত্র আসা'
             : 'অভিভাবক সহ স্প্লিট'
-        } | বোর্ডিং: ${boardingPoint || 'কাউন্টার'} | ড্রপিং: ${droppingPoint || 'ক্যাম্পাস'}`
+        } | বোর্ডিং: ${boardingPoint || 'কাউন্টার'} | ড্রপিং: ${droppingPoint || 'ক্যাম্পাস'} | ${paymentNoteStr}`
       });
 
       if (res.success && res.booking) {
@@ -409,7 +430,7 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
   };
 
   function renderRealisticSeatButton(seat?: SeatStatusDetail, isMiddleSeat = false, segment?: FareRangeSegment, positionType?: 'WINDOW' | 'AISLE' | 'MIDDLE') {
-    if (!seat) return <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0" />;
+    if (!seat) return <div className="w-14 h-15 xs:w-16 xs:h-16 sm:w-16 sm:h-16 shrink-0" />;
 
     const isSelected = selectedSeatIds.includes(seat.seatId);
     const isBooked = seat.status === 'BOOKED';
@@ -443,25 +464,25 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
         onClick={() => handleSeatClick(seat)}
         disabled={!isAvailable && !currentUserId}
         title={dynamicLock ? `${dynamicLock.reason} (${dynamicLock.genderAllowed === 'FEMALE_ONLY' ? 'শুধুমাত্র নারী' : 'শুধুমাত্র পুরুষ'})` : `সিট: ${seatNum || 'Seat'} ${positionLabel ? `• ${positionLabel}` : ''} | ভাড়া: ৳${seatPrice}`}
-        className={`w-14 h-14 sm:w-16 sm:h-16 shrink-0 p-1.5 rounded-2xl flex flex-col items-center justify-between font-black transition-all duration-200 ease-out relative select-none cursor-pointer ${
+        className={`w-14 h-15 xs:w-16 xs:h-16 sm:w-16 sm:h-16 shrink-0 p-1 xs:p-1.5 sm:p-1.5 rounded-xl xs:rounded-2xl sm:rounded-2xl flex flex-col items-center justify-between font-black transition-all duration-200 ease-out relative select-none cursor-pointer border-2 ${
           isBooked
-            ? 'bg-gradient-to-b from-rose-50 via-rose-100 to-rose-200 dark:from-rose-950/70 dark:to-rose-900/70 text-rose-950 dark:text-rose-200 border-2 border-rose-300 dark:border-rose-700 opacity-60 shadow-xs cursor-not-allowed'
+            ? 'bg-gradient-to-b from-rose-50 via-rose-100 to-rose-200 dark:from-rose-950/80 dark:via-rose-900/80 dark:to-rose-950/90 text-rose-950 dark:text-rose-200 border-rose-300 dark:border-rose-700 shadow-xs cursor-not-allowed opacity-85'
             : isHeld
-            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/70 dark:to-amber-900/70 text-amber-950 dark:text-amber-200 border-2 border-amber-400 dark:border-amber-600 opacity-70 shadow-xs cursor-not-allowed'
+            ? 'bg-gradient-to-b from-amber-50 via-amber-100 to-amber-200 dark:from-amber-950/80 dark:via-amber-900/80 dark:to-amber-950/90 text-amber-950 dark:text-amber-200 border-amber-400 dark:border-amber-600 opacity-80 shadow-xs cursor-not-allowed animate-pulse'
             : isLocked
             ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 border border-slate-300 dark:border-slate-700 opacity-50 cursor-not-allowed'
             : isSelected
-            ? 'bg-gradient-to-b from-blue-600 via-blue-700 to-indigo-800 text-white border-2 border-blue-300 dark:border-blue-400 shadow-lg shadow-blue-600/30 scale-105 z-10 ring-4 ring-blue-500/30'
+            ? 'bg-gradient-to-b from-blue-600 via-blue-700 to-indigo-800 text-white border-blue-300 dark:border-blue-400 shadow-lg shadow-blue-600/30 scale-105 z-10 ring-2 sm:ring-4 ring-blue-500/30'
             : isFemaleOnly
-            ? 'bg-gradient-to-b from-pink-50 via-pink-100 to-pink-200 dark:from-pink-950/60 dark:to-pink-900/60 text-pink-950 dark:text-pink-200 border-2 border-pink-400 dark:border-pink-600 hover:border-pink-500 shadow-sm'
+            ? 'bg-gradient-to-b from-pink-50 via-pink-100 to-pink-200 dark:from-pink-950/60 dark:to-pink-900/60 text-pink-950 dark:text-pink-200 border-pink-400 dark:border-pink-600 hover:border-pink-500 shadow-sm'
             : isMaleOnly
-            ? 'bg-gradient-to-b from-blue-50 via-blue-100 to-blue-200 dark:from-blue-950/80 dark:to-blue-900/80 text-blue-950 dark:text-blue-100 border-2 border-blue-400 dark:border-blue-500 shadow-xs hover:border-blue-500 hover:shadow-md'
-            : 'bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-850 dark:to-slate-900 text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-600 shadow-xs hover:border-blue-500 hover:shadow-md'
+            ? 'bg-gradient-to-b from-blue-50 via-blue-100 to-blue-200 dark:from-blue-950/80 dark:via-blue-900/80 text-blue-950 dark:text-blue-100 border-blue-400 dark:border-blue-500 shadow-xs hover:border-blue-500 hover:shadow-md'
+            : 'bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-850 dark:to-slate-900 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-600 shadow-xs hover:border-blue-500 hover:shadow-md'
         }`}
       >
         {/* Ergonomic Headrest Cushion */}
         <div
-          className={`w-9 h-1.5 rounded-full shadow-inner transition-all ${
+          className={`w-6 xs:w-8 sm:w-9 h-1 sm:h-1.5 rounded-full shadow-inner transition-all ${
             isSelected
               ? 'bg-white/95 shadow-white/40'
               : isBooked
@@ -479,12 +500,17 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
         />
 
         {/* Crisp Seat Number & Window Indicator */}
-        <div className="flex items-center justify-center gap-1 my-auto">
-          <span className={`text-base sm:text-lg font-black tracking-tight leading-none font-mono ${isSelected ? 'text-white' : ''}`}>
+        <div className="flex items-center justify-center gap-0.5 sm:gap-1 my-auto">
+          <span className={`text-xs xs:text-sm sm:text-lg font-black tracking-tight leading-none font-mono ${isSelected ? 'text-white' : isBooked ? 'text-rose-900 dark:text-rose-200' : ''}`}>
             {seat.seatNumber}
           </span>
-          {positionType === 'WINDOW' && (
-            <span className="text-[10px] opacity-75 select-none" title="জানালা (Window)">
+          {isBooked && (
+            <span className="text-[9px] sm:text-xs text-rose-600 dark:text-rose-400 select-none" title="বুকড আসন">
+              🔒
+            </span>
+          )}
+          {positionType === 'WINDOW' && !isBooked && (
+            <span className="text-[8px] sm:text-[10px] opacity-75 select-none" title="জানালা (Window)">
               🪟
             </span>
           )}
@@ -492,39 +518,36 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
 
         {/* Fare / Status Pill */}
         <div
-          className={`w-full flex items-center justify-center gap-1 px-1 py-0.5 rounded-md backdrop-blur-xs transition-colors ${
+          className={`w-full flex items-center justify-center gap-0.5 xs:gap-1 px-0.5 sm:px-1 py-0.5 rounded xs:rounded-md backdrop-blur-xs transition-colors ${
             isSelected
               ? 'bg-black/30 text-white'
+              : isBooked
+              ? 'bg-rose-100/90 dark:bg-rose-950/90 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
+              : isHeld
+              ? 'bg-amber-500/25 text-amber-900 dark:text-amber-200 border border-amber-400'
               : 'bg-black/5 dark:bg-white/10'
           }`}
         >
           {isSelected ? (
-            <span className="text-[11px] sm:text-xs font-black font-mono leading-none tracking-tight flex items-center gap-0.5 text-white">
-              <Check className="w-3 h-3 stroke-[3]" /> ৳{seatPrice}
+            <span className="text-[9px] xs:text-[11px] sm:text-xs font-black font-mono leading-none tracking-tight flex items-center gap-0.5 text-white">
+              <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[3]" /> ৳{seatPrice}
             </span>
           ) : isBooked ? (
-            <span className="text-[10px] font-black text-rose-700 dark:text-rose-300 leading-none">
-              বুকড
+            <span className="text-[8px] xs:text-[9px] sm:text-[10px] font-black text-rose-800 dark:text-rose-200 leading-none flex items-center gap-0.5">
+              🔒 <span>বুক</span>
             </span>
           ) : isHeld ? (
-            <span className="text-[10px] font-black text-amber-700 dark:text-amber-300 leading-none">
-              হোল্ড
+            <span className="text-[8px] xs:text-[9px] sm:text-[10px] font-black text-amber-700 dark:text-amber-300 leading-none animate-pulse">
+              ⏳ <span>প্রসেসিং</span>
             </span>
           ) : isLocked ? (
-            <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 leading-none">
-              লক
+            <span className="text-[8px] xs:text-[9px] sm:text-[10px] font-black text-slate-700 dark:text-slate-300 leading-none">
+              🔐 <span>লক</span>
             </span>
           ) : (
-            <span className="text-[11px] sm:text-xs font-black font-mono leading-none tracking-tight">
+            <span className="text-[9px] xs:text-[11px] sm:text-xs font-black font-mono leading-none tracking-tight">
               ৳{seatPrice}
             </span>
-          )}
-
-          {!isSelected && !isBooked && !isHeld && !isLocked && isFemaleOnly && (
-            <span className="text-[9px] text-pink-700 dark:text-pink-300 font-black">♀</span>
-          )}
-          {!isSelected && !isBooked && !isHeld && !isLocked && isMaleOnly && (
-            <span className="text-[9px] text-blue-700 dark:text-blue-300 font-black">♂</span>
           )}
         </div>
       </motion.button>
@@ -630,57 +653,57 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
             </div>
           </CardHeader>
 
-          <CardContent className="flex flex-col items-center justify-center p-6 sm:p-10 bg-slate-100/70 dark:bg-slate-950/70 overflow-x-auto min-h-[600px]">
+          <CardContent className="flex flex-col items-center justify-center p-1.5 xs:p-2.5 sm:p-6 lg:p-10 bg-slate-100/70 dark:bg-slate-950/70 overflow-x-auto min-h-[460px]">
             {/* REALISTIC HIGH-DECK COACH FRAME */}
-            <div className="bg-white dark:bg-slate-900 p-6 sm:p-9 rounded-[3.5rem] border-4 border-slate-300 dark:border-slate-700 shadow-2xl w-full max-w-xl relative">
+            <div className="bg-white dark:bg-slate-900 p-2 xs:p-3 sm:p-6 lg:p-9 rounded-2xl sm:rounded-[3.5rem] border-2 sm:border-4 border-slate-300 dark:border-slate-700 shadow-xl w-full max-w-xl mx-auto relative">
               {/* Roof Marker & Mirrors */}
               <div className="absolute -top-3.5 left-12 right-12 h-3.5 bg-slate-300 dark:bg-slate-700 rounded-t-2xl opacity-70" />
-              <div className="absolute -left-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-l-md shadow-xs" title="Left Mirror" />
-              <div className="absolute -right-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-r-md shadow-xs" title="Right Mirror" />
+              <div className="hidden sm:block absolute -left-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-l-md shadow-xs" title="Left Mirror" />
+              <div className="hidden sm:block absolute -right-3.5 top-10 w-3 h-12 bg-slate-400 dark:bg-slate-600 rounded-r-md shadow-xs" title="Right Mirror" />
 
               {/* COCKPIT SECTION: Bonnet Engine Grill + Front Windshield + Driver Cabin + Door Steps */}
-              <div className="mb-5 pb-3.5 border-b-2 border-dashed border-slate-200 dark:border-slate-800">
+              <div className="mb-3.5 sm:mb-5 pb-2.5 sm:pb-3.5 border-b-2 border-dashed border-slate-200 dark:border-slate-800">
                 {/* Windshield Glass */}
-                <div className="h-6 sm:h-7 bg-blue-100/80 dark:bg-blue-950/60 rounded-t-2xl border-t-2 border-blue-300 dark:border-blue-800 mb-2.5 flex items-center justify-center">
-                  <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-blue-700 dark:text-blue-300 font-mono">
+                <div className="h-5 sm:h-7 bg-blue-100/80 dark:bg-blue-950/60 rounded-t-xl sm:rounded-t-2xl border-t-2 border-blue-300 dark:border-blue-800 mb-2 sm:mb-2.5 flex items-center justify-center">
+                  <span className="text-[10px] sm:text-sm font-black uppercase tracking-widest text-blue-700 dark:text-blue-300 font-mono">
                     {language === 'bn' ? 'সামনের উইন্ডশিল্ড গ্লাস' : 'FRONT WINDSHIELD GLASS'}
                   </span>
                 </div>
 
-                {/* Dashboard & Cockpit: Medium-large, comfortable, legible Door, Bonnet, and Driver Cabins */}
-                <div className="bg-slate-900 dark:bg-slate-950 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between text-white shadow-inner relative overflow-hidden">
+                {/* Dashboard & Cockpit: Door, Bonnet, and Driver Cabins */}
+                <div className="bg-slate-900 dark:bg-slate-950 rounded-xl sm:rounded-2xl p-1.5 xs:p-2 sm:p-3.5 flex items-center justify-between text-white shadow-inner relative overflow-hidden gap-1 sm:gap-2">
                   {/* Left: Passenger Entry Door / Gate */}
-                  <div className="flex items-center gap-2.5 bg-emerald-950 border-2 border-emerald-500/80 px-3.5 py-2 rounded-xl shadow-md">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                  <div className="flex items-center gap-1 sm:gap-2.5 bg-emerald-950 border sm:border-2 border-emerald-500/80 px-2 sm:px-3.5 py-1 sm:py-2 rounded-lg sm:rounded-xl shadow-md shrink-0">
+                    <span className="w-1.5 h-1.5 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
                     <div>
-                      <div className="text-xs sm:text-sm font-black text-emerald-400 leading-tight">
-                        {language === 'bn' ? 'বাসের গেট' : 'ENTRY DOOR'}
+                      <div className="text-[10px] sm:text-sm font-black text-emerald-400 leading-tight">
+                        🚪 <span className="hidden xs:inline">{language === 'bn' ? 'বাসের গেট' : 'ENTRY DOOR'}</span><span className="xs:hidden">{language === 'bn' ? 'গেট' : 'GATE'}</span>
                       </div>
-                      <div className="text-[10px] sm:text-[11px] text-emerald-300 font-bold leading-none mt-0.5">
+                      <div className="hidden sm:block text-[10px] sm:text-[11px] text-emerald-300 font-bold leading-none mt-0.5">
                         {language === 'bn' ? 'প্রবেশদ্বার (Entry)' : 'Entry Gate'}
                       </div>
                     </div>
                   </div>
 
                   {/* Center: Bonnet / Engine Hood */}
-                  <div className="text-center px-3.5 py-1.5 bg-slate-800 rounded-xl border-2 border-slate-600 shadow-md">
-                    <div className="text-xs sm:text-sm font-black text-amber-400 font-mono tracking-wide">
-                      {language === 'bn' ? 'বনেট / ইঞ্জিন' : 'ENGINE BONNET'}
+                  <div className="text-center px-2 sm:px-3.5 py-1 sm:py-1.5 bg-slate-800 rounded-lg sm:rounded-xl border sm:border-2 border-slate-600 shadow-md">
+                    <div className="text-[10px] sm:text-sm font-black text-amber-400 font-mono tracking-wide">
+                      {language === 'bn' ? 'বনেট' : 'BONNET'}
                     </div>
-                    <div className="text-[9px] text-slate-300 font-bold mt-0.5">Front Chassis</div>
+                    <div className="hidden sm:block text-[9px] text-slate-300 font-bold mt-0.5">Front Chassis</div>
                   </div>
 
                   {/* Right: Driver Cabin & Steering Wheel */}
-                  <div className="flex items-center gap-2.5 bg-blue-950 border-2 border-blue-500/80 px-3.5 py-2 rounded-xl text-right shadow-md">
+                  <div className="flex items-center gap-1 sm:gap-2.5 bg-blue-950 border sm:border-2 border-blue-500/80 px-2 sm:px-3.5 py-1 sm:py-2 rounded-lg sm:rounded-xl text-right shadow-md shrink-0">
                     <div>
-                      <div className="text-xs sm:text-sm font-black text-blue-400 leading-tight">
-                        {language === 'bn' ? 'ড্রাইভার কেবিন' : 'DRIVER CABIN'}
+                      <div className="text-[10px] sm:text-sm font-black text-blue-400 leading-tight">
+                        <span className="hidden xs:inline">{language === 'bn' ? 'ড্রাইভার কেবিন' : 'DRIVER CABIN'}</span><span className="xs:hidden">{language === 'bn' ? 'ড্রাইভার' : 'DRIVER'}</span>
                       </div>
-                      <div className="text-[10px] sm:text-[11px] text-blue-300 font-bold leading-none mt-0.5">
+                      <div className="hidden sm:block text-[10px] sm:text-[11px] text-blue-300 font-bold leading-none mt-0.5">
                         {language === 'bn' ? 'কন্ট্রোল (Cockpit)' : 'Cockpit'}
                       </div>
                     </div>
-                    <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600/50 border-2 border-blue-300 flex items-center justify-center text-xs font-black text-blue-100">
+                    <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-full bg-blue-600/50 border sm:border-2 border-blue-300 flex items-center justify-center text-[10px] sm:text-xs font-black text-blue-100 shrink-0">
                       ✇
                     </div>
                   </div>
@@ -688,7 +711,7 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
               </div>
 
               {/* REALISTIC SEATING GRID */}
-              <div className="space-y-3.5">
+              <div className="space-y-2 xs:space-y-2.5 sm:space-y-3.5">
                 {Array.from({ length: totalRows }).map((_, r) => {
                   const rowCells = seats.filter(c => c.rowIndex === r);
                   const isLastRow = r === totalRows - 1;
@@ -733,24 +756,24 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
                   }
 
                   return (
-                    <div key={`row-${r}-${rowLabel}`} className="flex items-center justify-between gap-3">
+                    <div key={`row-${r}-${rowLabel}`} className="flex items-center justify-between gap-1 xs:gap-1.5 sm:gap-3">
                       {/* Left Seats: Slot 1 (Window) & Slot 2 (Aisle) */}
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-2.5">
                         {renderRealisticSeatButton(left1, false, rowSegment, 'WINDOW')}
                         {renderRealisticSeatButton(left2, false, rowSegment, 'AISLE')}
                       </div>
 
                       {/* Middle Aisle Walkway OR 45-Seat Middle Seat (K3 on Row K) */}
-                      <div className="flex-1 text-center font-mono flex items-center justify-center">
+                      <div className="flex-1 text-center font-mono flex items-center justify-center px-0.5 sm:px-1">
                         {center ? (
                           renderRealisticSeatButton(center, true, rowSegment, 'MIDDLE')
                         ) : (
-                          <div className="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 min-w-[3.75rem]">
-                            <span className="text-sm sm:text-base font-black tracking-wider text-slate-800 dark:text-slate-100 leading-none">
+                          <div className="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 px-1 xs:px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-2xl border border-slate-200 dark:border-slate-700 min-w-[1.8rem] xs:min-w-[2.2rem] sm:min-w-[3.75rem]">
+                            <span className="text-xs xs:text-sm sm:text-base font-black tracking-wider text-slate-800 dark:text-slate-100 leading-none">
                               {rowLabel}
                             </span>
                             {rowSegment && (
-                              <span className="text-[11px] font-black font-mono text-blue-600 dark:text-blue-400 mt-1 leading-none">
+                              <span className="text-[8px] xs:text-[9px] sm:text-[11px] font-black font-mono text-blue-600 dark:text-blue-400 mt-0.5 sm:mt-1 leading-none">
                                 ৳{rowSegment.fare}
                               </span>
                             )}
@@ -759,7 +782,7 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
                       </div>
 
                       {/* Right Seats: Slot 3 (Aisle) & Slot 4 (Window) */}
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-2.5">
                         {renderRealisticSeatButton(right1, false, rowSegment, 'AISLE')}
                         {renderRealisticSeatButton(right2, false, rowSegment, 'WINDOW')}
                       </div>
@@ -1161,10 +1184,127 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
                     />
                   </div>
 
-                  {/* Policy Notice */}
-                  <p className="text-[11px] text-slate-500 bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 leading-relaxed">
-                    🔒 <strong>পেমেন্ট সংক্রান্ত তথ্য:</strong> এখনই কোনো পেমেন্ট লাগবে না। অনুরোধ পাঠানোর পর আমাদের কল সেন্টার প্রতিনিধি আপনার সাথে কথা বলে সিট নিশ্চিত করবেন এবং পেমেন্ট টাইমার উন্মুক্ত করবেন।
-                  </p>
+                  {/* 3. Payment Method Choice: bKash/Nagad vs Pay on Boarding */}
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                    <label className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                      <span>পেমেন্ট পদ্ধতি নির্বাচন করুন *</span>
+                      <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                        মোট: ৳{selectedSeats.reduce((sum, s) => {
+                          const leg = seatLegs[s.seatId] || 'ROUND_TRIP';
+                          return sum + (leg === 'ROUND_TRIP' ? s.fare : Math.round(s.fare * 0.5));
+                        }, 0)}
+                      </span>
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentChoice('BKASH_NAGAD')}
+                        className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer text-left ${
+                          paymentChoice === 'BKASH_NAGAD'
+                            ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white border-pink-600 shadow-md shadow-pink-600/20'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-pink-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>⚡</span>
+                          <span>বিকাশ / নগদ পেমেন্ট</span>
+                        </div>
+                        <span className="text-[10px] block opacity-90 mt-0.5 font-normal">তাৎক্ষণিক নিশ্চিত টিকিট</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPaymentChoice('PAY_LATER')}
+                        className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer text-left ${
+                          paymentChoice === 'PAY_LATER'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/20'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>🚌</span>
+                          <span>বাসে ওঠার পর ক্যাশ</span>
+                        </div>
+                        <span className="text-[10px] block opacity-90 mt-0.5 font-normal">সিট সংরক্ষিত থাকবে</span>
+                      </button>
+                    </div>
+
+                    {paymentChoice === 'BKASH_NAGAD' && (
+                      <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-pink-200 dark:border-pink-900/60 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedGateway('BKASH')}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border transition-all ${
+                                selectedGateway === 'BKASH'
+                                  ? 'bg-pink-50 dark:bg-pink-950/60 text-pink-700 border-pink-500 ring-2 ring-pink-500/20'
+                                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              <BkashLogo className="w-4 h-4" />
+                              <span>বিকাশ মার্চেন্ট</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedGateway('NAGAD')}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border transition-all ${
+                                selectedGateway === 'NAGAD'
+                                  ? 'bg-orange-50 dark:bg-orange-950/60 text-orange-700 border-orange-500 ring-2 ring-orange-500/20'
+                                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              <NagadLogo className="w-4 h-4" />
+                              <span>নগদ পেমেন্ট</span>
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText('01711000001');
+                              setCopiedMerchant(true);
+                              setTimeout(() => setCopiedMerchant(false), 2000);
+                            }}
+                            className="text-[11px] font-bold text-pink-600 hover:text-pink-700 flex items-center gap-1 font-mono cursor-pointer"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>{copiedMerchant ? 'কপি হয়েছে!' : '01711-000001'}</span>
+                          </button>
+                        </div>
+
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+                          আপনার {selectedGateway === 'BKASH' ? 'bKash' : 'Nagad'} অ্যাপ থেকে <strong className="font-mono text-pink-600">01711-000001</strong> নম্বরে ‘Make Payment’ অথবা ‘Send Money’ করুন এবং ট্রানজেকশন আইডি নিচে দিন:
+                        </p>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <Input
+                            type="text"
+                            placeholder="TrxID (যেমন: BL839XKD2)"
+                            value={trxId}
+                            onChange={(e) => setTrxId(e.target.value.toUpperCase())}
+                            className="font-mono font-bold text-xs bg-pink-50/30 border-pink-300"
+                            required
+                          />
+                          <Input
+                            type="tel"
+                            maxLength={11}
+                            placeholder="প্রেরকের নম্বর (ঐচ্ছিক)"
+                            value={senderPhone}
+                            onChange={(e) => setSenderPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                            className="font-mono text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {paymentChoice === 'PAY_LATER' && (
+                      <p className="text-[11px] text-slate-500 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 leading-relaxed">
+                        🔒 <strong>অন-বোর্ডিং নীতি:</strong> আপনার অনুরোধ জমা দেওয়া মাত্রই সিট সাময়িক সংরক্ষিত থাকবে। বাসে ওঠার সময় সুপারভাইজারকে টিকিট দেখিয়ে নির্ধারিত ভাড়া পরিশোধ করে ডিজিটাল রসিদ গ্রহণ করবেন।
+                      </p>
+                    )}
+                  </div>
 
                   <Button
                     type="submit"
@@ -1174,7 +1314,7 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
                     isLoading={isBookingSubmitting}
                     className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold shadow-lg shadow-blue-600/25 text-xs py-3.5 rounded-xl cursor-pointer"
                   >
-                    বুকিং অনুরোধ জমা দিন ({selectedSeatIds.length} টি সিট)
+                    {paymentChoice === 'BKASH_NAGAD' ? 'পেমেন্ট নিশ্চিত করুন ও টিকিট কাটুন' : 'সিট বুকিং অনুরোধ জমা দিন'} ({selectedSeatIds.length} টি সিট)
                     <ArrowRight className="w-4 h-4 ml-1.5" />
                   </Button>
                 </form>
@@ -1267,6 +1407,24 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
           </div>
         </div>
       </Modal>
+
+      {/* 4. Instant Digital Ticket & QR Receipt Modal for Students */}
+      {createdBooking && (
+        <PaymentReceiptModal
+          booking={createdBooking}
+          isOpen={!!createdBooking}
+          onClose={() => {
+            setCreatedBooking(null);
+            setSelectedSeatIds([]);
+            router.push('/passenger');
+          }}
+          onNewBooking={() => {
+            setCreatedBooking(null);
+            setSelectedSeatIds([]);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

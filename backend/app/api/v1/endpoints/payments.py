@@ -36,7 +36,7 @@ async def list_payments(
 async def record_counter_payment(
     req: PaymentCreate,
     db: WrappedAsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT", "BOOKING_STAFF"]))
+    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT", "BOOKING_STAFF", "MANAGER", "SUPERVISOR"]))
 ):
     booking = await db.query(Booking).filter(Booking.id == req.booking_id).first()
     if not booking:

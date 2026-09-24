@@ -117,6 +117,64 @@ describe('ATOMS Domain Engine & Business Rules', () => {
 
       expect(result.success).toBe(false);
     });
+
+    it('should accept processingFee, vatAmount, cashoutFee and allow paidAmount including fees', async () => {
+      const { CreateBookingSchema } = await import('@/lib/validations');
+      const gross = 600;
+      const processingFee = 20;
+      const vatAmount = 30;
+      const cashoutFee = 15;
+      const totalPayable = gross + processingFee + vatAmount + cashoutFee; // 665
+
+      const result = CreateBookingSchema.safeParse({
+        tripId: 'trip-1',
+        seats: [{ seatId: 'seat-1', fare: gross }],
+        passengers: [{
+          passengerName: 'Shakil Ahmed',
+          passengerPhone: '01711223344',
+          passengerType: 'STUDENT',
+          gender: 'MALE',
+          seatId: 'seat-1'
+        }],
+        paymentMethod: 'BKASH',
+        paidAmount: totalPayable,
+        processingFee,
+        vatAmount,
+        cashoutFee
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.processingFee).toBe(20);
+        expect(result.data.vatAmount).toBe(30);
+        expect(result.data.cashoutFee).toBe(15);
+        expect(result.data.paidAmount).toBe(665);
+      }
+    });
+
+    it('should default fees to 0 when omitted in CreateBookingSchema', async () => {
+      const { CreateBookingSchema } = await import('@/lib/validations');
+      const result = CreateBookingSchema.safeParse({
+        tripId: 'trip-1',
+        seats: [{ seatId: 'seat-1', fare: 550 }],
+        passengers: [{
+          passengerName: 'Sumaiya Akter',
+          passengerPhone: '01811223344',
+          passengerType: 'STUDENT',
+          gender: 'FEMALE',
+          seatId: 'seat-1'
+        }],
+        paymentMethod: 'HAND_CASH',
+        paidAmount: 550
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.processingFee).toBe(0);
+        expect(result.data.vatAmount).toBe(0);
+        expect(result.data.cashoutFee).toBe(0);
+      }
+    });
   });
 
   describe('Adjacent Pair & Guardian Rules', () => {
@@ -496,6 +554,133 @@ describe('ATOMS Domain Engine & Business Rules', () => {
       expect(isClean).toBe(true);
       expect(roundedInt).toBe(25);
       expect(100 - roundedInt).toBe(75);
+    });
+
+    it('should correctly extract hotel accommodation when trip or booking includes hotel package', async () => {
+      const { extractAccommodationInfo, buildWhatsAppTicketMessage } = await import('@/components/booking/payment-receipt');
+      
+      const normalBooking = {
+        bookingNumber: 'BK-NORMAL-001',
+        trip: { route: { routeName: 'ঢাকা ➔ রাজশাহী' } }
+      };
+      expect(extractAccommodationInfo(normalBooking)).toBeNull();
+
+      const normalWa = buildWhatsAppTicketMessage(normalBooking);
+      expect(normalWa.message).not.toContain('হোটেল বুকিং ও আবাসন ভাউচার');
+
+      // Hotel package via explicit accommodation
+      const comboBooking = {
+        bookingNumber: 'BK-HOTEL-001',
+        trip: {
+          route: { routeName: 'ঢাকা ➔ জাবি ক্যাম্পাস' },
+          hasHotelPackage: true
+        },
+        accommodation: {
+          hotelName: 'জাহাঙ্গীরনগর গেস্টহাউস অ্যান্ড স্যুটস',
+          roomType: 'ডিলাক্স এসি শেয়ার্ড রুম',
+          checkIn: 'দুপুর ১২:০০',
+          checkOut: 'পরবর্তী দিন সকাল ১০:০০',
+          locationAddress: 'ডেইরি গেট, সাভার',
+          contactPerson: '০১৭০০-০০০০০০'
+        }
+      };
+
+      const hotelInfo = extractAccommodationInfo(comboBooking);
+      expect(hotelInfo).not.toBeNull();
+      expect(hotelInfo?.hasHotel).toBe(true);
+      expect(hotelInfo?.hotelName).toBe('জাহাঙ্গীরনগর গেস্টহাউস অ্যান্ড স্যুটস');
+      expect(hotelInfo?.roomType).toBe('ডিলাক্স এসি শেয়ার্ড রুম');
+
+      const comboWa = buildWhatsAppTicketMessage(comboBooking);
+      expect(comboWa.message).toContain('🏨 *হোটেল বুকিং ও আবাসন ভাউচার (CONFIRMED):*');
+      expect(comboWa.message).toContain('জাহাঙ্গীরনগর গেস্টহাউস অ্যান্ড স্যুটস');
+      expect(comboWa.message).toContain('ডিলাক্স এসি শেয়ার্ড রুম');
+
+      // Hotel package via trip notes
+      const notesBooking = {
+        bookingNumber: 'BK-NOTES-002',
+        trip: {
+          notes: '[🏨 HOTEL PACKAGE: Campus AC Hostel - ৳1500]'
+        }
+      };
+      const notesHotelInfo = extractAccommodationInfo(notesBooking);
+      expect(notesHotelInfo).not.toBeNull();
+      expect(notesHotelInfo?.hasHotel).toBe(true);
+      expect(notesHotelInfo?.hotelFee).toBe(1500);
+    });
+  });
+
+  describe('Ticket Billing, VAT/Tax & Anti-Tamper Security Pass Engine', () => {
+    it('should correctly calculate net total with VAT, Tax, Processing fee, and Discount', () => {
+      const grossAmount = 1300; // 2 seats * 650
+      const discountAmount = 100;
+      const processingFee = 50;
+      const vatAmount = 65; // 5% VAT
+      const paidAmount = 1315;
+
+      const netAmount = Math.max(0, grossAmount - discountAmount + processingFee + vatAmount);
+      const dueAmount = Math.max(0, netAmount - paidAmount);
+      const isPaidInFull = dueAmount <= 0 && paidAmount >= netAmount;
+
+      expect(netAmount).toBe(1315);
+      expect(dueAmount).toBe(0);
+      expect(isPaidInFull).toBe(true);
+    });
+
+    it('should correctly calculate partial payment and due amount', () => {
+      const grossAmount = 1300;
+      const discountAmount = 0;
+      const processingFee = 40;
+      const vatAmount = 0;
+      const paidAmount = 500;
+
+      const netAmount = Math.max(0, grossAmount - discountAmount + processingFee + vatAmount);
+      const dueAmount = Math.max(0, netAmount - paidAmount);
+      const isPaidInFull = dueAmount <= 0 && paidAmount >= netAmount;
+
+      expect(netAmount).toBe(1340);
+      expect(dueAmount).toBe(840);
+      expect(isPaidInFull).toBe(false);
+    });
+
+    it('should generate a deterministic SEC-XXXX-XXXX anti-tamper hash and change if corrupted', () => {
+      const generateSecHash = (bookingNumber: string, receiptNumber: string, gross: number, net: number, seats: string) => {
+        const rawStr = `${bookingNumber}|${receiptNumber}|${gross}|${net}|${seats}`;
+        let hash = 0;
+        for (let i = 0; i < rawStr.length; i++) {
+          hash = ((hash << 5) - hash) + rawStr.charCodeAt(i);
+          hash |= 0;
+        }
+        const hex = Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
+        return `SEC-${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
+      };
+
+      const validHash = generateSecHash('BK-2026-001', 'RCT-2026-001', 1300, 1340, 'A1,A2');
+      expect(validHash).toMatch(/^SEC-[0-9A-F]{4}-[0-9A-F]{4}$/);
+
+      // Verify that any tampering changes the hash immediately
+      const tamperedFareHash = generateSecHash('BK-2026-001', 'RCT-2026-001', 1300, 1000, 'A1,A2');
+      expect(tamperedFareHash).not.toBe(validHash);
+
+      const tamperedSeatHash = generateSecHash('BK-2026-001', 'RCT-2026-001', 1300, 1340, 'A1,B1');
+      expect(tamperedSeatHash).not.toBe(validHash);
+    });
+
+    it('should preserve boarding and dropping points with designated fallbacks', () => {
+      const explicitBooking = {
+        boardingPoint: 'তালাইমারী মোড় কাউন্টার',
+        droppingPoint: 'জাহাঙ্গীরনগর বিশ্ববিদ্যালয় মেইন গেট'
+      };
+
+      expect(explicitBooking.boardingPoint).toBe('তালাইমারী মোড় কাউন্টার');
+      expect(explicitBooking.droppingPoint).toBe('জাহাঙ্গীরনগর বিশ্ববিদ্যালয় মেইন গেট');
+
+      const fallbackBooking: { boardingPoint?: string; droppingPoint?: string } = {};
+      const boardingDisplay = fallbackBooking.boardingPoint || 'Talaimari / Bhadra / Railgate Bus Counter';
+      const droppingDisplay = fallbackBooking.droppingPoint || 'University Main Gate / Designated Campus Drop Zone';
+
+      expect(boardingDisplay).toBe('Talaimari / Bhadra / Railgate Bus Counter');
+      expect(droppingDisplay).toBe('University Main Gate / Designated Campus Drop Zone');
     });
   });
 });

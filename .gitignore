@@ -75,3 +75,5 @@ backend/uploads/documents/*
 !backend/uploads/documents/.gitkeep
 !backend/backups/.gitkeep
 .commandcode/
+scratch/
+backend/test_db_conn.py

@@ -26,6 +26,7 @@ import {
   Settings
 } from 'lucide-react';
 import { fastApiClient } from '@/lib/api-client';
+import { formatDate } from '@/lib/utils';
 
 // Sample university fallback data
 const SAMPLE_UNIVERSITIES = [
@@ -274,7 +275,7 @@ export default function UniversitiesPage() {
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="hidden sm:block text-right">
                         <div className="text-[10px] text-slate-500 font-semibold">পরীক্ষার তারিখ</div>
-                        <div className="text-xs font-bold text-white">{new Date(uni.examDate).toLocaleDateString('bn-BD')}</div>
+                        <div suppressHydrationWarning className="text-xs font-bold text-white">{formatDate(uni.examDate)}</div>
                       </div>
                       {isExpanded ? (
                         <ChevronUp className="w-5 h-5 text-slate-500" />
@@ -319,11 +320,11 @@ export default function UniversitiesPage() {
                             <div className="space-y-1.5 text-xs">
                               <div className="flex justify-between">
                                 <span className="text-slate-400">আবেদনের শেষ তারিখ:</span>
-                                <span className="font-bold text-white">{new Date(uni.deadline).toLocaleDateString('bn-BD')}</span>
+                                <span suppressHydrationWarning className="font-bold text-white">{formatDate(uni.deadline)}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span className="text-slate-400">পরীক্ষার তারিখ:</span>
-                                <span className="font-bold text-white">{new Date(uni.examDate).toLocaleDateString('bn-BD')}</span>
+                                <span suppressHydrationWarning className="font-bold text-white">{formatDate(uni.examDate)}</span>
                               </div>
                             </div>
                           </div>

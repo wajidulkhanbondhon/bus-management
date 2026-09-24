@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Bus,
   Zap,
@@ -26,7 +27,7 @@ import { Button } from '@/components/ui/button';
 import { BookingSummarySidebar, SelectedSeatItem } from './booking-summary-sidebar';
 import { PaymentReceiptModal } from './payment-receipt';
 import { createBookingAction } from '@/actions/booking.actions';
-import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
+import { formatCurrency, formatDate, formatTime, cleanAndLimitPhoneNumber, isValidBdMobile } from '@/lib/utils';
 import { useApp } from '@/lib/context';
 
 interface Props {
@@ -35,6 +36,7 @@ interface Props {
 }
 
 export function QuickCounterBookingClient({ trips, currentUser }: Props) {
+  const router = useRouter();
   const { language } = useApp();
   const [selectedTripId, setSelectedTripId] = useState<string>(trips[0]?.id || '');
   const [busSearchQuery, setBusSearchQuery] = useState('');
@@ -138,10 +140,50 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
     setPaidAmount(netAmount);
   }, [netAmount]);
 
+  // Load fee settings from organization defaults
+  useEffect(() => {
+    try {
+      const orgSettings = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('atoms_organization_settings') || '{}') : {};
+      if (orgSettings?.finance) {
+        if (orgSettings.finance.defaultProcessingFee !== undefined) {
+          setProcessingFee(Number(orgSettings.finance.defaultProcessingFee) || 0);
+        }
+        if (orgSettings.finance.taxCalculationType === 'FIXED' && orgSettings.finance.taxFixedAmount !== undefined) {
+          setVatTaxAmount(Number(orgSettings.finance.taxFixedAmount) || 0);
+        }
+      }
+    } catch {}
+  }, []);
+
+  const handlePaymentMethodChange = (method: string) => {
+    setPaymentMethod(method);
+    if (method === 'BKASH' || method === 'NAGAD' || method === 'ROCKET') {
+      try {
+        const orgSettings = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('atoms_organization_settings') || '{}') : {};
+        const autoApply = orgSettings.finance?.autoApplyMfsCashout ?? true;
+        if (autoApply && cashoutCharge === 0 && grossAmount > 0) {
+          if (orgSettings.finance?.mfsCashoutCalculationType === 'FIXED') {
+            setCashoutCharge(orgSettings.finance?.defaultMfsCashoutFixed ?? 0);
+          } else {
+            const pct = orgSettings.finance?.defaultMfsCashoutPercent ?? 1.5;
+            setCashoutCharge(Math.round(grossAmount * (pct / 100)));
+          }
+        }
+      } catch {
+        if (cashoutCharge === 0 && grossAmount > 0) {
+          setCashoutCharge(Math.round(grossAmount * 0.015));
+        }
+      }
+    } else if (method === 'HAND_CASH') {
+      setCashoutCharge(0);
+    }
+  };
+
   const handleConfirmBooking = async () => {
     if (selectedSeatIds.length === 0) return;
-    if (!passengerPhone || passengerPhone.length < 11) {
-      alert(language === 'bn' ? 'সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন।' : 'Please enter valid 11-digit phone number.');
+    const cleanPhone = cleanAndLimitPhoneNumber(passengerPhone);
+    if (!cleanPhone || !isValidBdMobile(cleanPhone)) {
+      alert(language === 'bn' ? 'সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।' : 'Please enter valid 11-digit phone number (e.g. 017XXXXXXXX).');
       return;
     }
 
@@ -158,8 +200,8 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
         passengers: selectedSeatItems.map((s) => ({
           passenger_name: passengerName || 'Counter Passenger',
           passengerName: passengerName || 'Counter Passenger',
-          passenger_phone: passengerPhone,
-          passengerPhone: passengerPhone,
+          passenger_phone: cleanPhone,
+          passengerPhone: cleanPhone,
           seat_id: s.seatId,
           seatId: s.seatId,
           seat_number: s.seatNumber,
@@ -168,12 +210,15 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
           is_student: true
         })),
         contact_name: passengerName || 'Counter Passenger',
-        contact_phone: passengerPhone,
+        contact_phone: cleanPhone,
         journey_type: 'ROUND_TRIP',
         payment_method: paymentMethod,
         paid_amount: paidAmount,
+        paidAmount: paidAmount,
         processing_fee: processingFee,
+        processingFee: processingFee,
         vat_amount: vatTaxAmount,
+        vatAmount: vatTaxAmount,
         cashout_fee: cashoutCharge,
         cashoutFee: cashoutCharge,
         notes: `Quick Counter Booking by ${currentUser?.name || 'Staff'}`
@@ -186,17 +231,8 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
             ? `🎉 টিকিট বুকিং সফল হয়েছে! ট্র্যাকিং কোড: ${result.booking.bookingNumber}`
             : `🎉 Booking confirmed successfully! Code: ${result.booking.bookingNumber}`
         );
-        setConfirmedBookingData({
-          ...result.booking,
-          processingFee,
-          vatAmount: vatTaxAmount,
-          cashoutFee: cashoutCharge,
-          netAmount
-        });
-        fetchLiveSeats(activeTrip.id);
-        setSelectedSeatIds([]);
-        setPassengerName('');
-        setPassengerPhone('');
+        const autoPrintParam = autoPrintTicket ? '?autoPrint=true' : '';
+        router.push(`/bookings/${result.booking.id}${autoPrintParam}`);
       } else {
         toastError(result.error || (language === 'bn' ? 'বুকিং সম্পন্ন করতে ব্যর্থ হয়েছে।' : 'Failed to confirm booking.'));
         fetchLiveSeats(activeTrip.id);
@@ -228,21 +264,21 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
         disabled={isBooked}
         onClick={() => handleToggleSeat(seatObj?.seat_id || seatObj?.seatId || sNum, seatObj?.status || 'AVAILABLE')}
         title={`সিট: ${sNum} ${isWindow ? '• জানালা (Window)' : ''} | ভাড়া: ৳${seatPrice}`}
-        className={`w-12 h-14 sm:w-14 sm:h-15 shrink-0 p-1 rounded-2xl flex flex-col items-center justify-between font-black transition-all duration-150 select-none cursor-pointer relative ${
+        className={`w-11 h-12 xs:w-12 xs:h-13 sm:w-14 sm:h-15 shrink-0 p-0.5 xs:p-1 rounded-lg xs:rounded-xl sm:rounded-2xl flex flex-col items-center justify-between font-black transition-all duration-150 select-none cursor-pointer relative border xs:border-2 ${
           isSelected
-            ? 'bg-gradient-to-b from-blue-600 via-blue-700 to-indigo-800 text-white border-2 border-blue-400 shadow-lg shadow-blue-600/30 scale-105 z-10 ring-4 ring-blue-500/30'
+            ? 'bg-gradient-to-b from-blue-600 via-blue-700 to-indigo-800 text-white border-blue-400 shadow-lg shadow-blue-600/30 scale-105 z-10 ring-2 sm:ring-4 ring-blue-500/30'
             : isBooked
-            ? 'bg-gradient-to-b from-rose-50 via-rose-100 to-rose-200 dark:from-rose-950/70 dark:to-rose-900/70 text-rose-950 dark:text-rose-200 border-2 border-rose-300 dark:border-rose-700 opacity-70 cursor-not-allowed'
+            ? 'bg-gradient-to-b from-rose-50 via-rose-100 to-rose-200 dark:from-rose-950/70 dark:to-rose-900/70 text-rose-950 dark:text-rose-200 border-rose-300 dark:border-rose-700 opacity-70 cursor-not-allowed'
             : isFemaleOnly
-            ? 'bg-gradient-to-b from-pink-50 via-pink-100 to-pink-200 dark:from-pink-950/60 dark:to-pink-900/60 text-pink-950 dark:text-pink-200 border-2 border-pink-400 dark:border-pink-600 hover:border-pink-500 shadow-xs'
+            ? 'bg-gradient-to-b from-pink-50 via-pink-100 to-pink-200 dark:from-pink-950/60 dark:to-pink-900/60 text-pink-950 dark:text-pink-200 border-pink-400 dark:border-pink-600 hover:border-pink-500 shadow-xs'
             : isMaleOnly
-            ? 'bg-gradient-to-b from-blue-50 via-blue-100 to-blue-200 dark:from-blue-950/80 dark:to-blue-900/80 text-blue-950 dark:text-blue-100 border-2 border-blue-400 dark:border-blue-500 shadow-xs hover:border-blue-500'
-            : 'bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-850 dark:to-slate-900 text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-600 shadow-xs hover:border-blue-500 hover:shadow-md'
+            ? 'bg-gradient-to-b from-blue-50 via-blue-100 to-blue-200 dark:from-blue-950/80 dark:to-blue-900/80 text-blue-950 dark:text-blue-100 border-blue-400 dark:border-blue-500 shadow-xs hover:border-blue-500'
+            : 'bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-850 dark:to-slate-900 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-600 shadow-xs hover:border-blue-500 hover:shadow-md'
         }`}
       >
         {/* Ergonomic Headrest Cushion */}
         <div
-          className={`w-8 h-1 rounded-full shadow-inner transition-all ${
+          className={`w-6 xs:w-8 h-1 rounded-full shadow-inner transition-all ${
             isSelected
               ? 'bg-white/95 shadow-white/40'
               : isBooked
@@ -257,7 +293,7 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
 
         {/* Crisp Seat Number & Window Indicator */}
         <div className="flex items-center justify-center gap-0.5 my-auto">
-          <span className={`text-xs sm:text-sm font-black tracking-tight leading-none font-mono ${isSelected ? 'text-white' : ''}`}>
+          <span className={`text-xs xs:text-sm font-black tracking-tight leading-none font-mono ${isSelected ? 'text-white' : ''}`}>
             {sNum}
           </span>
           {isWindow && (
@@ -269,22 +305,22 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
 
         {/* Fare / Status Pill */}
         <div
-          className={`w-full flex items-center justify-center gap-0.5 px-0.5 py-0.5 rounded-md backdrop-blur-xs transition-colors ${
+          className={`w-full flex items-center justify-center gap-0.5 px-0.5 py-0.5 rounded backdrop-blur-xs transition-colors ${
             isSelected
               ? 'bg-black/30 text-white'
               : 'bg-black/5 dark:bg-white/10'
           }`}
         >
           {isSelected ? (
-            <span className="text-[9px] font-black font-mono leading-none tracking-tight flex items-center gap-0.5 text-white">
-              <Check className="w-2.5 h-2.5 stroke-[3]" /> ৳{seatPrice}
+            <span className="text-[9px] xs:text-xs font-black font-mono leading-none tracking-tight flex items-center gap-0.5 text-white">
+              ✓ ৳{seatPrice}
             </span>
           ) : isBooked ? (
-            <span className="text-[8px] font-black text-rose-700 dark:text-rose-300 leading-none">
+            <span className="text-[8px] xs:text-[9px] font-black text-rose-700 dark:text-rose-300 leading-none">
               বুকড
             </span>
           ) : (
-            <span className="text-[9px] font-black font-mono leading-none tracking-tight">
+            <span className="text-[9px] xs:text-xs font-black font-mono leading-none tracking-tight">
               ৳{seatPrice}
             </span>
           )}
@@ -463,52 +499,52 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
             </div>
 
             {/* Seat Grid Frame */}
-            <CardContent className="p-6 bg-slate-100/60 dark:bg-slate-950/60 flex flex-col items-center justify-center min-h-[500px]">
+            <CardContent className="p-1.5 xs:p-2.5 sm:p-6 bg-slate-100/60 dark:bg-slate-950/60 flex flex-col items-center justify-center min-h-[460px] overflow-x-auto">
               {isLoadingSeats ? (
                 <div className="py-20 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
                   <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
                   <span>সিট ম্যাপ লোড হচ্ছে...</span>
                 </div>
               ) : (
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border-4 border-slate-300 dark:border-slate-700 shadow-xl w-full max-w-md">
+                <div className="bg-white dark:bg-slate-900 p-2 xs:p-3 sm:p-6 rounded-2xl sm:rounded-[2.5rem] border-2 sm:border-4 border-slate-300 dark:border-slate-700 shadow-xl w-full max-w-md mx-auto">
                   {/* Cockpit / Driver Cabin Header */}
-                  <div className="mb-4 pb-3 border-b-2 border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-400 px-2">
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 rounded-xl text-xs font-black shadow-xs">
+                  <div className="mb-3 sm:mb-4 pb-2 sm:pb-3 border-b-2 border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-400 px-1 gap-1.5">
+                    <div className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-black shadow-xs">
                       <span>🚪</span>
-                      <span>প্রবেশদ্বার (DOOR)</span>
+                      <span>{language === 'bn' ? 'গেট' : 'DOOR'}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 rounded-xl text-xs font-black shadow-xs">
+                    <div className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-black shadow-xs">
                       <span>✇</span>
-                      <span>ড্রাইভার কেবিন (DRIVER)</span>
+                      <span>{language === 'bn' ? 'ড্রাইভার' : 'DRIVER'}</span>
                     </div>
                   </div>
 
                   {/* Seat Rows Matrix */}
-                  <div className="space-y-3">
+                  <div className="space-y-2 xs:space-y-2.5 sm:space-y-3">
                     {Array.from({ length: 11 }).map((_, r) => {
                       const rowChar = 'ABCDEFGHIJKLMN'[r] || `R${r + 1}`;
                       const isLastRow = r === 10;
                       return (
-                        <div key={r} className="flex items-center justify-between gap-2">
+                        <div key={r} className="flex items-center justify-between gap-1 xs:gap-1.5 sm:gap-2">
                           {/* Left Seats: 1, 2 */}
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-2">
                             {renderSeatButton(`${rowChar}1`, true)}
                             {renderSeatButton(`${rowChar}2`, false)}
                           </div>
 
                           {/* Center Walkway / Aisle */}
-                          <div className="w-8 text-center font-mono text-[11px] font-black text-slate-400 flex items-center justify-center">
+                          <div className="w-6 xs:w-7 sm:w-8 text-center font-mono text-[10px] sm:text-[11px] font-black text-slate-400 flex items-center justify-center">
                             {isLastRow ? (
                               renderSeatButton(`${rowChar}3`, false)
                             ) : (
-                              <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-xs text-slate-500 border border-slate-200 dark:border-slate-700">
+                              <span className="w-5 h-5 xs:w-6 xs:h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-[10px] xs:text-xs text-slate-500 border border-slate-200 dark:border-slate-700">
                                 {rowChar}
                               </span>
                             )}
                           </div>
 
                           {/* Right Seats: 3, 4 (or 4, 5 on last row) */}
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-2">
                             {renderSeatButton(`${rowChar}${isLastRow ? 4 : 3}`, false)}
                             {renderSeatButton(`${rowChar}${isLastRow ? 5 : 4}`, true)}
                           </div>
@@ -538,7 +574,7 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
             cashoutCharge={cashoutCharge}
             onCashoutChargeChange={(charge) => setCashoutCharge(charge)}
             paymentMethod={paymentMethod}
-            onPaymentMethodChange={(m) => setPaymentMethod(m)}
+            onPaymentMethodChange={handlePaymentMethodChange}
             passengerName={passengerName}
             onPassengerNameChange={(val) => setPassengerName(val)}
             passengerPhone={passengerPhone}
@@ -553,16 +589,6 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
           />
         </div>
       </div>
-
-      {/* Confirmation & Print Modal */}
-      {confirmedBookingData && (
-        <PaymentReceiptModal
-          isOpen={true}
-          onClose={() => setConfirmedBookingData(null)}
-          booking={confirmedBookingData}
-          autoPrint={autoPrintTicket}
-        />
-      )}
     </div>
   );
 }

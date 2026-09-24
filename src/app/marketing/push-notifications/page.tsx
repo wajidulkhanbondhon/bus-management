@@ -16,6 +16,7 @@ import {
   Users
 } from 'lucide-react';
 import { useApp } from '@/lib/context';
+import { formatDate } from '@/lib/utils';
 
 interface PushNotification {
   id: string;
@@ -115,7 +116,7 @@ export default function PushNotificationsPage() {
                 <p className="text-xs text-slate-500 line-clamp-2">{notification.message}</p>
                 <div className="flex items-center gap-4 mt-3 text-[10px] font-bold text-slate-400">
                   <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {notification.targetSegment}</span>
-                  {notification.sentAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {notification.sentAt.toLocaleDateString()}</span>}
+                  {notification.sentAt && <span suppressHydrationWarning className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatDate(notification.sentAt)}</span>}
                   <span className="flex items-center gap-1"><Eye className="w-3 h-3 text-blue-500" /> {notification.clicks} Clicks</span>
                 </div>
               </div>

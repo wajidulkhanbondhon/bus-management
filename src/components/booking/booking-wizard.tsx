@@ -127,13 +127,29 @@ const universityPresets: { id: string; name: string; defaultLayoutName: string; 
   }
 ];
 
-export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts = [], fareZones = [], allBookings = [], initialParams }: Props) {
+const EMPTY_ARRAY: any[] = [];
+const ROW_LETTERS = 'ABCDEFGHIJKLMN';
+
+export function BookingWizard({
+  trips: initialTrips = EMPTY_ARRAY,
+  currentUser,
+  savedLayouts = EMPTY_ARRAY,
+  fareZones = EMPTY_ARRAY,
+  allBookings = EMPTY_ARRAY,
+  initialParams
+}: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t, language, currentColor, customLogos } = useApp();
 
-  const rowLetters = 'ABCDEFGHIJKLMN';
-  const trips = initialTrips && initialTrips.length > 0 ? initialTrips : [];
+  const rowLetters = ROW_LETTERS;
+  const trips = initialTrips && initialTrips.length > 0 ? initialTrips : EMPTY_ARRAY;
+
+  const allBookingsRef = useRef(allBookings);
+  allBookingsRef.current = allBookings;
+
+  const tripsRef = useRef(trips);
+  tripsRef.current = trips;
 
   const rawParamId =
     initialParams?.tripId ||
@@ -189,6 +205,9 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
   const [isStaffCouponModalOpen, setIsStaffCouponModalOpen] = useState(false);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('HAND_CASH');
+  const [processingFee, setProcessingFee] = useState<number>(0);
+  const [vatTaxAmount, setVatTaxAmount] = useState<number>(0);
+  const [cashoutCharge, setCashoutCharge] = useState<number>(0);
   const [senderSourceType, setSenderSourceType] = useState<SenderSourceType>('CASH_RECEIPT');
   const [selectedBankName, setSelectedBankName] = useState<string>('');
   const [paidAmount, setPaidAmount] = useState<number>(0);
@@ -208,6 +227,21 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
     }
   }, [selectedTrip?.departureDate]);
 
+  // Load fee settings from organization defaults
+  useEffect(() => {
+    try {
+      const orgSettings = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('atoms_organization_settings') || '{}') : {};
+      if (orgSettings?.finance) {
+        if (orgSettings.finance.defaultProcessingFee !== undefined) {
+          setProcessingFee(Number(orgSettings.finance.defaultProcessingFee) || 0);
+        }
+        if (orgSettings.finance.taxCalculationType === 'FIXED' && orgSettings.finance.taxFixedAmount !== undefined) {
+          setVatTaxAmount(Number(orgSettings.finance.taxFixedAmount) || 0);
+        }
+      }
+    } catch {}
+  }, []);
+
   // Pre-fill passenger phone for cash payments
   useEffect(() => {
     if (paymentMethod === 'HAND_CASH') {
@@ -216,7 +250,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         setSenderRef(pPhone);
       }
     }
-  }, [paymentMethod, passengers, senderRef]);
+  }, [paymentMethod, passengers[0]?.passengerPhone, senderRef]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -344,10 +378,18 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
       const layoutUni = matchedLayout.university || parsedJson?.university || selectedTrip.targetUniversity || selectedTrip.bus?.targetUniversity || '';
       const layoutCapacity = matchedLayout.totalSeats || matchedLayout.seatCount || matchedLayout.capacity || (Array.isArray(layoutGrid) ? layoutGrid.flat().filter((c: any) => c && (c.type === 'SEAT' || c.seatType === 'SEAT')).length + layoutExtraSeats.length : undefined) || selectedTrip.bus?.capacity || 45;
 
-      if (layoutUni) setTargetUniversity(layoutUni);
-      if (layoutCapacity) setActiveCapacity(layoutCapacity);
+      if (layoutUni) setTargetUniversity((prev) => (prev !== layoutUni ? layoutUni : prev));
+      if (layoutCapacity) setActiveCapacity((prev) => (prev !== layoutCapacity ? layoutCapacity : prev));
       if (layoutSegments && Array.isArray(layoutSegments) && layoutSegments.length > 0) {
-        setActiveSegments(layoutSegments);
+        setActiveSegments((prev) => {
+          if (
+            prev.length === layoutSegments.length &&
+            prev.every((s, i) => s.id === layoutSegments[i]?.id && s.fare === layoutSegments[i]?.fare && s.startRow === layoutSegments[i]?.startRow && s.endRow === layoutSegments[i]?.endRow)
+          ) {
+            return prev;
+          }
+          return layoutSegments;
+        });
         return;
       }
     }
@@ -366,24 +408,36 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
       ...(tripCap === 45 || tripCap === 42 ? [{ id: 'seg-4', name: 'Last Row Bench (K)', startRow: 'K', endRow: 'K', fare: Math.max(300, baseFare - 100), color: 'amber' as const }] : [])
     ];
 
-    setTargetUniversity(targetUni);
-    setActiveCapacity(tripCap);
-    setActiveSegments(dynamicSegments);
+    setTargetUniversity((prev) => (prev !== targetUni ? targetUni : prev));
+    setActiveCapacity((prev) => (prev !== tripCap ? tripCap : prev));
+    setActiveSegments((prev) => {
+      if (
+        prev.length === dynamicSegments.length &&
+        prev.every((s, i) => s.id === dynamicSegments[i].id && s.fare === dynamicSegments[i].fare && s.startRow === dynamicSegments[i].startRow && s.endRow === dynamicSegments[i].endRow)
+      ) {
+        return prev;
+      }
+      return dynamicSegments;
+    });
   }, [selectedTripId, selectedTrip, liveLayouts, resolveLayout]);
+
+  const activeSegmentsRef = useRef(activeSegments);
+  activeSegmentsRef.current = activeSegments;
 
   // ── Seat inventory fetch ────────────────────────────────────
   const getSegmentForRow = useCallback(
-    (rowChar: string, currentSegments = activeSegments): FareRangeSegment | undefined => {
+    (rowChar: string, currentSegments?: FareRangeSegment[]): FareRangeSegment | undefined => {
       if (!rowChar || typeof rowChar !== 'string') return undefined;
-      return currentSegments.find((seg) => {
+      const segmentsToSearch = currentSegments || activeSegmentsRef.current;
+      return segmentsToSearch.find((seg) => {
         if (!seg?.startRow || !seg?.endRow) return false;
-        const startIdx = rowLetters.indexOf(seg.startRow.toUpperCase());
-        const endIdx = rowLetters.indexOf(seg.endRow.toUpperCase());
-        const curIdx = rowLetters.indexOf(rowChar.toUpperCase());
+        const startIdx = ROW_LETTERS.indexOf(seg.startRow.toUpperCase());
+        const endIdx = ROW_LETTERS.indexOf(seg.endRow.toUpperCase());
+        const curIdx = ROW_LETTERS.indexOf(rowChar.toUpperCase());
         return curIdx >= startIdx && curIdx <= endIdx;
       });
     },
-    [activeSegments, rowLetters]
+    []
   );
 
   const parseSeatPosition = useCallback(
@@ -399,7 +453,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
       if (match) {
         const rowChar = match[1];
         const colDigit = parseInt(match[2], 10);
-        const rIdx = rowLetters.indexOf(rowChar);
+        const rIdx = ROW_LETTERS.indexOf(rowChar);
         if (rIdx >= 0) {
           if (rIdx === totalRowsCount - 1 && (activeCapacity === 45 || activeCapacity === 42)) {
             if (colDigit >= 1 && colDigit <= 5) return { rowIndex: rIdx, colIndex: colDigit - 1, isExtra: false };
@@ -416,7 +470,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
       if (r >= 1 && seat.rowIndex === undefined) r = r - 1;
       return { rowIndex: r, colIndex: c, isExtra: false };
     },
-    [activeCapacity, rowLetters]
+    [activeCapacity]
   );
 
   useEffect(() => {
@@ -832,7 +886,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
       : Math.min(discountState.discountRate, grossAmount)
     : 0;
 
-  const netAmount = Math.max(0, grossAmount - discountAmount);
+  const netAmount = Math.max(0, grossAmount - discountAmount + processingFee + vatTaxAmount + cashoutCharge);
   const dueAmount = Math.max(0, netAmount - paidAmount);
 
   const hasInitializedPaidStep5 = useRef(false);
@@ -1100,28 +1154,30 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
     }
 
     let effectiveSenderRef = senderRef.trim();
-    if (!effectiveSenderRef && paymentMethod === 'HAND_CASH') {
-      effectiveSenderRef = passengers[0]?.passengerPhone || 'CASH-COUNTER-OFFICE';
-    }
-
-    if (!effectiveSenderRef) {
-      if (senderSourceType === 'MFS_WALLET') {
-        setErrorMessage(language === 'bn' ? 'প্রেরক বিকাশ/নগদ মোবাইল নম্বর (১১ ডিজিট) আবশ্যক।' : 'Sender mobile number is required.');
-      } else if (senderSourceType === 'BANK_TO_MFS') {
-        setErrorMessage(language === 'bn' ? 'ব্যাংক থেকে বিকাশ বা ব্যাংক ট্রান্সফারের ক্ষেত্রে ব্যাংক ও অ্যাকাউন্ট/রেফারেন্স নম্বর আবশ্যক।' : 'Bank sender account or reference is required.');
-      } else {
-        setErrorMessage(language === 'bn' ? 'প্রেরক রেফারেন্স বা মানি রিসিট নম্বর আবশ্যক।' : 'Sender reference or receipt number is required.');
+    if (paymentMethod === 'HAND_CASH' || paidAmount === 0) {
+      if (!effectiveSenderRef) {
+        effectiveSenderRef = passengers[0]?.passengerPhone || 'CASH-COUNTER';
       }
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (senderSourceType === 'MFS_WALLET') {
-      const cleanSender = effectiveSenderRef.replace(/[\s-]/g, '');
-      if (!/^01[3-9]\d{8}$/.test(cleanSender)) {
-        setErrorMessage(language === 'bn' ? `প্রেরক মোবাইল নম্বর (${effectiveSenderRef}) সঠিক নয়! ১১ ডিজিটের সঠিক বাংলাদেশী নম্বর (যেমন: 017XXXXXXXX) লিখুন।` : 'Invalid 11-digit sender mobile number.');
+    } else {
+      if (!effectiveSenderRef) {
+        if (senderSourceType === 'MFS_WALLET') {
+          setErrorMessage(language === 'bn' ? 'প্রেরক বিকাশ/নগদ মোবাইল নম্বর (১১ ডিজিট) আবশ্যক।' : 'Sender mobile number is required.');
+        } else if (senderSourceType === 'BANK_TO_MFS') {
+          setErrorMessage(language === 'bn' ? 'ব্যাংক থেকে বিকাশ বা ব্যাংক ট্রান্সফারের ক্ষেত্রে ব্যাংক ও অ্যাকাউন্ট/রেফারেন্স নম্বর আবশ্যক।' : 'Bank sender account or reference is required.');
+        } else {
+          setErrorMessage(language === 'bn' ? 'প্রেরক রেফারেন্স বা মানি রিসিট নম্বর আবশ্যক।' : 'Sender reference or receipt number is required.');
+        }
         setIsSubmitting(false);
         return;
+      }
+
+      if (senderSourceType === 'MFS_WALLET') {
+        const cleanSender = effectiveSenderRef.replace(/[\s-]/g, '');
+        if (!/^01[3-9]\d{8}$/.test(cleanSender)) {
+          setErrorMessage(language === 'bn' ? `প্রেরক মোবাইল নম্বর (${effectiveSenderRef}) সঠিক নয়! ১১ ডিজিটের সঠিক বাংলাদেশী নম্বর (যেমন: 017XXXXXXXX) লিখুন।` : 'Invalid 11-digit sender mobile number.');
+          setIsSubmitting(false);
+          return;
+        }
       }
     }
 
@@ -1195,6 +1251,9 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
             discountReference: discountState.isDiscountApplied && discountAmount > 0 ? discountState.discountReference : undefined,
             paymentMethod,
             paidAmount,
+            processingFee,
+            vatAmount: vatTaxAmount,
+            cashoutFee: cashoutCharge,
             transactionId: transactionId.trim() || undefined,
             senderReference: finalSenderRef,
             notes: finalNotes
@@ -1269,6 +1328,11 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           offlineRefId: offlineRecord.localId,
           syncStatus: 'PENDING',
           trip: selectedTrip,
+          boardingPoint: boardingPoint || 'গাবতলী বাস টার্মিনাল',
+          boarding_point: boardingPoint || 'গাবতলী বাস টার্মিনাল',
+          droppingPoint: droppingPoint || 'বিশ্ববিদ্যালয় মেইন গেট',
+          dropping_point: droppingPoint || 'বিশ্ববিদ্যালয় মেইন গেট',
+          journeyType,
           duePromiseDate: effectiveDueDate,
           dueNote: dueNote,
           notes: `[অফলাইন মোড] ${finalNotes}`,
@@ -1294,12 +1358,15 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           ],
           grossAmount,
           discountAmount,
+          processingFee,
+          vatAmount: vatTaxAmount,
+          cashoutFee: cashoutCharge,
           netAmount,
           paidAmount,
           dueAmount: Math.max(0, netAmount - paidAmount),
           paymentStatus: paidAmount >= netAmount ? 'PAID' : paidAmount > 0 ? 'PARTIAL' : 'UNPAID'
         };
-        setConfirmedBookingForReceipt(fullBookingData);
+        router.push(`/bookings/${fullBookingData.id}`);
         return;
       }
 
@@ -1321,6 +1388,14 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
         const fullBookingData = {
           ...res.booking,
           trip: selectedTrip,
+          boardingPoint: boardingPoint || res.booking?.boardingPoint || res.booking?.boarding_point || 'গাবতলী বাস টার্মিনাল',
+          boarding_point: boardingPoint || res.booking?.boardingPoint || res.booking?.boarding_point || 'গাবতলী বাস টার্মিনাল',
+          droppingPoint: droppingPoint || res.booking?.droppingPoint || res.booking?.dropping_point || 'বিশ্ববিদ্যালয় মেইন গেট',
+          dropping_point: droppingPoint || res.booking?.droppingPoint || res.booking?.dropping_point || 'বিশ্ববিদ্যালয় মেইন গেট',
+          journeyType,
+          processingFee,
+          vatAmount: vatTaxAmount,
+          cashoutFee: cashoutCharge,
           duePromiseDate: effectiveDueDate,
           dueNote: dueNote,
           notes: finalNotes,
@@ -1351,7 +1426,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           dueAmount: Math.max(0, netAmount - paidAmount),
           paymentStatus: paidAmount >= netAmount ? 'PAID' : paidAmount > 0 ? 'PARTIAL' : 'UNPAID'
         };
-        setConfirmedBookingForReceipt(fullBookingData);
+        router.push(`/bookings/${fullBookingData.id || res.booking.id}`);
       } else {
         setErrorMessage(res?.error || 'Failed to create booking.');
       }
@@ -1369,11 +1444,13 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
   const isPassengersStepValid = useMemo(() => {
     if (!isSeatSelected || passengers.length === 0) return false;
     const bdPhoneRegex = /^01[3-9]\d{8}$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     for (let i = 0; i < passengers.length; i++) {
       const p = passengers[i];
       if (!p.passengerName || !p.passengerName.trim()) return false;
       const cleanPhone = (p.passengerPhone || '').replace(/[\s-]/g, '');
       if (!cleanPhone || !bdPhoneRegex.test(cleanPhone)) return false;
+      if (p.email && p.email.trim() && !emailRegex.test(p.email.trim())) return false;
       if (p.guardianPhone && p.guardianPhone.trim()) {
         const cleanGPhone = p.guardianPhone.replace(/[\s-]/g, '');
         if (!bdPhoneRegex.test(cleanGPhone)) return false;
@@ -1464,68 +1541,90 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
 
   return (
     <div suppressHydrationWarning className="w-full space-y-5 pb-44 sm:pb-52">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4" suppressHydrationWarning>
-        <div className="flex items-center gap-3 sm:gap-4" suppressHydrationWarning>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            suppressHydrationWarning
-            onClick={() => {
-              if (step > 1) {
-                setStep(step - 1);
-              } else {
-                router.push('/bookings');
-              }
-            }}
-            className="rounded-2xl px-3.5 py-2.5 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0 transition-all hover:-translate-x-0.5"
-            title={step > 1 ? (language === 'bn' ? 'পূর্ববর্তী ধাপে ফিরে যান' : 'Back to previous step') : (language === 'bn' ? 'বুকিং তালিকায় ফিরে যান' : 'Back to bookings list')}
-          >
-            <ArrowLeft className="w-4 h-4 text-slate-700 dark:text-slate-300" />
-            <span className="font-bold">{step > 1 ? (language === 'bn' ? 'পূর্ববর্তী ধাপ' : 'Back') : (language === 'bn' ? 'বুকিং তালিকা' : 'Back')}</span>
-          </Button>
+      {/* Top Navigation & Status Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3" suppressHydrationWarning>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          suppressHydrationWarning
+          onClick={() => {
+            if (step > 1) {
+              setStep(step - 1);
+            } else {
+              router.push('/bookings');
+            }
+          }}
+          className="rounded-2xl px-4 py-2.5 text-xs font-black flex items-center gap-2 cursor-pointer shadow-sm border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 shrink-0 transition-all hover:-translate-x-1"
+          title={step > 1 ? (language === 'bn' ? 'পূর্ববর্তী ধাপে ফিরে যান [Alt+B]' : 'Back to previous step [Alt+B]') : (language === 'bn' ? 'বুকিং তালিকায় ফিরে যান [Alt+B]' : 'Back to bookings list [Alt+B]')}
+        >
+          <ArrowLeft className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+          <span>{step > 1 ? (language === 'bn' ? 'পূর্ববর্তী ধাপ (Back)' : 'Previous Step') : (language === 'bn' ? 'বুকিং তালিকা (Back)' : 'Bookings List')}</span>
+          <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-slate-100 dark:bg-slate-800 rounded border border-slate-300 dark:border-slate-700 text-slate-500 font-semibold">Alt+B</kbd>
+        </Button>
 
-          <div suppressHydrationWarning>
-            <div className="flex items-center gap-2 flex-wrap" suppressHydrationWarning>
-              <Badge variant="primary" suppressHydrationWarning className="text-xs px-3 py-1 font-bold">
-                {targetUniversity}
-              </Badge>
-              <span suppressHydrationWarning className="text-xs font-mono font-bold text-slate-500">
-                {activeCapacity} {language === 'bn' ? 'সিট কোচ' : 'Seat Coach'}
-              </span>
+        <div className="flex items-center gap-2 flex-wrap" suppressHydrationWarning>
+          <Badge variant="primary" suppressHydrationWarning className="text-xs px-3 py-1 font-bold">
+            {targetUniversity}
+          </Badge>
+          <span suppressHydrationWarning className="text-xs font-mono font-bold text-slate-500">
+            {activeCapacity} {language === 'bn' ? 'সিট কোচ' : 'Seat Coach'}
+          </span>
 
-              {!isOnline && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 text-xs font-bold border border-rose-300 dark:border-rose-800 animate-pulse">
-                  <WifiOff className="w-3 h-3 text-rose-600" />
-                  <span>{language === 'bn' ? 'অফলাইন মোড (লোকাল সেভ)' : 'Offline Mode (Local Save)'}</span>
-                </span>
-              )}
+          {!isOnline && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 text-xs font-bold border border-rose-300 dark:border-rose-800 animate-pulse">
+              <WifiOff className="w-3 h-3 text-rose-600" />
+              <span>{language === 'bn' ? 'অফলাইন মোড (লোকাল সেভ)' : 'Offline Mode (Local Save)'}</span>
+            </span>
+          )}
 
-              {isOnline && pendingOfflineCount > 0 && (
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-200 text-xs font-bold border border-amber-300 dark:border-amber-700">
-                  <RefreshCw className={`w-3 h-3 text-amber-700 ${isSyncingOffline ? 'animate-spin' : ''}`} />
-                  <span>{pendingOfflineCount} {language === 'bn' ? 'সিঙ্ক বাকি' : 'Pending Sync'}</span>
-                  <button
-                    type="button"
-                    onClick={handleManualSync}
-                    disabled={isSyncingOffline}
-                    className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer transition-colors"
-                  >
-                    {isSyncingOffline ? 'সিঙ্ক হচ্ছে...' : 'এখনই সিঙ্ক'}
-                  </button>
-                </div>
-              )}
+          {isOnline && pendingOfflineCount > 0 && (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-200 text-xs font-bold border border-amber-300 dark:border-amber-700">
+              <RefreshCw className={`w-3 h-3 text-amber-700 ${isSyncingOffline ? 'animate-spin' : ''}`} />
+              <span>{pendingOfflineCount} {language === 'bn' ? 'সিঙ্ক বাকি' : 'Pending Sync'}</span>
+              <button
+                type="button"
+                onClick={handleManualSync}
+                disabled={isSyncingOffline}
+                className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+              >
+                {isSyncingOffline ? 'সিঙ্ক হচ্ছে...' : 'এখনই সিঙ্ক'}
+              </button>
             </div>
-            <h1 suppressHydrationWarning className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight mt-1 flex items-center gap-2.5">
-              <Armchair suppressHydrationWarning className="w-7 h-7" style={{ color: currentColor?.primaryHex || 'var(--primary-color)' }} />
-              {language === 'bn' ? 'নতুন সিট বুকিং ও টিকিট ইস্যু' : 'New Seat Booking & Ticket Issue'}
-            </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {language === 'bn'
-                ? 'কাস্টম সিট বিল্ডার ফরম্যাটে যে বিশ্ববিদ্যালয়ের জন্য যেমন সিট প্ল্যান ও ভাড়া কনফিগার করা হয়েছে, ঠিক সেভাবে বুকিং করুন।'
-                : 'Select your university admission trip and pick seats matching the exact custom seat builder configuration.'}
-            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Title & Full-Width Stepper */}
+      <div className="space-y-3.5" suppressHydrationWarning>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start sm:items-center gap-2.5 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                if (step > 1) {
+                  setStep(step - 1);
+                } else {
+                  router.push('/bookings');
+                }
+              }}
+              className="px-3 py-2 rounded-2xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all hover:-translate-x-0.5 shrink-0"
+              title={step > 1 ? (language === 'bn' ? 'পূর্ববর্তী ধাপে ফিরে যান' : 'Go Back to Previous Step') : (language === 'bn' ? 'বুকিং তালিকায় ফিরে যান' : 'Back to Bookings')}
+            >
+              <ArrowLeft className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <span>{step > 1 ? (language === 'bn' ? '← পেছনে যান' : '← Back') : (language === 'bn' ? '← বুকিং তালিকা' : '← Bookings')}</span>
+            </button>
+            <div>
+              <h1 suppressHydrationWarning className="text-lg sm:text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                <Armchair suppressHydrationWarning className="w-7 h-7" style={{ color: currentColor?.primaryHex || 'var(--primary-color)' }} />
+                {language === 'bn' ? 'নতুন সিট বুকিং ও টিকিট ইস্যু' : 'New Seat Booking & Ticket Issue'}
+              </h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                {language === 'bn'
+                  ? 'কাস্টম সিট বিল্ডার ফরম্যাটে যে বিশ্ববিদ্যালয়ের জন্য যেমন সিট প্ল্যান ও ভাড়া কনফিগার করা হয়েছে, ঠিক সেভাবে বুকিং করুন।'
+                  : 'Select your university admission trip and pick seats matching the exact custom seat builder configuration.'}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1585,6 +1684,7 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
       {step === 2 && selectedTrip && (
         <SeatSelectionStep
           trip={selectedTrip}
+          currentUser={currentUser}
           activeCapacity={activeCapacity}
           activeSegments={activeSegments}
           tripSeats={tripSeats}
@@ -1627,7 +1727,18 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           onUpdatePassenger={handleUpdatePassenger}
           onSetErrorMessage={setErrorMessage}
           onGoBack={() => setStep(2)}
-          onContinue={() => setStep(4)}
+          onContinue={() => {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            for (const p of passengers) {
+              const cleanMail = (p.email || '').trim();
+              if (cleanMail && !emailRegex.test(cleanMail)) {
+                setErrorMessage('অনুগ্রহ করে সঠিক ইমেইল এড্রেস লিখুন (যেমন: student@gmail.com)।');
+                return;
+              }
+            }
+            setErrorMessage(null);
+            setStep(4);
+          }}
         />
       )}
 
@@ -1674,6 +1785,12 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           paidAmount={paidAmount}
           transactionId={transactionId}
           senderRef={senderRef}
+          processingFee={processingFee}
+          onProcessingFeeChange={setProcessingFee}
+          vatTaxAmount={vatTaxAmount}
+          onVatTaxAmountChange={setVatTaxAmount}
+          cashoutCharge={cashoutCharge}
+          onCashoutChargeChange={setCashoutCharge}
           isSubmitting={isSubmitting}
           isStaffCouponModalOpen={isStaffCouponModalOpen}
           customLogos={customLogos}
@@ -1684,7 +1801,29 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
           onCouponRemove={handleRemoveCoupon}
           onStaffCouponApply={handleStaffCouponApply}
           onSetStaffCouponModalOpen={setIsStaffCouponModalOpen}
-          onPaymentMethodChange={setPaymentMethod}
+          onPaymentMethodChange={(m) => {
+            setPaymentMethod(m);
+            if (m === 'BKASH' || m === 'NAGAD' || m === 'ROCKET') {
+              try {
+                const orgSettings = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('atoms_organization_settings') || '{}') : {};
+                const autoApply = orgSettings.finance?.autoApplyMfsCashout ?? true;
+                if (autoApply && cashoutCharge === 0 && grossAmount > 0) {
+                  if (orgSettings.finance?.mfsCashoutCalculationType === 'FIXED') {
+                    setCashoutCharge(orgSettings.finance?.defaultMfsCashoutFixed ?? 0);
+                  } else {
+                    const pct = orgSettings.finance?.defaultMfsCashoutPercent ?? 1.5;
+                    setCashoutCharge(Math.round(grossAmount * (pct / 100)));
+                  }
+                }
+              } catch {
+                if (cashoutCharge === 0 && grossAmount > 0) {
+                  setCashoutCharge(Math.round(grossAmount * 0.015));
+                }
+              }
+            } else if (m === 'HAND_CASH') {
+              setCashoutCharge(0);
+            }
+          }}
           onSenderSourceTypeChange={setSenderSourceType}
           onSelectedBankChange={setSelectedBankName}
           onPaidAmountChange={setPaidAmount}
@@ -1725,22 +1864,6 @@ export function BookingWizard({ trips: initialTrips, currentUser, savedLayouts =
 
 
 
-      {/* Receipt modal */}
-      {confirmedBookingForReceipt && (
-        <PaymentReceiptModal
-          isOpen={!!confirmedBookingForReceipt}
-          booking={confirmedBookingForReceipt}
-          onClose={() => {
-            router.push(`/bookings/${confirmedBookingForReceipt.id}`);
-          }}
-          onNewBooking={() => {
-            setConfirmedBookingForReceipt(null);
-            setSelectedSeatIds([]);
-            setStep(1);
-            router.push('/bookings/new');
-          }}
-        />
-      )}
     </div>
   );
 }

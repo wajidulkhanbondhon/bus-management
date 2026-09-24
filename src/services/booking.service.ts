@@ -40,6 +40,9 @@ export interface CreateBookingInput {
   discountReference?: string;
   paymentMethod: 'BKASH' | 'NAGAD' | 'ROCKET' | 'HAND_CASH' | 'BANK_TRANSFER' | 'OTHER';
   paidAmount: number;
+  processingFee?: number;
+  vatAmount?: number;
+  cashoutFee?: number;
   transactionId?: string;
   senderReference?: string;
   notes?: string;
@@ -185,6 +188,9 @@ export async function createBooking(input: CreateBookingInput, options?: Request
     discount_reason: input.discountReason || input.discountReference,
     payment_method: input.paymentMethod,
     paid_amount: input.paidAmount,
+    processing_fee: input.processingFee || 0,
+    vat_amount: input.vatAmount || 0,
+    cashout_fee: input.cashoutFee || 0,
     transaction_id: input.transactionId,
     sender_reference: input.senderReference,
     notes: input.notes

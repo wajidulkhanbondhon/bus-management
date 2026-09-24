@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class Token(BaseModel):
@@ -45,9 +45,18 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: str
     phone: Optional[str] = None
-    role: str
+    role: Optional[str] = None
     tenant_id: Optional[str] = None
     discount_limit: float = 0.0
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def convert_role_object(cls, v):
+        if hasattr(v, "name"):
+            return v.name
+        if isinstance(v, str):
+            return v
+        return "STAFF" if v else None
 
 
 class UserCreate(UserBase):

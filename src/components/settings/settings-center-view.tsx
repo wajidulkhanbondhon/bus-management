@@ -981,32 +981,67 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
                     />
                   </div>
 
-                  {/* Hotline / Support Phone */}
-                  <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                      হটলাইন / হেল্পলাইন নম্বর (Helpline Phone) *
-                    </label>
-                    <input
-                      type="text"
-                      value={orgSettings.organization.phone}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, phone: e.target.value } })}
-                      placeholder="017XXXXXXXX"
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold"
-                    />
-                  </div>
+                  {/* Ticket & Customer Helpline Hotline */}
+                  <div className="sm:col-span-2 p-4 bg-sky-50/80 dark:bg-sky-950/40 border-2 border-sky-200 dark:border-sky-800/80 rounded-2xl space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <label className="block font-black text-sm text-sky-950 dark:text-sky-200">
+                          🎫 টিকিট ও কাস্টমার সার্ভিস হটলাইন নম্বর (Ticket Helpline / Hotline) *
+                        </label>
+                        <p className="text-[11px] text-sky-700 dark:text-sky-300 font-medium mt-0.5">
+                          এই নম্বরটি প্রতিটি প্রিন্ট টিকিট, পিডিএফ ভাউচার, থার্মাল রসিদ, WhatsApp বার্তা এবং অফলাইন ফাইলে হেল্পলাইন হিসেবে ডাইনামিকভাবে প্রদর্শিত হবে।
+                        </p>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-sky-600 text-white shadow-2xs">
+                        টিকিট ডাইনামিক ফিল্ড
+                      </span>
+                    </div>
 
-                  {/* Alternative Contact / WhatsApp */}
-                  <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                      বিকল্প যোগাযোগ নম্বর / WhatsApp
-                    </label>
-                    <input
-                      type="text"
-                      value={orgSettings.organization.altPhone || ''}
-                      onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, altPhone: e.target.value } })}
-                      placeholder="018XXXXXXXX"
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold"
-                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                          প্রধান টিকিট হটলাইন নম্বর (Primary Helpline) *
+                        </span>
+                        <input
+                          type="text"
+                          value={orgSettings.organization.phone || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setOrgSettings({
+                              ...orgSettings,
+                              organization: {
+                                ...orgSettings.organization,
+                                phone: val,
+                                supportContact: val
+                              }
+                            });
+                          }}
+                          placeholder="01711-000001"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-sky-300 dark:border-sky-700 rounded-xl font-mono text-sm font-bold text-sky-950 dark:text-sky-100 shadow-xs focus:ring-2 focus:ring-sky-500"
+                        />
+                      </div>
+
+                      <div>
+                        <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                          বিকল্প যোগাযোগ / WhatsApp সাপোর্ট নম্বর
+                        </span>
+                        <input
+                          type="text"
+                          value={orgSettings.organization.altPhone || ''}
+                          onChange={(e) => setOrgSettings({ ...orgSettings, organization: { ...orgSettings.organization, altPhone: e.target.value } })}
+                          placeholder="018XXXXXXXX"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-sm font-bold text-slate-800 dark:text-slate-200 shadow-xs"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Live Ticket Display Demonstration */}
+                    <div className="flex items-center gap-2 text-[11px] font-mono text-sky-800 dark:text-sky-300 bg-white/80 dark:bg-slate-900/80 p-2.5 rounded-xl border border-sky-200/60 dark:border-sky-800/60">
+                      <span className="font-bold">টিকিটে যেভাবে দেখাবে:</span>
+                      <span className="px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-950 text-sky-900 dark:text-sky-200 font-bold">
+                        📞 হেল্পলাইন: {orgSettings.organization.phone || orgSettings.organization.supportContact || '01711-000001'}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Emergency Contact */}
@@ -1549,10 +1584,11 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
                 <CardTitle className="text-base font-black flex items-center gap-2">
                   <Coins className="w-5 h-5 text-amber-600" />
-                  <span>{language === 'bn' ? '১২. অর্থ, ক্যাশ ড্রয়ার ও ডে ক্লোজিং হিসাব' : '12. Finance & Day Closing'}</span>
+                  <span>{language === 'bn' ? '১২. অর্থ, ভ্যাট, ফি ও ক্যাশআউট কনফিগারেশন' : '12. Finance, VAT & Charges'}</span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-6 space-y-4 text-xs">
+              <CardContent className="p-6 space-y-6 text-xs">
+                {/* Day closing and security */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block font-bold mb-1.5">দৈনিক হিসাব ক্লোজিং টাইম (Business Closing Time)</label>
@@ -1569,6 +1605,406 @@ export function SettingsCenterView({ initialSettings, currentUser }: Props) {
                       <span className="text-[11px] text-blue-700 dark:text-blue-400">ডে ক্লোজিং সম্পন্ন হলে স্টাফরা আর পুরনো দিনের লেনদেন সংশোধন করতে পারবে না</span>
                     </div>
                     <Badge variant="primary">লক সক্রিয়</Badge>
+                  </div>
+                </div>
+
+                {/* Ticket VAT, Processing Fee & MFS Cashout Rates (Direct Taka & Percentage) */}
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h4 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                        <span>🧾</span>
+                        <span>{language === 'bn' ? 'টিকিট ভ্যাট, ট্যাক্স, প্রসেসিং ফি ও এমএফএস ক্যাশআউট সরাসরি টাকার হিসাব' : 'Ticket VAT, Processing Fee & Cashout (Direct Taka)'}</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5">
+                        {language === 'bn' 
+                          ? 'এখানে সরাসরি নির্দিষ্ট টাকা (Direct ৳) অথবা শতকরা (%) হার নির্ধারণ করতে পারেন। টিকিটে এই মানগুলো ডিফল্ট হিসেবে যুক্ত হবে (০ রাখলে কোনো অতিরিক্ত চার্জ যোগ হবে না)।'
+                          : 'Set direct fixed amounts in Taka (৳) or percentage rates. Applied as booking defaults.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* 1. VAT & Tax - Direct Taka or Percentage */}
+                    <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block font-bold text-slate-800 dark:text-slate-200 text-xs">
+                          ১. ভ্যাট ও ট্যাক্স (VAT/Tax)
+                        </label>
+                        {/* Type Switcher */}
+                        <div className="flex items-center bg-slate-200 dark:bg-slate-800 rounded-lg p-0.5 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setOrgSettings({
+                              ...orgSettings,
+                              finance: { ...orgSettings.finance, taxCalculationType: 'FIXED' }
+                            })}
+                            className={`px-2 py-0.5 rounded font-bold transition-all ${
+                              (orgSettings.finance.taxCalculationType ?? 'FIXED') === 'FIXED'
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400'
+                            }`}
+                          >
+                            ৳ টাকা
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOrgSettings({
+                              ...orgSettings,
+                              finance: { ...orgSettings.finance, taxCalculationType: 'PERCENTAGE' }
+                            })}
+                            className={`px-2 py-0.5 rounded font-bold transition-all ${
+                              orgSettings.finance.taxCalculationType === 'PERCENTAGE'
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400'
+                            }`}
+                          >
+                            % হার
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Direct Taka Input */}
+                      {(orgSettings.finance.taxCalculationType ?? 'FIXED') === 'FIXED' ? (
+                        <div>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2.5 font-bold text-blue-600 text-sm">৳</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={orgSettings.finance.taxFixedAmount ?? 0}
+                              onChange={(e) => setOrgSettings({
+                                ...orgSettings,
+                                finance: {
+                                  ...orgSettings.finance,
+                                  taxFixedAmount: Math.max(0, parseFloat(e.target.value) || 0),
+                                  taxCalculationType: 'FIXED'
+                                }
+                              })}
+                              className="w-full pl-8 pr-4 py-2 bg-white dark:bg-slate-800 border rounded-xl font-mono font-bold text-sm text-slate-900 dark:text-white"
+                              placeholder="0"
+                            />
+                            <span className="absolute right-3 top-2.5 font-mono text-xs text-slate-400 font-bold">টাকা</span>
+                          </div>
+                          <div className="flex gap-1 pt-1.5">
+                            {[0, 10, 25, 50, 100].map((taka) => (
+                              <button
+                                key={taka}
+                                type="button"
+                                onClick={() => setOrgSettings({
+                                  ...orgSettings,
+                                  finance: {
+                                    ...orgSettings.finance,
+                                    taxFixedAmount: taka,
+                                    taxCalculationType: 'FIXED'
+                                  }
+                                })}
+                                className={`flex-1 py-1 text-[10px] rounded-lg font-mono font-bold transition-colors ${
+                                  (orgSettings.finance.taxFixedAmount ?? 0) === taka
+                                    ? 'bg-blue-600 text-white shadow-xs'
+                                    : 'bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200'
+                                }`}
+                              >
+                                ৳{taka}
+                              </button>
+                            ))}
+                          </div>
+                          <span className="text-[10px] text-slate-500 block pt-1">সরাসরি নির্দিষ্ট টাকা (ডিফল্ট: ৳০)</span>
+                        </div>
+                      ) : (
+                        /* Percentage Input */
+                        <div>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.5"
+                              value={orgSettings.finance.taxRatePercent ?? 0}
+                              onChange={(e) => setOrgSettings({
+                                ...orgSettings,
+                                finance: {
+                                  ...orgSettings.finance,
+                                  taxRatePercent: parseFloat(e.target.value) || 0,
+                                  taxCalculationType: 'PERCENTAGE'
+                                }
+                              })}
+                              className="w-full px-3 py-2 bg-white dark:bg-slate-800 border rounded-xl font-mono font-bold text-sm text-slate-900 dark:text-white"
+                              placeholder="0"
+                            />
+                            <span className="absolute right-3 top-2.5 font-bold text-slate-400">%</span>
+                          </div>
+                          <div className="flex gap-1 pt-1.5">
+                            {[0, 5, 7.5, 15].map((pct) => (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => setOrgSettings({
+                                  ...orgSettings,
+                                  finance: {
+                                    ...orgSettings.finance,
+                                    taxRatePercent: pct,
+                                    taxCalculationType: 'PERCENTAGE'
+                                  }
+                                })}
+                                className={`flex-1 py-1 text-[10px] rounded-lg font-mono font-bold transition-colors ${
+                                  (orgSettings.finance.taxRatePercent ?? 0) === pct
+                                    ? 'bg-blue-600 text-white shadow-xs'
+                                    : 'bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200'
+                                }`}
+                              >
+                                {pct}%
+                              </button>
+                            ))}
+                          </div>
+                          <span className="text-[10px] text-slate-500 block pt-1">মূল ভাড়ার শতকরা হার (ডিফল্ট: ০%)</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 2. Online Processing Fee - Direct Taka */}
+                    <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block font-bold text-slate-800 dark:text-slate-200 text-xs">
+                          ২. অনলাইন প্রসেসিং ফি
+                        </label>
+                        <span className="text-[10px] font-mono font-bold text-blue-600 bg-blue-50 dark:bg-blue-950 px-1.5 py-0.2 rounded border border-blue-200 dark:border-blue-800">
+                          সরাসরি ৳
+                        </span>
+                      </div>
+
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 font-bold text-blue-600 text-sm">৳</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={orgSettings.finance.defaultProcessingFee ?? 0}
+                          onChange={(e) => setOrgSettings({
+                            ...orgSettings,
+                            finance: {
+                              ...orgSettings.finance,
+                              defaultProcessingFee: Math.max(0, parseFloat(e.target.value) || 0)
+                            }
+                          })}
+                          className="w-full pl-8 pr-4 py-2 bg-white dark:bg-slate-800 border rounded-xl font-mono font-bold text-sm text-slate-900 dark:text-white"
+                          placeholder="0"
+                        />
+                        <span className="absolute right-3 top-2.5 font-mono text-xs text-slate-400 font-bold">টাকা</span>
+                      </div>
+
+                      <div className="flex gap-1 pt-1.5">
+                        {[0, 10, 20, 30, 50].map((fee) => (
+                          <button
+                            key={fee}
+                            type="button"
+                            onClick={() => setOrgSettings({
+                              ...orgSettings,
+                              finance: { ...orgSettings.finance, defaultProcessingFee: fee }
+                            })}
+                            className={`flex-1 py-1 text-[10px] rounded-lg font-mono font-bold transition-colors ${
+                              (orgSettings.finance.defaultProcessingFee ?? 0) === fee
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200'
+                            }`}
+                          >
+                            ৳{fee}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="text-[10px] text-slate-500 block pt-1">কাউন্টার ও অনলাইন টিকিটে প্রদেয় ফি (ডিফল্ট: ৳০)</span>
+                    </div>
+
+                    {/* 3. MFS Cashout Charge - Direct Taka or Percentage */}
+                    <div className="p-3.5 bg-pink-50/60 dark:bg-pink-950/20 rounded-2xl border border-pink-200 dark:border-pink-800/60 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block font-bold text-pink-900 dark:text-pink-200 text-xs">
+                          ৩. বিকাশ/নগদ ক্যাশআউট চার্জ
+                        </label>
+                        {/* Type Switcher */}
+                        <div className="flex items-center bg-pink-200/80 dark:bg-pink-900/60 rounded-lg p-0.5 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setOrgSettings({
+                              ...orgSettings,
+                              finance: { ...orgSettings.finance, mfsCashoutCalculationType: 'FIXED' }
+                            })}
+                            className={`px-2 py-0.5 rounded font-bold transition-all ${
+                              (orgSettings.finance.mfsCashoutCalculationType ?? 'FIXED') === 'FIXED'
+                                ? 'bg-pink-600 text-white shadow-xs'
+                                : 'text-pink-900 dark:text-pink-300'
+                            }`}
+                          >
+                            ৳ টাকা
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOrgSettings({
+                              ...orgSettings,
+                              finance: { ...orgSettings.finance, mfsCashoutCalculationType: 'PERCENTAGE' }
+                            })}
+                            className={`px-2 py-0.5 rounded font-bold transition-all ${
+                              orgSettings.finance.mfsCashoutCalculationType === 'PERCENTAGE'
+                                ? 'bg-pink-600 text-white shadow-xs'
+                                : 'text-pink-900 dark:text-pink-300'
+                            }`}
+                          >
+                            % হার
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Direct Taka Input */}
+                      {(orgSettings.finance.mfsCashoutCalculationType ?? 'FIXED') === 'FIXED' ? (
+                        <div>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2.5 font-bold text-pink-600 text-sm">৳</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={orgSettings.finance.defaultMfsCashoutFixed ?? 0}
+                              onChange={(e) => setOrgSettings({
+                                ...orgSettings,
+                                finance: {
+                                  ...orgSettings.finance,
+                                  defaultMfsCashoutFixed: Math.max(0, parseFloat(e.target.value) || 0),
+                                  mfsCashoutCalculationType: 'FIXED'
+                                }
+                              })}
+                              className="w-full pl-8 pr-4 py-2 bg-white dark:bg-slate-800 border border-pink-300 dark:border-pink-700 rounded-xl font-mono font-bold text-sm text-pink-950 dark:text-pink-100"
+                              placeholder="0"
+                            />
+                            <span className="absolute right-3 top-2.5 font-mono text-xs text-pink-500 font-bold">টাকা</span>
+                          </div>
+                          <div className="flex gap-1 pt-1.5">
+                            {[0, 10, 15, 20, 30].map((taka) => (
+                              <button
+                                key={taka}
+                                type="button"
+                                onClick={() => setOrgSettings({
+                                  ...orgSettings,
+                                  finance: {
+                                    ...orgSettings.finance,
+                                    defaultMfsCashoutFixed: taka,
+                                    mfsCashoutCalculationType: 'FIXED'
+                                  }
+                                })}
+                                className={`flex-1 py-1 text-[10px] rounded-lg font-mono font-bold transition-colors ${
+                                  (orgSettings.finance.defaultMfsCashoutFixed ?? 0) === taka
+                                    ? 'bg-pink-600 text-white shadow-xs'
+                                    : 'bg-pink-100 dark:bg-pink-900/40 hover:bg-pink-200 dark:hover:bg-pink-800/60 text-pink-800 dark:text-pink-200'
+                                }`}
+                              >
+                                ৳{taka}
+                              </button>
+                            ))}
+                          </div>
+                          <span className="text-[10px] text-pink-700 dark:text-pink-300 block pt-1">সরাসরি নির্দিষ্ট টাকা (যেমন ৳০ বা ৳১৫)</span>
+                        </div>
+                      ) : (
+                        /* Percentage Input */
+                        <div>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              max="10"
+                              step="0.05"
+                              value={orgSettings.finance.defaultMfsCashoutPercent ?? 1.5}
+                              onChange={(e) => setOrgSettings({
+                                ...orgSettings,
+                                finance: {
+                                  ...orgSettings.finance,
+                                  defaultMfsCashoutPercent: parseFloat(e.target.value) || 0,
+                                  mfsCashoutCalculationType: 'PERCENTAGE'
+                                }
+                              })}
+                              className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-pink-300 dark:border-pink-700 rounded-xl font-mono font-bold text-sm text-pink-950 dark:text-pink-100"
+                              placeholder="1.5"
+                            />
+                            <span className="absolute right-3 top-2.5 font-bold text-pink-600">%</span>
+                          </div>
+                          <div className="flex gap-1 pt-1.5">
+                            {[0, 1.5, 1.85, 2.0].map((pct) => (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => setOrgSettings({
+                                  ...orgSettings,
+                                  finance: {
+                                    ...orgSettings.finance,
+                                    defaultMfsCashoutPercent: pct,
+                                    mfsCashoutCalculationType: 'PERCENTAGE'
+                                  }
+                                })}
+                                className={`flex-1 py-1 text-[10px] rounded-lg font-mono font-bold transition-colors ${
+                                  (orgSettings.finance.defaultMfsCashoutPercent ?? 1.5) === pct
+                                    ? 'bg-pink-600 text-white shadow-xs'
+                                    : 'bg-pink-100 dark:bg-pink-900/40 hover:bg-pink-200 dark:hover:bg-pink-800/60 text-pink-800 dark:text-pink-200'
+                                }`}
+                              >
+                                {pct}%
+                              </button>
+                            ))}
+                          </div>
+                          <span className="text-[10px] text-pink-700 dark:text-pink-300 block pt-1">শতকরা হার (যেমন ১.৫% বা ১.৮৫%)</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Real-time Calculation Sample Preview Banner */}
+                  {(() => {
+                    const sampleFare = 650;
+                    const sampleTax = (orgSettings.finance.taxCalculationType ?? 'FIXED') === 'FIXED'
+                      ? (orgSettings.finance.taxFixedAmount ?? 0)
+                      : Math.round(sampleFare * ((orgSettings.finance.taxRatePercent ?? 0) / 100));
+                    const sampleFee = orgSettings.finance.defaultProcessingFee ?? 0;
+                    const sampleCashout = (orgSettings.finance.mfsCashoutCalculationType ?? 'FIXED') === 'FIXED'
+                      ? (orgSettings.finance.defaultMfsCashoutFixed ?? 0)
+                      : Math.round(sampleFare * ((orgSettings.finance.defaultMfsCashoutPercent ?? 1.5) / 100));
+                    const sampleTotal = sampleFare + sampleTax + sampleFee + sampleCashout;
+
+                    return (
+                      <div className="p-3.5 bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-slate-50 rounded-2xl border border-blue-200 dark:border-blue-900/50 dark:from-slate-900 dark:to-blue-950 flex flex-wrap items-center justify-between gap-3 text-xs">
+                        <div>
+                          <span className="font-bold text-blue-950 dark:text-blue-200 block">
+                            💡 লাইভ নমুনা হিসাব (একটি ৳৬৫০ টাকার টিকিটে):
+                          </span>
+                          <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                            মূল ভাড়া: ৳{sampleFare} • ভ্যাট: +৳{sampleTax} • প্রসেসিং ফি: +৳{sampleFee} • ক্যাশআউট: +৳{sampleCashout}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-700 dark:text-slate-300">সর্বমোট প্রদেয়:</span>
+                          <span className="font-mono text-base font-black text-blue-700 dark:text-blue-400 bg-white dark:bg-slate-800 px-3 py-1 rounded-xl border border-blue-200 dark:border-blue-800 shadow-2xs">
+                            ৳{sampleTotal}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Auto-apply toggle */}
+                  <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 block text-xs">
+                        {language === 'bn' ? 'বিকাশ/নগদ সিলেক্ট করলে ক্যাশআউট চার্জ স্বয়ংক্রিয় গণনা' : 'Auto-calculate Cashout on MFS selection'}
+                      </span>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">
+                        {language === 'bn' 
+                          ? 'টিকিট বুকিংয়ের সময় বিকাশ/নগদ চাপলে ক্যাশআউট চার্জ হিসেবে প্রস্তাব করবে'
+                          : 'Suggest cashout charge automatically when bKash/Nagad is selected'}
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={orgSettings.finance.autoApplyMfsCashout ?? true}
+                      onChange={(e) => setOrgSettings({
+                        ...orgSettings,
+                        finance: { ...orgSettings.finance, autoApplyMfsCashout: e.target.checked }
+                      })}
+                      className="w-5 h-5 accent-blue-600 rounded cursor-pointer"
+                    />
                   </div>
                 </div>
               </CardContent>

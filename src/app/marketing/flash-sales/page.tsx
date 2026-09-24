@@ -19,6 +19,7 @@ import {
   Tag
 } from 'lucide-react';
 import { useApp } from '@/lib/context';
+import { formatDate } from '@/lib/utils';
 
 interface FlashSale {
   id: string;
@@ -202,7 +203,7 @@ export default function FlashSalesPage() {
                   </div>
                   <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                     <Timer className="w-4 h-4 text-slate-400" />
-                    Ends: {new Date(sale.endTime).toLocaleDateString()}
+                    Ends: <span suppressHydrationWarning>{formatDate(sale.endTime)}</span>
                   </div>
                 </div>
               </div>

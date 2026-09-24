@@ -75,6 +75,26 @@ export default async function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var cleanAttrs = ['bis_skin_checked', 'bis_register', '__processed'];
+                  var observer = new MutationObserver(function(mutations) {
+                    for (var i = 0; i < mutations.length; i++) {
+                      var m = mutations[i];
+                      if (m.type === 'attributes' && cleanAttrs.indexOf(m.attributeName) !== -1) {
+                        m.target.removeAttribute(m.attributeName);
+                      }
+                    }
+                  });
+                  observer.observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: cleanAttrs });
+                } catch (e) {}
+              })();
+            `
+          }}
+        />
       </head>
       <body className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen antialiased transition-colors duration-200 font-sans" suppressHydrationWarning>
         <AppContextProvider>

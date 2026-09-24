@@ -1,6 +1,7 @@
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
+from app.schemas.trip import TripOut
 
 
 class PassengerInput(BaseModel):
@@ -43,6 +44,9 @@ class CreateBookingRequest(BaseModel):
     discount_reason: Optional[str] = None
     payment_method: str = "HAND_CASH"
     paid_amount: float = 0.0
+    processing_fee: Optional[float] = 0.0
+    vat_amount: Optional[float] = 0.0
+    cashout_fee: Optional[float] = 0.0
     transaction_id: Optional[str] = None
     sender_reference: Optional[str] = None
     notes: Optional[str] = None
@@ -117,6 +121,13 @@ class BookingOut(BaseModel):
     net_amount: float
     paid_amount: float
     due_amount: float
+    processing_fee: Optional[float] = 0.0
+    vat_amount: Optional[float] = 0.0
+    cashout_fee: Optional[float] = 0.0
+    journey_type: Optional[str] = "ROUND_TRIP"
+    boarding_point: Optional[str] = None
+    dropping_point: Optional[str] = None
+    trip: Optional[TripOut] = None
     notes: Optional[str] = None
     created_at: datetime
     passengers: Optional[List[BookingPassengerOut]] = []
