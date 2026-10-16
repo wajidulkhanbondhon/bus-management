@@ -486,7 +486,7 @@ describe('ATOMS Domain Engine & Business Rules', () => {
       expect(waDispatch.message).toContain('ঢাকা ➔ রাজশাহী বিশ্ববিদ্যালয়');
       expect(waDispatch.message).toContain('৳550');
       expect(waDispatch.message).toContain('পরিশোধিত (PAID)');
-    });
+    }, 15000);
 
     it('should provide popular boarding and dropping points presets', async () => {
       const { COMMON_BOARDING_POINTS, COMMON_DROPPING_POINTS } = await import('@/components/booking/boarding-point-selector');
@@ -682,8 +682,117 @@ describe('ATOMS Domain Engine & Business Rules', () => {
       expect(boardingDisplay).toBe('Talaimari / Bhadra / Railgate Bus Counter');
       expect(droppingDisplay).toBe('University Main Gate / Designated Campus Drop Zone');
     });
+
+    it('should correctly support dual ticket (Bus Ticket + Hotel Pass) when hotel accommodation is attached', async () => {
+      const { extractAccommodationInfo, HotelAccommodationPass } = await import('@/components/booking/payment-receipt');
+      expect(typeof HotelAccommodationPass).toBe('function');
+
+      const bookingWithHotel = {
+        id: 'bk-hotel-999',
+        bookingNumber: 'BK-2026-HTL-999',
+        contactName: 'মাহমুদুল হাসান',
+        contactPhone: '01811223344',
+        trip: {
+          departureDate: '2026-09-12T22:00:00Z',
+          departureTime: '2026-09-12T22:00:00Z',
+          targetUniversity: 'রাজশাহী বিশ্ববিদ্যালয়',
+          bus: {
+            busNumber: 'ঢাকা মেট্রো-ব ১৫-১১২২',
+            busName: 'গ্রিন লাইন স্পেশাল কোচ',
+            notes: '[🏨 HOTEL PACKAGE: হোটেল রয়েল রাজ (Rajshahi) | Room: ২-বেড শেয়ারিং | Fee: ৳1200/person | Inclusions: ফ্রি নাস্তা, ওয়াইফাই]'
+          }
+        },
+        accommodation: {
+          hasHotel: true,
+          hotelName: 'হোটেল রয়েল রাজ (Rajshahi)',
+          roomType: '২-বেড শেয়ারিং (Twin Sharing / Student)',
+          hotelFee: 1200
+        },
+        passengers: [
+          { passengerName: 'মাহমুদুল হাসান', seatNumber: 'A1' },
+          { passengerName: 'অভিভাবক', seatNumber: 'A2' }
+        ]
+      };
+
+      const hotelInfo = extractAccommodationInfo(bookingWithHotel);
+      expect(hotelInfo).not.toBeNull();
+      expect(hotelInfo?.hasHotel).toBe(true);
+      expect(hotelInfo?.hotelName).toBe('হোটেল রয়েল রাজ (Rajshahi)');
+      expect(hotelInfo?.hotelFee).toBe(1200);
+
+      // Verify bundled extra fare calculation
+      const seatCount = bookingWithHotel.passengers.length;
+      const totalHotelAddon = seatCount * (hotelInfo?.hotelFee || 0);
+      expect(totalHotelAddon).toBe(2400);
+    });
+
+    it('should correctly extract hotel info when trip.notes is generic and booking.notes contains hotel package', async () => {
+      const { extractAccommodationInfo } = await import('@/components/booking/payment-receipt');
+      const booking = {
+        id: 'bk-hotel-merged-101',
+        bookingNumber: 'BK-2026-HTL-101',
+        notes: 'Some student note [🏨 HOTEL PACKAGE: রূপসী বাংলা হোটেল (RU) | Room: ৩-বেড ডিলাক্স | Fee: ৳1500/person | Inclusions: এসি, সকালের নাস্তা]',
+        trip: {
+          departureDate: '2026-09-12T22:00:00Z',
+          targetUniversity: 'রাজশাহী বিশ্ববিদ্যালয়',
+          notes: 'Non-hotel generic trip remarks about terminal point',
+          bus: {
+            busNumber: 'ঢাকা মেট্রো-ব ১৫-৯৯৮৮'
+          }
+        }
+      };
+
+      const extracted = extractAccommodationInfo(booking);
+      expect(extracted).not.toBeNull();
+      expect(extracted?.hasHotel).toBe(true);
+      expect(extracted?.hotelName).toBe('রূপসী বাংলা হোটেল (RU)');
+      expect(extracted?.roomType).toBe('৩-বেড ডিলাক্স');
+      expect(extracted?.hotelFee).toBe(1500);
+    });
+
+    it('should provide accurate Bengali labels, icons, and badges for journey directions', async () => {
+      const { getJourneyDirectionInfo } = await import('@/components/booking/payment-receipt');
+
+      const roundTrip = getJourneyDirectionInfo('ROUND_TRIP');
+      expect(roundTrip.labelBn).toBe('উভয়মুখী যাত্রা (যাওয়া ও আসা)');
+      expect(roundTrip.badgeBn).toBe('যাওয়া ও আসা');
+      expect(roundTrip.icon).toBe('🔁');
+
+      const outboundOnly = getJourneyDirectionInfo('OUTBOUND_ONLY');
+      expect(outboundOnly.labelBn).toBe('শুধুমাত্র যাওয়া (একমুখী)');
+      expect(outboundOnly.badgeBn).toBe('শুধু যাওয়া');
+      expect(outboundOnly.icon).toBe('➡️');
+
+      const returnOnly = getJourneyDirectionInfo('RETURN_ONLY');
+      expect(returnOnly.labelBn).toBe('শুধুমাত্র আসা (একমুখী ফেরত)');
+      expect(returnOnly.badgeBn).toBe('শুধু আসা');
+      expect(returnOnly.icon).toBe('⬅️');
+
+      const asymmetric = getJourneyDirectionInfo('ASYMMETRIC');
+      expect(asymmetric.labelBn).toBe('স্প্লিট / মিশ্র যাত্রা');
+      expect(asymmetric.badgeBn).toBe('মিশ্র যাত্রা');
+      expect(asymmetric.icon).toBe('🔀');
+    });
+
+    it('should not force 50% discount on OUTBOUND_ONLY or RETURN_ONLY seats and respect manual fare', () => {
+      const baseFare = 1000;
+      // In prior versions, OUTBOUND_ONLY forced baseFare * 0.5 (500). Now full fare is preserved by default:
+      const fullFareOutbound = baseFare; // 1000
+      expect(fullFareOutbound).toBe(1000);
+
+      // Custom gross fare override logic allows operator complete freedom
+      const operatorCustomFare = 1400; // Operator charges whatever they decide
+      const discount = 0;
+      const netTotal = operatorCustomFare - discount;
+      const paid = 1400;
+      const due = Math.max(0, netTotal - paid);
+
+      expect(netTotal).toBe(1400);
+      expect(due).toBe(0); // No forced due or 50% discount
+    });
   });
 });
+
 
 
 

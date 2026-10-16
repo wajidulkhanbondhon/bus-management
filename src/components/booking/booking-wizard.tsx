@@ -22,6 +22,7 @@ import {
   initAutoOfflineSync
 } from '@/services/offline-sync.service';
 import { useApp } from '@/lib/context';
+import { useToast } from '@/components/ui/toast';
 import { Armchair, AlertCircle, Shield, ArrowLeft, Wifi, WifiOff, RefreshCw, AlertTriangle } from 'lucide-react';
 import { StepIndicator, BookingSummaryBar, BOOKING_STEPS } from './step-indicator';
 import { TripSelectionStep } from './trip-selection-step';
@@ -141,6 +142,7 @@ export function BookingWizard({
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t, language, currentColor, customLogos } = useApp();
+  const { success: toastSuccess, error: toastError } = useToast();
 
   const rowLetters = ROW_LETTERS;
   const trips = initialTrips && initialTrips.length > 0 ? initialTrips : EMPTY_ARRAY;
@@ -190,6 +192,7 @@ export function BookingWizard({
   const [boardingPoint, setBoardingPoint] = useState<string>('গাবতলী বাস টার্মিনাল');
   const [droppingPoint, setDroppingPoint] = useState<string>('বিশ্ববিদ্যালয় মেইন গেট');
   const [seatLegs, setSeatLegs] = useState<Record<string, 'ROUND_TRIP' | 'OUTBOUND_ONLY' | 'RETURN_ONLY'>>({});
+  const [customGrossFare, setCustomGrossFare] = useState<number | null>(null);
 
   const [discountState, setDiscountState] = useState<DiscountState>({
     isDiscountApplied: false,
@@ -864,24 +867,39 @@ export function BookingWizard({
   // ── Financial calculations ──────────────────────────────────
   const hasHotelPackageOption = useMemo(() => {
     const notes = selectedTrip?.bus?.notes || selectedTrip?.notes || '';
-    return !!selectedTrip?.hotelPackage || notes.includes('HOTEL PACKAGE:');
+    return (
+      !!selectedTrip?.hotelPackage ||
+      !!selectedTrip?.hasHotelPackage ||
+      !!selectedTrip?.bus?.hasHotelPackage ||
+      notes.includes('HOTEL PACKAGE:') ||
+      notes.includes('Campus Accommodation') ||
+      notes.includes('হোটেল')
+    );
   }, [selectedTrip]);
 
-  const [includeHotelPackage, setIncludeHotelPackage] = useState<boolean>(true);
-  const [hotelFeePerPerson, setHotelFeePerPerson] = useState<number>(1200);
-  const [hotelPackageDetails, setHotelPackageDetails] = useState<string>('হোটেল রয়েল রাজ (রাজশাহী - ২ দিন ১ রাত)');
+  const parsedHotelInfo = useMemo(() => {
+    const notes = selectedTrip?.bus?.notes || selectedTrip?.notes || '';
+    const feeMatch = notes.match(/(?:Fee:\s*৳|৳\s*|\+\s*৳)(\d+)/i) || notes.match(/৳\s*(\d+)/);
+    const nameMatch = notes.match(/HOTEL PACKAGE:\s*([^|]+)/i) || notes.match(/HOTEL PACKAGE:\s*([^-]+)/i);
+    const fee = selectedTrip?.hotelFee || selectedTrip?.bus?.hotelFee || (feeMatch ? Number(feeMatch[1]) : 1200);
+    const details = selectedTrip?.hotelName || selectedTrip?.bus?.hotelName || (nameMatch ? nameMatch[1].trim() : 'হোটেল রয়েল রাজ (ক্যাম্পাস স্পেশাল)');
+    return { fee, details };
+  }, [selectedTrip]);
+
+  const hotelFeePerPerson = parsedHotelInfo.fee;
+  const hotelPackageDetails = parsedHotelInfo.details;
 
   const calculatedBaseGross = selectedSeatIds.reduce((sum, sId) => {
     const seatObj = allCurrentSeats.find((s) => s.seatId === sId);
     const baseFare = seatObj?.fare || selectedTrip?.basePrice || 550;
-    if (journeyType === 'ROUND_TRIP') return sum + baseFare;
-    if (journeyType === 'OUTBOUND_ONLY' || journeyType === 'RETURN_ONLY') return sum + Math.round(baseFare * 0.5);
-    const leg = seatLegs[sId] || 'ROUND_TRIP';
-    return sum + (leg === 'ROUND_TRIP' ? baseFare : Math.round(baseFare * 0.5));
+    // Operator has full authority over pricing; no forced 50% deduction
+    return sum + baseFare;
   }, 0);
 
-  const hotelTotalAddon = hasHotelPackageOption && includeHotelPackage ? selectedSeatIds.length * hotelFeePerPerson : 0;
-  const grossAmount = calculatedBaseGross + hotelTotalAddon;
+  // Automatically bundle hotel extra fare when trip includes hotel
+  const hotelTotalAddon = hasHotelPackageOption ? selectedSeatIds.length * hotelFeePerPerson : 0;
+  const standardGross = calculatedBaseGross + hotelTotalAddon;
+  const grossAmount = (customGrossFare !== null && customGrossFare >= 0) ? customGrossFare : standardGross;
 
   const discountAmount = discountState.isDiscountApplied
     ? discountState.discountType === 'PERCENTAGE'
@@ -1203,14 +1221,7 @@ export function BookingWizard({
       const seatsPayload = selectedSeatIds.map((sId) => {
         const sObj = allCurrentSeats.find((s) => s.seatId === sId);
         const base = sObj?.fare || selectedTrip?.basePrice || 550;
-        let seatFare = base;
-        if (journeyType === 'OUTBOUND_ONLY' || journeyType === 'RETURN_ONLY') {
-          seatFare = Math.round(base * 0.5);
-        } else if (journeyType === 'ASYMMETRIC') {
-          const leg = seatLegs[sId] || 'ROUND_TRIP';
-          seatFare = leg === 'ROUND_TRIP' ? base : Math.round(base * 0.5);
-        }
-        return { seatId: sId, fare: seatFare };
+        return { seatId: sId, fare: base };
       });
 
       const finalSenderRef = selectedBankName && senderSourceType === 'BANK_TO_MFS'
@@ -1233,7 +1244,24 @@ export function BookingWizard({
           : 'অভিভাবক সহ স্প্লিট'
       } | বোর্ডিং: ${boardingPoint} | ড্রপিং: ${droppingPoint}`;
 
-      const finalNotes = `${generatedNotes}${dueNoteStr}`;
+      const hotelNoteStr = hasHotelPackageOption
+        ? ` | আবাসন প্যাকেজ সংযুক্ত: ${hotelPackageDetails} (+৳${hotelTotalAddon})`
+        : '';
+      const finalNotes = `${generatedNotes}${hotelNoteStr}${dueNoteStr}`;
+
+      const accommodationData = hasHotelPackageOption
+        ? {
+            hasHotel: true,
+            hotelName: hotelPackageDetails,
+            roomType: 'ডিলাক্স এসি শেয়ার্ড রুম (ভর্তি পরীক্ষার্থী)',
+            checkIn: 'দুপুর ১২:০০',
+            checkOut: 'পরবর্তী দিন সকাল ১০:০০',
+            locationAddress: `${selectedTrip?.targetUniversity || 'বিশ্ববিদ্যালয় ক্যাম্পাস'} সংলগ্ন আবাসিক এলাকা`,
+            contactPerson: '০১৭০০-০০০০০০ (হোটেল হেল্পডেস্ক)',
+            hotelFee: hotelFeePerPerson,
+            totalHotelFee: hotelTotalAddon
+          }
+        : null;
 
       let isOffline = !isNetworkOnline();
       let res: any = null;
@@ -1354,6 +1382,7 @@ export function BookingWizard({
           duePromiseDate: effectiveDueDate,
           dueNote: dueNote,
           notes: `[অফলাইন মোড] ${finalNotes}`,
+          accommodation: accommodationData,
           passengers: passengers.map((p) => ({
             ...p,
             seatNumber: allCurrentSeats.find((s) => s.seatId === p.seatId)?.seatNumber || p.seatId,
@@ -1384,7 +1413,11 @@ export function BookingWizard({
           dueAmount: Math.max(0, netAmount - paidAmount),
           paymentStatus: paidAmount >= netAmount ? 'PAID' : paidAmount > 0 ? 'PARTIAL' : 'UNPAID'
         };
-        router.push(`/bookings/${fullBookingData.id}`);
+        toastSuccess(
+          'অফলাইনে সংরক্ষিত হয়েছে!',
+          `টিকিট বুকিং সফলভাবে স্থানীয়ভাবে সংরক্ষিত হয়েছে (পিএনআর: ${fullBookingData.bookingNumber})`
+        );
+        router.push(`/bookings/${fullBookingData.id}?success=true&pnr=${fullBookingData.bookingNumber}`);
         return;
       }
 
@@ -1417,6 +1450,7 @@ export function BookingWizard({
           duePromiseDate: effectiveDueDate,
           dueNote: dueNote,
           notes: finalNotes,
+          accommodation: accommodationData,
           passengers: passengers.map((p) => ({
             ...p,
             seatNumber: allCurrentSeats.find((s) => s.seatId === p.seatId)?.seatNumber || p.seatId,
@@ -1444,12 +1478,28 @@ export function BookingWizard({
           dueAmount: Math.max(0, netAmount - paidAmount),
           paymentStatus: paidAmount >= netAmount ? 'PAID' : paidAmount > 0 ? 'PARTIAL' : 'UNPAID'
         };
-        router.push(`/bookings/${fullBookingData.id || res.booking.id}`);
+
+        const bookedSeatsStr = passengers
+          .map((p) => allCurrentSeats.find((s) => s.seatId === p.seatId)?.seatNumber || p.seatId)
+          .filter(Boolean)
+          .join(', ');
+        const targetPnr = res.booking.bookingNumber || fullBookingData.bookingNumber || 'BK-CONFIRMED';
+        const targetId = fullBookingData.id || res.booking.id;
+
+        toastSuccess(
+          '🎉 অভিনন্দন! টিকিট বুকিং সফল হয়েছে!',
+          `পিএনআর: ${targetPnr} • আসন: ${bookedSeatsStr || 'নির্ধারিত'}`
+        );
+        router.push(`/bookings/${targetId}?success=true&pnr=${targetPnr}`);
       } else {
-        setErrorMessage(res?.error || 'Failed to create booking.');
+        const err = res?.error || 'Failed to create booking.';
+        toastError('বুকিং সম্পন্ন হয়নি', err);
+        setErrorMessage(err);
       }
     } catch (e: any) {
-      setErrorMessage(e.message || 'An unexpected error occurred.');
+      const err = e.message || 'An unexpected error occurred.';
+      toastError('ত্রুটি ঘটেছে', err);
+      setErrorMessage(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -1768,7 +1818,6 @@ export function BookingWizard({
           boardingPoint={boardingPoint}
           droppingPoint={droppingPoint}
           hasHotelPackageOption={hasHotelPackageOption}
-          includeHotelPackage={includeHotelPackage}
           hotelFeePerPerson={hotelFeePerPerson}
           hotelPackageDetails={hotelPackageDetails}
           estimatedNet={grossAmount}
@@ -1778,8 +1827,6 @@ export function BookingWizard({
           }}
           onBoardingChange={setBoardingPoint}
           onDroppingChange={setDroppingPoint}
-          onHotelToggle={setIncludeHotelPackage}
-          onHotelFeeChange={setHotelFeePerPerson}
           onGoBack={() => setStep(3)}
           onContinue={() => setStep(5)}
         />
@@ -1791,6 +1838,8 @@ export function BookingWizard({
           allCurrentSeats={allCurrentSeats}
           targetUniversity={targetUniversity}
           grossAmount={grossAmount}
+          customGrossAmount={customGrossFare}
+          onCustomGrossAmountChange={setCustomGrossFare}
           discountState={discountState}
           appliedCoupon={appliedCoupon}
           couponMessage={couponMessage}

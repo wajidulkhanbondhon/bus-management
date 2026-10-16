@@ -11,9 +11,9 @@ import { useEffect, type RefObject } from 'react';
  */
 export const A4_W = 794;
 export const A4_H = 1123;
-export const A4_PAD = 2;
-export const CANVAS_W = A4_W - (A4_PAD * 2);
-export const CANVAS_H = A4_H - (A4_PAD * 2);
+export const A4_PAD = 0;
+export const CANVAS_W = A4_W;
+export const CANVAS_H = A4_H;
 
 export const THERMAL_W_MM = 80;
 export const THERMAL_W_PX = Math.round((THERMAL_W_MM / 25.4) * 96);
@@ -56,7 +56,14 @@ export function ensureSheetPageSize(mode: PaperMode): HTMLStyleElement | null {
 export function useSheetPageSize(mode: PaperMode) {
   useEffect(() => {
     const tag = ensureSheetPageSize(mode);
+
+    const onBeforePrint = () => {
+      ensureSheetPageSize(mode);
+    };
+    window.addEventListener('beforeprint', onBeforePrint);
+
     return () => {
+      window.removeEventListener('beforeprint', onBeforePrint);
       tag?.remove();
     };
   }, [mode]);
@@ -73,11 +80,21 @@ export function useSheetPageSize(mode: PaperMode) {
 export function fitTicketCanvas(el: HTMLElement | null): number {
   if (!el || typeof window === 'undefined') return 1;
   const innerChild = el.firstElementChild as HTMLElement | null;
-  const natural = Math.max(el.scrollHeight, innerChild ? innerChild.scrollHeight : 0, CANVAS_H);
-  const fit = Math.max(0.2, Math.min(1, CANVAS_H / natural));
-  // Floor rather than round, so rounding can never push the content past the budget.
-  const next = String(Math.floor(fit * 10000) / 10000);
-  if (el.style.getPropertyValue('--ticket-fit') !== next) {
+  const natural = Math.max(el.scrollHeight, innerChild ? innerChild.scrollHeight : 0);
+
+  // If content naturally fits in the budget, lock fit to 1
+  if (natural <= CANVAS_H + 6) {
+    if (el.style.getPropertyValue('--ticket-fit') !== '1') {
+      el.style.setProperty('--ticket-fit', '1');
+    }
+    return 1;
+  }
+
+  const fit = Math.max(0.65, Math.min(1, CANVAS_H / natural));
+  // Round to 2 decimal places to avoid sub-pixel jitter
+  const next = String(Math.floor(fit * 100) / 100);
+  const current = el.style.getPropertyValue('--ticket-fit');
+  if (!current || Math.abs(Number(current) - Number(next)) >= 0.02) {
     el.style.setProperty('--ticket-fit', next);
   }
   return Number(next);
@@ -101,16 +118,16 @@ export function useTicketFit(
 
     run();
 
-    const observer = new ResizeObserver(run);
-    observer.observe(el);
-    window.addEventListener('resize', run);
+    // Re-check when web fonts finish rendering
     if (typeof document !== 'undefined' && document.fonts?.ready) {
       document.fonts.ready.then(run).catch(() => {});
     }
 
+    // Window resize (device orientation or screen zoom changes)
+    window.addEventListener('resize', run);
+
     return () => {
       cancelAnimationFrame(raf);
-      observer.disconnect();
       window.removeEventListener('resize', run);
     };
   }, [enabled, ...deps]);
@@ -126,24 +143,31 @@ export function useSheetViewZoom(ref: RefObject<HTMLElement | null>, maxZoom: nu
     const host = el.parentElement ?? el;
 
     let raf = 0;
+    let lastZoom = -1;
+
     const run = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
-        const available = host.clientWidth || A4_W;
-        // Dynamically scale up to maxZoom on desktop views to utilize available space without expanding past the screen
-        const targetZoom = Math.min(maxZoom, Math.max(0.4, (available - 8) / A4_W));
-        el.style.setProperty('--ticket-view', String(Number(targetZoom.toFixed(4))));
+        const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1024;
+        const hostWidth = host.clientWidth || A4_W;
+        const available = Math.min(viewportWidth - 24, hostWidth);
+        // On desktop and screens that fit A4 naturally (>= 794px), lock to 1.0 to guarantee perfect centered alignment.
+        // On narrow mobile devices, scale down gracefully to fit screen.
+        const targetZoom = available >= A4_W ? 1.0 : Math.max(0.35, Math.floor(((available - 12) / A4_W) * 100) / 100);
+        const rounded = Math.floor(targetZoom * 100) / 100;
+
+        if (Math.abs(rounded - lastZoom) >= 0.02) {
+          lastZoom = rounded;
+          el.style.setProperty('--ticket-view', String(rounded));
+        }
       });
     };
 
     run();
-    const observer = new ResizeObserver(run);
-    observer.observe(host);
     window.addEventListener('resize', run);
 
     return () => {
       cancelAnimationFrame(raf);
-      observer.disconnect();
       window.removeEventListener('resize', run);
     };
   }, [ref, maxZoom]);

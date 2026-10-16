@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { useToast } from '@/components/ui/toast';
 import {
   ArrowLeft,
   Copy,
@@ -24,31 +26,45 @@ import {
   CheckCircle2,
   BadgeCheck,
   FileDown,
-  Ticket
+  Ticket,
+  Hotel,
+  Layers,
+  Building2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
+import { Input } from '@/components/ui/input';
 import { QRCodeView } from '@/components/common/qr-code';
 import { formatCurrency } from '@/lib/utils';
 import {
   PaymentReceipt,
   printReceiptElement,
+  printTicketDirect,
   downloadReceiptAsPdf,
   downloadReceiptOfflineHtml,
   buildWhatsAppTicketMessage,
-  cleanLocationName
+  cleanLocationName,
+  extractAccommodationInfo,
+  getJourneyDirectionInfo
 } from './payment-receipt';
 
 interface Props {
   booking: any;
   autoPrint?: boolean;
+  isSuccess?: boolean;
 }
 
-export function BookingDetailView({ booking, autoPrint = false }: Props) {
+export function BookingDetailView({ booking, autoPrint = false, isSuccess = false }: Props) {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedPnr, setCopiedPnr] = useState(false);
   const [copiedWa, setCopiedWa] = useState(false);
   const [layoutMode, setLayoutMode] = useState<'SPLIT' | 'FULL'>('SPLIT');
   const [hostUrl, setHostUrl] = useState('https://atoms-transit.com');
+
+  const searchParams = useSearchParams();
+  const isJustBooked = isSuccess || searchParams.get('success') === 'true' || searchParams.get('booked') === 'true';
+  const [showSuccessAlert, setShowSuccessAlert] = useState(isJustBooked);
+  const { success: toastSuccess } = useToast();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -65,50 +81,98 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
     }
   }, [autoPrint]);
 
+  useEffect(() => {
+    if (isJustBooked) {
+      setShowSuccessAlert(true);
+      const bNum = booking?.bookingNumber || booking?.booking_number || 'BK-SUCCESS';
+      const sNum = (booking?.passengers || [])
+        .map((p: any) => p.seatNumber || p.seat_number)
+        .filter(Boolean)
+        .join(', ');
+      toastSuccess(
+        '🎉 টিকিট বুকিং সফল হয়েছে!',
+        `পিএনআর: ${bNum} • আসন: ${sNum || 'নির্ধারিত'}`
+      );
+    }
+  }, [isJustBooked]);
+
   if (!booking) return null;
 
-  const bookingNumber = booking.bookingNumber || booking.booking_number || 'BK-TICKET';
-  const trip = booking.trip || {};
+  const [customAccommodation, setCustomAccommodation] = useState<any>(null);
+  const [isAttachHotelModalOpen, setIsAttachHotelModalOpen] = useState(false);
+  const [hotelFormName, setHotelFormName] = useState('হোটেল রয়েল রাজ (Rajshahi)');
+  const [hotelFormRoomType, setHotelFormRoomType] = useState('২-বেড শেয়ারিং (স্টুডেন্ট প্যাকেজ)');
+  const [hotelFormFee, setHotelFormFee] = useState(1200);
+  const [hotelFormInclusions, setHotelFormInclusions] = useState('সকালের নাস্তা, ওয়াইফাই, এসি ও সার্বক্ষণিক সাপোর্ট');
+
+  const currentBooking = React.useMemo(() => {
+    if (!customAccommodation) return booking;
+    return {
+      ...booking,
+      accommodation: customAccommodation,
+      hasHotelPackage: true
+    };
+  }, [booking, customAccommodation]);
+
+  const bookingNumber = currentBooking.bookingNumber || currentBooking.booking_number || 'BK-TICKET';
+  const trip = currentBooking.trip || {};
   const bus = trip.bus || {};
   const route = trip.route || {};
-  const rawPassengers = booking.passengers || [];
+  const rawPassengers = currentBooking.passengers || [];
 
   const passengers = rawPassengers.length > 0 ? rawPassengers : (
-    (booking.seats && booking.seats.length > 0)
-      ? booking.seats.map((st: any, sIdx: number) => ({
-          passengerName: booking.contactName || 'সম্মানিত যাত্রী',
-          passengerPhone: booking.contactPhone || '—',
+    (currentBooking.seats && currentBooking.seats.length > 0)
+      ? currentBooking.seats.map((st: any, sIdx: number) => ({
+          passengerName: currentBooking.contactName || 'সম্মানিত যাত্রী',
+          passengerPhone: currentBooking.contactPhone || '—',
           seatNumber: st.seatNumber || st.seat_number || `S${sIdx + 1}`,
           fareSnapshot: st.fareSnapshot || st.fare_snapshot,
           passengerType: 'STUDENT',
-          admissionId: booking.studentAdmissionId || '',
+          admissionId: currentBooking.studentAdmissionId || '',
           passengerGender: 'MALE'
         }))
       : [{
-          passengerName: booking.contactName || 'সম্মানিত যাত্রী',
-          passengerPhone: booking.contactPhone || '—',
-          seatNumber: booking.seats?.[0]?.seatNumber || booking.seatNumber || booking.seat_number || 'নির্ধারিত',
-          fareSnapshot: booking.totalAmount || 0,
+          passengerName: currentBooking.contactName || 'সম্মানিত যাত্রী',
+          passengerPhone: currentBooking.contactPhone || '—',
+          seatNumber: currentBooking.seats?.[0]?.seatNumber || currentBooking.seatNumber || currentBooking.seat_number || 'নির্ধারিত',
+          fareSnapshot: currentBooking.totalAmount || 0,
           passengerType: 'GENERAL',
-          admissionId: booking.studentAdmissionId || '',
+          admissionId: currentBooking.studentAdmissionId || '',
           passengerGender: 'MALE'
         }]
   );
 
   const primaryPassenger = passengers[0] || {};
-  const passengerName = primaryPassenger.passengerName || booking.contactName || 'সম্মানিত যাত্রী';
-  const passengerPhone = primaryPassenger.passengerPhone || booking.contactPhone || '—';
-  const admissionId = primaryPassenger.admissionId || booking.studentAdmissionId;
+  const passengerName = primaryPassenger.passengerName || currentBooking.contactName || 'সম্মানিত যাত্রী';
+  const passengerPhone = primaryPassenger.passengerPhone || currentBooking.contactPhone || '—';
+  const admissionId = primaryPassenger.admissionId || currentBooking.studentAdmissionId;
 
   // Seats
   const seatNumbers = passengers
     .map((p: any) => p.seatNumber || p.seat_number)
     .filter(Boolean);
 
+  // Accommodation & Hotel Detection
+  const hotelInfo = React.useMemo(() => extractAccommodationInfo(currentBooking), [currentBooking]);
+  const hasHotelTicket = !!hotelInfo && hotelInfo.hasHotel;
+  const [selectedTicketTab, setSelectedTicketTab] = useState<'BUS' | 'HOTEL' | 'BOTH'>('BUS');
+
+  // Journey Direction Resolution
+  const rawJourneyType = (
+    currentBooking.journeyType ||
+    currentBooking.journey_type ||
+    trip.journeyType ||
+    trip.journey_type ||
+    (currentBooking.notes?.includes('শুধুমাত্র যাওয়া') || currentBooking.notes?.includes('শুধুমাত্র যাওয়া') ? 'OUTBOUND_ONLY' :
+     currentBooking.notes?.includes('শুধুমাত্র আসা') ? 'RETURN_ONLY' :
+     currentBooking.notes?.includes('স্প্লিট') || currentBooking.notes?.includes('মিশ্র') ? 'ASYMMETRIC' : 'ROUND_TRIP')
+  );
+  const journeyDirInfo = React.useMemo(() => getJourneyDirectionInfo(rawJourneyType), [rawJourneyType]);
+
   // Accounting
-  const grossAmount = Number(booking.totalAmount || booking.grossAmount || 0);
-  const discountAmount = Number(booking.discountAmount || 0);
-  const paidAmount = Number(booking.paidAmount || (booking.paymentStatus === 'PAID' ? grossAmount : 0));
+  const grossAmount = Number(currentBooking.totalAmount || currentBooking.grossAmount || 0);
+  const discountAmount = Number(currentBooking.discountAmount || 0);
+  const paidAmount = Number(currentBooking.paidAmount || (currentBooking.paymentStatus === 'PAID' ? grossAmount : 0));
   const dueAmount = Math.max(0, grossAmount - discountAmount - paidAmount);
   const isPaidInFull = dueAmount <= 0;
 
@@ -117,8 +181,8 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
     bus.bus_number ||
     trip.busNumber ||
     trip.bus_number ||
-    booking.busNumber ||
-    booking.bus_number ||
+    currentBooking.busNumber ||
+    currentBooking.bus_number ||
     trip.bus?.busNumber ||
     trip.bus?.bus_number ||
     trip.tripCode ||
@@ -132,8 +196,8 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
     bus.bus_name ||
     trip.busName ||
     trip.bus_name ||
-    booking.busName ||
-    booking.bus_name ||
+    currentBooking.busName ||
+    currentBooking.bus_name ||
     trip.bus?.busName ||
     trip.bus?.bus_name ||
     'সেন্ট্রাল এক্সপ্রেস কোচ'
@@ -142,14 +206,14 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
   // Locations
   const routeOrigin = cleanLocationName(route.origin || route.source || trip.origin, 'কাউন্টার পয়েন্ট');
   const routeDestination = route.destination || trip.targetUniversity || 'গন্তব্য ক্যাম্পাস';
-  const boardingPointName = cleanLocationName(booking.boardingPoint || booking.boarding_point || trip.boardingPoint, `${routeOrigin} কাউন্টার`);
-  const boardingAddress = cleanLocationName(booking.boardingAddress || booking.boarding_address, `${boardingPointName}, সেন্ট্রাল বাস টার্মিনাল`);
-  const droppingPointName = booking.droppingPoint || booking.dropping_point || trip.droppingPoint || trip.targetUniversity || `${routeDestination} ড্রপিং জোন`;
-  const droppingAddress = booking.droppingAddress || booking.dropping_address || `${droppingPointName}, প্রধান ফটক ও যাত্রী ড্রপিং লেন`;
+  const boardingPointName = cleanLocationName(currentBooking.boardingPoint || currentBooking.boarding_point || trip.boardingPoint, `${routeOrigin} কাউন্টার`);
+  const boardingAddress = cleanLocationName(currentBooking.boardingAddress || currentBooking.boarding_address, `${boardingPointName}, সেন্ট্রাল বাস টার্মিনাল`);
+  const droppingPointName = currentBooking.droppingPoint || currentBooking.dropping_point || trip.droppingPoint || trip.targetUniversity || `${routeDestination} ড্রপিং জোন`;
+  const droppingAddress = currentBooking.droppingAddress || currentBooking.dropping_address || `${droppingPointName}, প্রধান ফটক ও যাত্রী ড্রপিং লেন`;
 
   // Trip timing
-  const departureDate = trip.departureDate || trip.departure_date || booking.departureDate || booking.journeyDate;
-  const departureTime = trip.departureTime || trip.departure_time || booking.departureTime;
+  const departureDate = trip.departureDate || trip.departure_date || currentBooking.departureDate || currentBooking.journeyDate;
+  const departureTime = trip.departureTime || trip.departure_time || currentBooking.departureTime;
 
   // Security Hash
   const securityHash = React.useMemo(() => {
@@ -194,7 +258,37 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
   };
 
   return (
-    <div suppressHydrationWarning className="w-full max-w-[1720px] mx-auto space-y-4 pb-16 px-2 sm:px-4 lg:px-6 print:p-0 print:m-0 print:space-y-0 print:pb-0 print:max-w-none">
+    <div suppressHydrationWarning className="w-full max-w-[1360px] mx-auto space-y-4 pb-16 px-3 sm:px-6 print:p-0 print:m-0 print:space-y-0 print:pb-0 print:max-w-none">
+      {/* Success Celebration Alert Banner */}
+      {showSuccessAlert && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white shadow-lg flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-3 duration-300 print:hidden">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 text-2xl shadow-inner">
+              🎉
+            </div>
+            <div>
+              <h3 className="font-black text-base sm:text-lg text-white flex items-center gap-2">
+                টিকিট বুকিং সফলভাবে সম্পন্ন হয়েছে!
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-400/30 text-emerald-100 border border-emerald-300/40">
+                  CONFIRMED
+                </span>
+              </h3>
+              <p className="text-xs sm:text-sm text-emerald-100 font-medium mt-0.5">
+                অভিনন্দন! আপনার আসন ও ট্রাভেল পাস নিশ্চিত হয়েছে (পিএনআর: <span className="font-mono font-bold text-white">{bookingNumber}</span> • আসন: <span className="font-mono font-bold text-white">{seatNumbers.join(', ') || 'নির্ধারিত'}</span>)। নিচে টিকিট প্রিন্ট অথবা PDF সংরক্ষণ করতে পারেন।
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSuccessAlert(false)}
+            className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white/90 hover:text-white transition-all text-sm font-bold cursor-pointer shrink-0"
+            title="বন্ধ করুন"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* 1. Executive Top Header & Layout Controls (Screen only) */}
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
         {/* Left Navigation and Ticket Status Badges */}
@@ -226,10 +320,23 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
 
           <span className="text-slate-300 dark:text-slate-700">/</span>
 
-          <span className="text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 px-2.5 py-1 rounded-xl text-xs flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>ডিজিটাল ট্রাভেল পাস</span>
+          {/* Journey Direction Indicator */}
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-2xs border ${journeyDirInfo.pillClass}`}>
+            <span>{journeyDirInfo.icon}</span>
+            <span>{journeyDirInfo.labelBn}</span>
           </span>
+
+          {hasHotelTicket ? (
+            <span className="text-xs font-black bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800/70 px-2.5 py-1 rounded-xl flex items-center gap-1.5 shadow-2xs">
+              <Hotel className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span>🏨 হোটেল প্যাকেজ সমন্বিত বাস</span>
+            </span>
+          ) : (
+            <span className="text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 px-2.5 py-1 rounded-xl flex items-center gap-1.5 shadow-2xs">
+              <Bus className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+              <span>🚌 সাধারণ / নরমাল বাস</span>
+            </span>
+          )}
 
           {isPaidInFull ? (
             <span className="text-[11px] font-mono font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-xl flex items-center gap-1">
@@ -246,6 +353,74 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
 
         {/* Right Layout Switcher & Fast Actions */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Direct Print Buttons (Dedicated for Bus, Hotel and Both) */}
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              setSelectedTicketTab('BUS');
+              printTicketDirect('BUS');
+            }}
+            className="text-xs font-black rounded-xl bg-blue-600 hover:bg-blue-500 text-white cursor-pointer shadow-xs flex items-center gap-1.5"
+            title="বাসের টিকিট প্রিন্ট করুন"
+          >
+            <Bus className="w-3.5 h-3.5" />
+            <span>বাস টিকিট প্রিন্ট</span>
+          </Button>
+
+          {hasHotelTicket ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setSelectedTicketTab('HOTEL');
+                printTicketDirect('HOTEL');
+              }}
+              className="text-xs font-black rounded-xl bg-purple-600 hover:bg-purple-500 text-white cursor-pointer shadow-xs flex items-center gap-1.5 border border-purple-500"
+              title="হোটেলের টিকিট প্রিন্ট করুন"
+            >
+              <Hotel className="w-3.5 h-3.5" />
+              <span>🏨 হোটেল টিকিট প্রিন্ট</span>
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSelectedTicketTab('HOTEL');
+              }}
+              className="text-xs font-bold rounded-xl bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800 hover:bg-purple-100 cursor-pointer shadow-2xs flex items-center gap-1.5"
+              title="হোটেল টিকিট স্ট্যাটাস দেখুন"
+            >
+              <Hotel className="w-3.5 h-3.5 text-purple-600" />
+              <span>🏨 হোটেল টিকিট (নরমাল বাস)</span>
+            </Button>
+          )}
+
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              setSelectedTicketTab('BOTH');
+              if (hasHotelTicket) {
+                printTicketDirect('BOTH');
+              } else {
+                printTicketDirect('BUS');
+              }
+            }}
+            className={`text-xs font-black rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5 ${
+              hasHotelTicket
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+            }`}
+            title={hasHotelTicket ? "বাস ও হোটেল উভয় টিকিট একত্রে প্রিন্ট করুন (২ পাতা)" : "উভয় টিকিট মোড (নরমাল বাসে শুধু বাস টিকিট)"}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>উভয় টিকিট {hasHotelTicket ? '(২ পাতা)' : ''}</span>
+          </Button>
+
           {/* Layout Mode Selector (Utilizes the full desktop screen space) */}
           <div className="hidden md:flex items-center bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
             <button
@@ -328,31 +503,125 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
           /* SPLIT WORKSPACE: Ticket Preview on Left + Operations Sidebar on Right       */
           /* Fully utilizing desktop wide-screen space with zero empty margins          */
           /* ========================================================================= */
-          <div className="flex flex-col lg:flex-row gap-5 items-start">
+          <div className="flex flex-col lg:flex-row gap-6 items-start justify-center">
             {/* Main Center Area: Executive Ticket Canvas */}
-            <div className="flex-1 w-full min-w-0">
-              <div className="flex items-center justify-between gap-3 mb-2.5 print:hidden px-1">
+            <div className="flex-1 w-full min-w-0 max-w-[840px] mx-auto flex flex-col items-center">
+              <div className="w-full flex items-center justify-between gap-3 mb-2.5 print:hidden px-1">
                 <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
                   <FileText className="w-3.5 h-3.5 text-blue-500" />
-                  <span>এ৪ ট্রাভেল পাস প্রিভিউ — স্ক্রিন, প্রিন্ট ও পিডিএফ অভিন্ন অনুপাত</span>
+                  <span>এ৪ ট্রাভেল পাস প্রিভিউ — স্ক্রিন, প্রিন্ট ও পিডিএফ নিখুঁত অনুপাত</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-lg px-2 py-0.5">
                     ✓ ভেরিফাইড ডকুমেন্ট
                   </span>
                   <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-0.5">
-                    A4 • ১ পৃষ্ঠা
+                    A4 • {hasHotelTicket && selectedTicketTab === 'BOTH' ? '২ পৃষ্ঠা' : '১ পৃষ্ঠা'}
                   </span>
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950/70 p-2 sm:p-5 flex justify-center print:p-0 print:m-0 print:border-0 print:rounded-none print:bg-transparent shadow-inner">
-                <PaymentReceipt booking={booking} showControls={true} />
+              {/* Interactive Ticket Switcher Bar (Screen Only - Always Visible for Both Hotel and Normal Bus) */}
+              <div className="w-full flex items-center justify-between gap-3 p-2.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl border border-indigo-500/30 print:hidden mb-3 shadow-md flex-wrap">
+                <div className="flex items-center gap-2 px-1">
+                  {hasHotelTicket ? (
+                    <Hotel className="w-4 h-4 text-purple-400" />
+                  ) : (
+                    <Bus className="w-4 h-4 text-sky-400" />
+                  )}
+                  <span className="text-xs font-black text-slate-200">টিকিট নির্বাচন করুন:</span>
+                  <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                    hasHotelTicket
+                      ? 'bg-purple-500/20 text-purple-200 border-purple-400/30'
+                      : 'bg-blue-500/20 text-sky-200 border-sky-400/30'
+                  }`}>
+                    {hasHotelTicket ? '🏨 হোটেল সমন্বিত বাস' : '🚌 সাধারণ / নরমাল বাস'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/10 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTicketTab('BUS')}
+                    className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                      selectedTicketTab === 'BUS' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Bus className="w-3.5 h-3.5" />
+                    <span>১. বাসের টিকিট</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTicketTab('HOTEL')}
+                    className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                      selectedTicketTab === 'HOTEL' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Hotel className="w-3.5 h-3.5" />
+                    <span>২. হোটেল টিকিট</span>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                      hasHotelTicket ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300'
+                    }`}>
+                      {hasHotelTicket ? 'ইস্যুকৃত' : 'নরমাল বাস'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTicketTab('BOTH')}
+                    className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                      selectedTicketTab === 'BOTH' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>৩. উভয় টিকিট {hasHotelTicket ? '(২ পাতা)' : ''}</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {selectedTicketTab === 'HOTEL' && !hasHotelTicket ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setIsAttachHotelModalOpen(true)}
+                      className="bg-purple-600 hover:bg-purple-500 text-white font-black text-xs rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Hotel className="w-3.5 h-3.5" />
+                      <span>+ হোটেল সুবিধা যুক্ত করুন</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        if (selectedTicketTab === 'HOTEL' && !hasHotelTicket) {
+                          setIsAttachHotelModalOpen(true);
+                        } else {
+                          printTicketDirect(selectedTicketTab);
+                        }
+                      }}
+                      className="bg-white hover:bg-slate-100 text-slate-950 font-black text-xs rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-blue-600" />
+                      <span>নির্বাচিত টিকিট প্রিন্ট</span>
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/70 p-2 sm:p-5 flex flex-col items-center justify-center print:p-0 print:m-0 print:border-0 print:rounded-none print:bg-transparent shadow-inner">
+                <PaymentReceipt
+                  booking={currentBooking}
+                  showControls={true}
+                  ticketTab={selectedTicketTab}
+                  onTicketTabChange={setSelectedTicketTab}
+                />
               </div>
             </div>
 
-            {/* Desktop Operations Companion Sidebar (390px - 440px wide on desktop) */}
-            <div className="w-full lg:w-[390px] xl:w-[440px] shrink-0 space-y-4 print:hidden">
+            {/* Desktop Operations Companion Sidebar (380px - 420px wide on desktop) */}
+            <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 space-y-4 print:hidden">
               {/* Card 1: 👤 Passenger & Allocated Seats Card */}
               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
@@ -585,6 +854,99 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
                 </Button>
               </div>
 
+              {/* Card 2.5: 🏨 Hotel & Accommodation Details (Active on Hotel Bus or Explanatory on Normal Bus) */}
+              {hasHotelTicket && hotelInfo ? (
+                <div className="bg-gradient-to-br from-purple-50/90 via-white to-purple-50/50 dark:from-purple-950/40 dark:via-slate-900 dark:to-purple-950/20 rounded-2xl border-2 border-purple-300 dark:border-purple-800/80 p-4 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between border-b border-purple-200/80 dark:border-purple-800 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold shadow-xs">
+                        <Hotel className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-purple-950 dark:text-purple-100">হোটেল ও আবাসন ভাউচার</h4>
+                        <div className="text-[10px] text-purple-700 dark:text-purple-300">ক্যাম্পাস রেসিডেন্সিয়াল অ্যাকোমোডেশন</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                      ✓ কনফার্মড
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="p-2.5 rounded-xl bg-white dark:bg-slate-950/80 border border-purple-200 dark:border-purple-800 space-y-1">
+                      <div className="text-[10px] font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wider">হোটেল ও অবস্থান:</div>
+                      <div className="font-black text-slate-900 dark:text-white text-sm">{hotelInfo.hotelName}</div>
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-purple-500 shrink-0" />
+                        <span>{hotelInfo.locationAddress || 'বিশ্ববিদ্যালয় ক্যাম্পাস সংলগ্ন আবাসিক জোন'}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-2 rounded-xl bg-white dark:bg-slate-950/80 border border-purple-100 dark:border-purple-900">
+                        <span className="text-[10px] text-slate-500 font-bold block">রুম ক্যাটাগরি:</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200 text-xs block truncate">{hotelInfo.roomType}</span>
+                      </div>
+                      <div className="p-2 rounded-xl bg-white dark:bg-slate-950/80 border border-purple-100 dark:border-purple-900">
+                        <span className="text-[10px] text-slate-500 font-bold block">হেল্পডেস্ক / যোগাযোগ:</span>
+                        <span className="font-mono font-bold text-purple-700 dark:text-purple-300 text-xs block truncate">{hotelInfo.contactPerson || '০১৭০০-০০০০০০'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-purple-100/60 dark:bg-purple-950/50 text-[11px] font-medium text-purple-900 dark:text-purple-200 border border-purple-200 dark:border-purple-800">
+                      <span>⏰ চেক-ইন: <strong>{hotelInfo.checkIn || 'দুপুর ১২:০০'}</strong></span>
+                      <span>⏰ চেক-আউট: <strong>{hotelInfo.checkOut || 'সকাল ১০:০০'}</strong></span>
+                    </div>
+
+                    <div className="pt-1">
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          setSelectedTicketTab('HOTEL');
+                          printTicketDirect('HOTEL');
+                        }}
+                        className="w-full bg-purple-600 hover:bg-purple-500 text-white font-black text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer py-2.5 transition-all"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>🏨 হোটেল টিকিট প্রিন্ট করুন</span>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-50 dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center font-bold">
+                        <Hotel className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-slate-900 dark:text-white">হোটেল ও আবাসন স্ট্যাটাস</h4>
+                        <div className="text-[10px] text-slate-500">রেগুলার বাস ট্রিপ</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                      সাধারণ বাস
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <p className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">
+                      এই বাসটির সাথে কোনো হোটেল প্যাকেজ অন্তর্ভুক্ত নেই। হোটেল টিকিট শুধুমাত্র <strong>হোটেল প্যাকেজ সমন্বিত বাসে</strong> ইস্যু হয়।
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsAttachHotelModalOpen(true)}
+                      className="w-full text-xs font-bold rounded-xl border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 cursor-pointer flex items-center justify-center gap-1.5 py-2"
+                    >
+                      <Hotel className="w-3.5 h-3.5 text-purple-600" />
+                      <span>+ হোটেল প্যাকেজ সংযুক্ত করুন</span>
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {/* Card 5: ⚡ Fast Operations Hub */}
               <div className="bg-slate-900 text-white rounded-2xl border border-slate-800 p-4 shadow-md space-y-2.5">
                 <div className="flex items-center gap-2 mb-2">
@@ -597,11 +959,63 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
                     type="button"
                     variant="primary"
                     size="sm"
-                    onClick={() => printReceiptElement('printable-payment-receipt')}
+                    onClick={() => {
+                      setSelectedTicketTab('BUS');
+                      printTicketDirect('BUS');
+                    }}
                     className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                   >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>প্রিন্ট করুন</span>
+                    <Bus className="w-3.5 h-3.5" />
+                    <span>বাস টিকিট প্রিন্ট</span>
+                  </Button>
+
+                  {hasHotelTicket ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedTicketTab('HOTEL');
+                        printTicketDirect('HOTEL');
+                      }}
+                      className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                    >
+                      <Hotel className="w-3.5 h-3.5" />
+                      <span>হোটেল টিকিট</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedTicketTab('HOTEL');
+                      }}
+                      className="w-full border-purple-400 text-purple-300 hover:bg-purple-950/50 font-bold rounded-xl cursor-pointer shadow-2xs flex items-center justify-center gap-1 text-[11px]"
+                    >
+                      <Hotel className="w-3.5 h-3.5 text-purple-400" />
+                      <span>হোটেল (নরমাল)</span>
+                    </Button>
+                  )}
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedTicketTab('BOTH');
+                      if (hasHotelTicket) {
+                        printTicketDirect('BOTH');
+                      } else {
+                        printTicketDirect('BUS');
+                      }
+                    }}
+                    className={`col-span-2 w-full font-black rounded-xl cursor-pointer shadow-xs flex items-center justify-center gap-1.5 py-2 ${
+                      hasHotelTicket
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                    }`}
+                  >
+                    <Layers className="w-4 h-4" />
+                    <span>উভয় টিকিট একত্রে প্রিন্ট {hasHotelTicket ? '(২ পাতা)' : ''}</span>
                   </Button>
 
                   <button
@@ -628,10 +1042,10 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
                     variant="outline"
                     size="sm"
                     onClick={() => downloadReceiptOfflineHtml(bookingNumber, 'printable-payment-receipt')}
-                    className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 font-bold rounded-xl cursor-pointer flex items-center justify-center gap-1.5"
+                    className="col-span-2 w-full bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 font-bold rounded-xl cursor-pointer flex items-center justify-center gap-1.5"
                   >
                     <FileDown className="w-3.5 h-3.5 text-slate-400" />
-                    <span>অফলাইন কপি</span>
+                    <span>অফলাইন ফাইল ডাউনলোড</span>
                   </Button>
                 </div>
               </div>
@@ -641,8 +1055,8 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
           /* ========================================================================= */
           /* FULL FOCUS VIEW: Maximized Ticket Preview with Full Responsive Canvas     */
           /* ========================================================================= */
-          <div className="w-full max-w-[1280px] mx-auto">
-            <div className="flex items-center justify-between gap-3 mb-2.5 print:hidden px-1">
+          <div className="w-full max-w-[850px] mx-auto flex flex-col items-center">
+            <div className="w-full flex items-center justify-between gap-3 mb-2.5 print:hidden px-1">
               <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
                 <FileText className="w-3.5 h-3.5 text-blue-500" />
                 <span>ম্যাক্সিমাইজড এ৪ ভিউ — বড় স্ক্রিনে টিকিট সম্পূর্ণ ফোকাসে প্রদর্শিত</span>
@@ -657,12 +1071,199 @@ export function BookingDetailView({ booking, autoPrint = false }: Props) {
               </button>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950/70 p-3 sm:p-6 flex justify-center print:p-0 print:m-0 print:border-0 print:rounded-none print:bg-transparent shadow-inner">
-              <PaymentReceipt booking={booking} showControls={true} />
+            {/* Interactive Ticket Switcher Bar in Full View */}
+            <div className="w-full flex items-center justify-between gap-3 p-2.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl border border-indigo-500/30 print:hidden mb-3 shadow-md flex-wrap">
+              <div className="flex items-center gap-2 px-1">
+                {hasHotelTicket ? (
+                  <Hotel className="w-4 h-4 text-purple-400" />
+                ) : (
+                  <Bus className="w-4 h-4 text-sky-400" />
+                )}
+                <span className="text-xs font-black text-slate-200">টিকিট নির্বাচন করুন:</span>
+                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                  hasHotelTicket
+                    ? 'bg-purple-500/20 text-purple-200 border-purple-400/30'
+                    : 'bg-blue-500/20 text-sky-200 border-sky-400/30'
+                }`}>
+                  {hasHotelTicket ? '🏨 হোটেল সমন্বিত বাস' : '🚌 সাধারণ / নরমাল বাস'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/10 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTicketTab('BUS')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                    selectedTicketTab === 'BUS' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <Bus className="w-3.5 h-3.5" />
+                  <span>১. বাসের টিকিট</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedTicketTab('HOTEL')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                    selectedTicketTab === 'HOTEL' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <Hotel className="w-3.5 h-3.5" />
+                  <span>২. হোটেল টিকিট</span>
+                  <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                    hasHotelTicket ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300'
+                  }`}>
+                    {hasHotelTicket ? 'ইস্যুকৃত' : 'নরমাল বাস'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedTicketTab('BOTH')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                    selectedTicketTab === 'BOTH' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>৩. উভয় টিকিট {hasHotelTicket ? '(২ পাতা)' : ''}</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {selectedTicketTab === 'HOTEL' && !hasHotelTicket ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setIsAttachHotelModalOpen(true)}
+                    className="bg-purple-600 hover:bg-purple-500 text-white font-black text-xs rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Hotel className="w-3.5 h-3.5" />
+                    <span>+ হোটেল সুবিধা যুক্ত করুন</span>
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      if (selectedTicketTab === 'HOTEL' && !hasHotelTicket) {
+                        setIsAttachHotelModalOpen(true);
+                      } else {
+                        printTicketDirect(selectedTicketTab);
+                      }
+                    }}
+                    className="bg-white hover:bg-slate-100 text-slate-950 font-black text-xs rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-blue-600" />
+                    <span>প্রিন্ট করুন</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/70 p-3 sm:p-6 flex flex-col items-center justify-center print:p-0 print:m-0 print:border-0 print:rounded-none print:bg-transparent shadow-inner">
+              <PaymentReceipt
+                booking={currentBooking}
+                showControls={true}
+                ticketTab={selectedTicketTab}
+                onTicketTabChange={setSelectedTicketTab}
+              />
             </div>
           </div>
         )}
       </div>
+
+      {/* Operator Attach Hotel Modal */}
+      <Modal
+        isOpen={isAttachHotelModalOpen}
+        onClose={() => setIsAttachHotelModalOpen(false)}
+        title="🏨 বুকিংয়ে হোটেল প্যাকেজ সংযুক্তকরণ"
+        description={`পিএনআর: ${bookingNumber} • যাত্রী: ${passengerName}`}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="p-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-xl text-xs text-purple-900 dark:text-purple-200 space-y-1">
+            <div className="font-black flex items-center gap-1.5">
+              <Hotel className="w-4 h-4 text-purple-600" />
+              <span>পৃথক হোটেল অ্যাকোমোডেশন ভাউচার প্রস্তুত হবে</span>
+            </div>
+            <p className="text-[11px] text-purple-800/80 dark:text-purple-300">
+              হোটেল প্যাকেজ যুক্ত করার পর এই বুকিংয়ের জন্য আলাদা একটি অফিসিয়াল হোটেল টিকিট তৈরি হবে, যা পৃথক পাতা হিসেবে প্রিন্ট করা যাবে।
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <Input
+              label="হোটেল ও অবস্থান নাম *"
+              value={hotelFormName}
+              onChange={(e) => setHotelFormName(e.target.value)}
+              placeholder="যেমন: হোটেল রয়েল রাজ (Rajshahi)"
+              required
+            />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="রুম ক্যাটাগরি *"
+                value={hotelFormRoomType}
+                onChange={(e) => setHotelFormRoomType(e.target.value)}
+                placeholder="যেমন: ২-বেড শেয়ারিং"
+                required
+              />
+
+              <Input
+                label="হোটেল প্যাকেজ ফি (প্রতি ব্যক্তি BDT) *"
+                type="number"
+                value={hotelFormFee}
+                onChange={(e) => setHotelFormFee(Number(e.target.value))}
+                required
+              />
+            </div>
+
+            <Input
+              label="ইনক্লুশন ও সুবিধাসমূহ"
+              value={hotelFormInclusions}
+              onChange={(e) => setHotelFormInclusions(e.target.value)}
+              placeholder="যেমন: ফ্রি সকালের নাস্তা, হাইস্পিড ওয়াইফাই, এসি"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAttachHotelModalOpen(false)}
+              className="rounded-xl font-bold text-xs"
+            >
+              বাতিল
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                const newAcc = {
+                  hasHotel: true,
+                  hotelName: hotelFormName.trim() || 'হোটেল রয়েল রাজ (Rajshahi)',
+                  roomType: hotelFormRoomType.trim() || '২-বেড শেয়ারিং',
+                  hotelFee: Number(hotelFormFee) || 1200,
+                  checkIn: 'দুপুর ১২:০০',
+                  checkOut: 'পরবর্তী দিন সকাল ১০:০০',
+                  locationAddress: `${currentBooking.trip?.targetUniversity || 'বিশ্ববিদ্যালয় ক্যাম্পাস'} সংলগ্ন আবাসিক এলাকা`,
+                  contactPerson: '০১৭০০-০০০০০০ (হোটেল হেল্পডেস্ক)',
+                  inclusions: hotelFormInclusions
+                };
+                setCustomAccommodation(newAcc);
+                setSelectedTicketTab('HOTEL');
+                setIsAttachHotelModalOpen(false);
+                toastSuccess('🏨 হোটেল টিকিট সফলভাবে সংযুক্ত ও ইস্যু করা হয়েছে!', `হোটেল: ${newAcc.hotelName}`);
+              }}
+              className="bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-black text-xs flex items-center gap-1.5"
+            >
+              <Hotel className="w-3.5 h-3.5" />
+              <span>হোটেল নিশ্চিত ও টিকিট ইস্যু করুন</span>
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

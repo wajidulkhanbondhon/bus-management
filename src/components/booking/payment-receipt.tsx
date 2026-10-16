@@ -35,7 +35,10 @@ import {
   BadgePercent,
   UserCheck,
   Lock,
-  Fingerprint
+  Fingerprint,
+  Hotel,
+  Sparkles,
+  Layers
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -83,37 +86,122 @@ export interface AccommodationInfo {
   hotelFee?: number;
 }
 
+export interface JourneyDirectionInfo {
+  type: 'ROUND_TRIP' | 'OUTBOUND_ONLY' | 'RETURN_ONLY' | 'ASYMMETRIC';
+  labelBn: string;
+  labelEn: string;
+  shortBn: string;
+  badgeBn: string;
+  icon: string;
+  badgeClass: string;
+  pillClass: string;
+}
+
+export function getJourneyDirectionInfo(journeyType: string | undefined | null): JourneyDirectionInfo {
+  const norm = (journeyType || '').toUpperCase().trim();
+  if (norm === 'OUTBOUND_ONLY' || norm.includes('শুধুমাত্র যাওয়া') || norm.includes('শুধুমাত্র যাওয়া') || norm.includes('যাওয়া') || norm.includes('যাওয়া')) {
+    if (!norm.includes('আসা') && !norm.includes('ROUND') && !norm.includes('উভয়') && !norm.includes('উভয়')) {
+      return {
+        type: 'OUTBOUND_ONLY',
+        labelBn: 'শুধুমাত্র যাওয়া (একমুখী)',
+        labelEn: 'ONE-WAY OUTBOUND',
+        shortBn: 'শুধু যাওয়া',
+        badgeBn: 'শুধু যাওয়া',
+        icon: '➡️',
+        badgeClass: 'bg-amber-500 text-slate-950 font-black',
+        pillClass: 'bg-amber-100 text-amber-950 border-amber-300 font-bold'
+      };
+    }
+  }
+  if (norm === 'RETURN_ONLY' || norm.includes('শুধুমাত্র আসা') || (norm.includes('আসা') && !norm.includes('যাওয়া') && !norm.includes('যাওয়া'))) {
+    return {
+      type: 'RETURN_ONLY',
+      labelBn: 'শুধুমাত্র আসা (একমুখী ফেরত)',
+      labelEn: 'ONE-WAY RETURN',
+      shortBn: 'শুধু আসা',
+      badgeBn: 'শুধু আসা',
+      icon: '⬅️',
+      badgeClass: 'bg-purple-600 text-white font-black',
+      pillClass: 'bg-purple-100 text-purple-950 border-purple-300 font-bold'
+    };
+  }
+  if (norm === 'ASYMMETRIC' || norm.includes('স্প্লিট') || norm.includes('মিশ্র')) {
+    return {
+      type: 'ASYMMETRIC',
+      labelBn: 'স্প্লিট / মিশ্র যাত্রা',
+      labelEn: 'SPLIT / MIXED',
+      shortBn: 'মিশ্র যাত্রা',
+      badgeBn: 'মিশ্র যাত্রা',
+      icon: '🔀',
+      badgeClass: 'bg-indigo-600 text-white font-black',
+      pillClass: 'bg-indigo-100 text-indigo-950 border-indigo-300 font-bold'
+    };
+  }
+  return {
+    type: 'ROUND_TRIP',
+    labelBn: 'উভয়মুখী যাত্রা (যাওয়া ও আসা)',
+    labelEn: 'ROUND TRIP (OUTBOUND & RETURN)',
+    shortBn: 'যাওয়া ও আসা',
+    badgeBn: 'যাওয়া ও আসা',
+    icon: '🔁',
+    badgeClass: 'bg-emerald-600 text-white font-black',
+    pillClass: 'bg-emerald-100 text-emerald-950 border-emerald-300 font-bold'
+  };
+}
+
 export function extractAccommodationInfo(booking: any): AccommodationInfo | null {
   if (!booking) return null;
   const acc = booking.accommodation || booking.hotelAccommodation;
   const trip = booking.trip || {};
 
-  if (acc && (acc.hotelName || acc.hasHotel)) {
+  if (acc && (acc.hotelName || acc.hasHotel || acc.hotel_name)) {
     return {
       hasHotel: true,
-      hotelName: acc.hotelName || 'ক্যাম্পাস গেস্টহাউস অ্যান্ড স্যুটস',
-      roomType: acc.roomType || 'ডিলাক্স শেয়ার্ড রুম',
-      checkIn: acc.checkIn || 'দুপুর ১২:০০',
-      checkOut: acc.checkOut || 'পরবর্তী দিন সকাল ১০:০০',
-      locationAddress: acc.locationAddress || 'ক্যাম্পাস সংলগ্ন আবাসন জোন',
-      contactPerson: acc.contactPerson || '০১৭০০-০০০০০০',
-      hotelFee: Number(acc.hotelFee || acc.price || 0)
+      hotelName: acc.hotelName || acc.hotel_name || 'ক্যাম্পাস রেসিডেনসিয়াল হোটেল অ্যান্ড স্যুটস',
+      roomType: acc.roomType || acc.room_type || 'ডিলাক্স এসি শেয়ার্ড রুম (ভর্তি পরীক্ষার্থী প্যাকেজ)',
+      checkIn: acc.checkIn || acc.check_in || 'দুপুর ১২:০০',
+      checkOut: acc.checkOut || acc.check_out || 'পরবর্তী দিন সকাল ১০:০০',
+      locationAddress: acc.locationAddress || acc.location_address || 'বিশ্ববিদ্যালয় ক্যাম্পাস সংলগ্ন আবাসিক এলাকা',
+      contactPerson: acc.contactPerson || acc.contact_person || '০১৭০০-০০০০০০ (হোটেল হেল্পডেস্ক)',
+      hotelFee: Number(acc.hotelFee || acc.hotel_fee || acc.price || 0)
     };
   }
 
-  const tripNotes = trip.notes || '';
-  if (trip.hasHotelPackage || tripNotes.includes('HOTEL PACKAGE')) {
-    const feeMatch = tripNotes.match(/৳\s*(\d+)/);
-    const nameMatch = tripNotes.match(/HOTEL PACKAGE:\s*([^-]+)/i);
+  // Combine ALL possible notes sources so booking.notes is NEVER ignored:
+  const allNotes = [
+    trip.notes,
+    trip.bus?.notes,
+    booking.notes,
+    booking.tripNotes,
+    booking.trip?.notes,
+    booking.trip?.bus?.notes
+  ].filter(Boolean).join(' ');
+
+  if (
+    trip.hasHotelPackage ||
+    trip.hotelPackage ||
+    trip.bus?.hasHotelPackage ||
+    booking.hasHotelPackage ||
+    booking.hotelPackage ||
+    allNotes.includes('HOTEL PACKAGE') ||
+    allNotes.includes('Campus Accommodation') ||
+    allNotes.includes('আবাসন প্যাকেজ') ||
+    allNotes.includes('হোটেল')
+  ) {
+    const feeMatch = allNotes.match(/(?:Fee:\s*৳|৳\s*|\+\s*৳)(\d+)/i) || allNotes.match(/৳\s*(\d+)/);
+    const nameMatch = allNotes.match(/HOTEL PACKAGE:\s*([^|]+)/i) ||
+                      allNotes.match(/HOTEL PACKAGE:\s*([^-]+)/i) ||
+                      allNotes.match(/আবাসন প্যাকেজ সংযুক্ত:\s*([^(|]+)/i);
+    const roomMatch = allNotes.match(/Room:\s*([^|]+)/i) || allNotes.match(/রুম:\s*([^|]+)/i);
     return {
       hasHotel: true,
-      hotelName: nameMatch ? nameMatch[1].trim() : 'ক্যাম্পাস রেসিডেনসিয়াল প্যাকেজ',
-      roomType: 'ডিলাক্স এসি শেয়ার্ড রুম',
+      hotelName: nameMatch ? nameMatch[1].trim() : 'হোটেল রয়েল রাজ (ক্যাম্পাস স্পেশাল)',
+      roomType: roomMatch ? roomMatch[1].trim() : 'ডিলাক্স এসি শেয়ার্ড রুম (ভর্তি পরীক্ষার্থী প্যাকেজ)',
       checkIn: 'দুপুর ১২:০০',
       checkOut: 'পরবর্তী দিন সকাল ১০:০০',
-      locationAddress: 'ক্যাম্পাস এরিয়া',
-      contactPerson: '০১৭০০-০০০০০০',
-      hotelFee: feeMatch ? Number(feeMatch[1]) : 0
+      locationAddress: `${trip.targetUniversity || booking.trip?.targetUniversity || 'বিশ্ববিদ্যালয় ক্যাম্পাস'} সংলগ্ন আবাসিক জোন`,
+      contactPerson: '০১৭০০-০০০০০০ (হোটেল হেল্পডেস্ক)',
+      hotelFee: feeMatch ? Number(feeMatch[1]) : 1200
     };
   }
 
@@ -248,6 +336,48 @@ export function printReceiptElement(elementId: string = SHEET_ID) {
 }
 
 /**
+ * Direct print for target ticket: BUS only, HOTEL only, or BOTH (2 pages)
+ */
+export function printTicketDirect(targetTab: 'BUS' | 'HOTEL' | 'BOTH' = 'BOTH', elementId: string = SHEET_ID) {
+  if (typeof window === 'undefined') return;
+  const sheet = document.getElementById(elementId);
+  if (!sheet) {
+    printReceiptElement(elementId);
+    return;
+  }
+
+  const busPage = sheet.querySelector('.bus-ticket-page') as HTMLElement | null;
+  const hotelPage = sheet.querySelector('.hotel-ticket-page') as HTMLElement | null;
+  const pageBreak = sheet.querySelector('.ticket-page-break') as HTMLElement | null;
+
+  const origBusDisplay = busPage ? busPage.style.display : undefined;
+  const origHotelDisplay = hotelPage ? hotelPage.style.display : undefined;
+  const origBreakDisplay = pageBreak ? pageBreak.style.display : undefined;
+
+  if (targetTab === 'BUS') {
+    if (busPage) busPage.style.display = 'flex';
+    if (hotelPage) hotelPage.style.display = 'none';
+    if (pageBreak) pageBreak.style.display = 'none';
+  } else if (targetTab === 'HOTEL') {
+    if (busPage) busPage.style.display = 'none';
+    if (hotelPage) hotelPage.style.display = 'flex';
+    if (pageBreak) pageBreak.style.display = 'none';
+  } else {
+    if (busPage) busPage.style.display = 'flex';
+    if (hotelPage) hotelPage.style.display = 'flex';
+    if (pageBreak) pageBreak.style.display = 'block';
+  }
+
+  printReceiptElement(elementId);
+
+  setTimeout(() => {
+    if (busPage && origBusDisplay !== undefined) busPage.style.display = origBusDisplay;
+    if (hotelPage && origHotelDisplay !== undefined) hotelPage.style.display = origHotelDisplay;
+    if (pageBreak && origBreakDisplay !== undefined) pageBreak.style.display = origBreakDisplay;
+  }, 1000);
+}
+
+/**
  * Download the ticket as a 1-page PDF.
  *
  * The sheet is rasterised at its natural A4 size and placed onto an A4 page
@@ -268,19 +398,21 @@ export async function downloadReceiptAsPdf(bookingNumber: string, elementId: str
   const offscreen = document.createElement('div');
   offscreen.setAttribute('aria-hidden', 'true');
   Object.assign(offscreen.style, {
-    position: 'fixed',
+    position: 'absolute',
+    left: '-9999px',
     top: '0',
-    left: '0',
     width: `${width}px`,
     height: `${height}px`,
     background: '#ffffff',
-    zIndex: '-99999',
-    opacity: '0',
-    pointerEvents: 'none'
+    zIndex: '-9999',
+    opacity: '1',
+    pointerEvents: 'none',
+    overflow: 'hidden'
   });
 
   // Clone the sheet at 1:1 so the on-screen preview zoom cannot distort the PDF.
   const clone = sheet.cloneNode(true) as HTMLElement;
+  clone.id = 'printable-payment-receipt-pdf-clone';
   clone.style.zoom = '1';
   clone.style.margin = '0';
   clone.style.width = `${width}px`;
@@ -288,6 +420,18 @@ export async function downloadReceiptAsPdf(bookingNumber: string, elementId: str
   clone.style.border = 'none';
   clone.style.borderRadius = '0';
   clone.style.boxShadow = 'none';
+
+  // Copy CSS variable --ticket-fit from original sheet
+  const ticketFit = sheet.style.getPropertyValue('--ticket-fit') || '1';
+  clone.style.setProperty('--ticket-fit', ticketFit);
+
+  const cloneCanvas = clone.querySelector('.ticket-canvas') as HTMLElement | null;
+  if (cloneCanvas) {
+    cloneCanvas.style.setProperty('--ticket-fit', ticketFit);
+    cloneCanvas.style.transformOrigin = 'top left';
+    cloneCanvas.style.transform = `scale(${ticketFit})`;
+    cloneCanvas.style.width = `calc(${width - 4}px / ${ticketFit})`;
+  }
 
   offscreen.appendChild(clone);
   document.body.appendChild(offscreen);
@@ -308,21 +452,69 @@ export async function downloadReceiptAsPdf(bookingNumber: string, elementId: str
         await document.fonts.ready;
       } catch {}
     }
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
-    const rendered = await html2canvas(offscreen, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#ffffff',
-      scrollX: 0,
-      scrollY: 0,
-      width,
-      height,
-      windowWidth: A4_W
-    });
+    const busPage = clone.querySelector('.bus-ticket-page') as HTMLElement | null;
+    const hotelPage = clone.querySelector('.hotel-ticket-page') as HTMLElement | null;
 
-    const imgData = rendered.toDataURL('image/png');
+    if (!thermal && busPage && hotelPage) {
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      
+      const renderedBus = await html2canvas(busPage, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        logging: false,
+        backgroundColor: '#ffffff',
+        width,
+        height: A4_H,
+        windowWidth: A4_W
+      });
+      pdf.addImage(renderedBus.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 210, 297);
+
+      pdf.addPage();
+      const renderedHotel = await html2canvas(hotelPage, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        logging: false,
+        backgroundColor: '#ffffff',
+        width,
+        height: A4_H,
+        windowWidth: A4_W
+      });
+      pdf.addImage(renderedHotel.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 210, 297);
+
+      pdf.save(`ticket-combo-${bookingNumber || 'pass'}.pdf`);
+      return;
+    }
+
+    let rendered: any;
+    try {
+      rendered = await html2canvas(clone, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        logging: false,
+        backgroundColor: '#ffffff',
+        scrollX: 0,
+        scrollY: 0,
+        width,
+        height,
+        windowWidth: A4_W
+      });
+    } catch (e) {
+      console.warn('html2canvas on clone failed, capturing direct sheet:', e);
+      rendered = await html2canvas(sheet, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+    }
+
+    const imgData = rendered.toDataURL('image/jpeg', 0.98);
 
     if (thermal) {
       const pdfWidth = 80;
@@ -330,25 +522,12 @@ export async function downloadReceiptAsPdf(bookingNumber: string, elementId: str
       const imgHeight = (rendered.height * imgWidth) / rendered.width;
       const pdfHeight = Math.max(100, Math.ceil(imgHeight) + 6);
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [pdfWidth, pdfHeight] });
-      pdf.addImage(imgData, 'PNG', 2, 3, imgWidth, imgHeight);
-      pdf.save(`ticket-pos-${bookingNumber}.pdf`);
+      pdf.addImage(imgData, 'JPEG', 2, 3, imgWidth, imgHeight);
+      pdf.save(`ticket-pos-${bookingNumber || 'slip'}.pdf`);
     } else {
-      const pageWidth = 210;
-      const pageHeight = 297;
-      // Preserve the sheet's aspect ratio so it can never spill onto a 2nd page.
-      const ratio = Math.min(pageWidth / width, pageHeight / height);
-      const drawWidth = width * ratio;
-      const drawHeight = height * ratio;
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      pdf.addImage(
-        imgData,
-        'PNG',
-        (pageWidth - drawWidth) / 2,
-        (pageHeight - drawHeight) / 2,
-        drawWidth,
-        drawHeight
-      );
-      pdf.save(`ticket-${bookingNumber}.pdf`);
+      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+      pdf.save(`ticket-${bookingNumber || 'pass'}.pdf`);
     }
   } catch (err) {
     console.error('PDF generation error, falling back to print:', err);
@@ -449,12 +628,16 @@ function MiniBusSeatMap({
   allocatedSeats = [],
   busType = 'MIXED',
   isEcoMode = false,
-  isCompact = false
+  isCompact = false,
+  totalSeats = 45,
+  tripExtraSeats = []
 }: {
   allocatedSeats: string[];
   busType?: string;
   isEcoMode?: boolean;
   isCompact?: boolean;
+  totalSeats?: number;
+  tripExtraSeats?: string[];
 }) {
   const normalizedAllocated = React.useMemo(() => {
     return new Set(
@@ -462,13 +645,55 @@ function MiniBusSeatMap({
     );
   }, [allocatedSeats]);
 
-  const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+  const allLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'];
 
-  // Detect extra seats (EX-1, EX-2, CABIN, GUIDE, etc.) not in standard A1-J5 grid
-  const standardSeatRegex = /^[A-J][1-5]$/i;
+  // Detect extra seats (EX-1, EX-2, CABIN, GUIDE, etc.) not in standard A1-N5 grid
+  const standardSeatRegex = /^[A-N][1-5]$/i;
+
+  // Resolve rows dynamically based on bus totalSeats and allocated seats
+  const rows = React.useMemo(() => {
+    // 45 seats = 11 rows (A to K: 10 rows of 4 + 1 row of 5 = 45)
+    // 40 seats = 10 rows (A to J: 10 rows of 4 = 40)
+    let maxIdx = 10; // Default to 'K' (11 rows, 45 seats)
+
+    if (totalSeats && totalSeats <= 40) {
+      maxIdx = 9; // 'J' (10 rows, 40 seats)
+    }
+
+    // If any allocated seat is in row K or beyond, expand accordingly
+    for (const s of normalizedAllocated) {
+      const match = s.match(/^([A-N])[1-5]$/i);
+      if (match) {
+        const charIdx = allLetters.indexOf(match[1].toUpperCase());
+        if (charIdx > maxIdx) {
+          maxIdx = charIdx;
+        }
+      }
+    }
+
+    return allLetters.slice(0, maxIdx + 1);
+  }, [totalSeats, normalizedAllocated]);
+
   const extraAllocatedSeats = React.useMemo(() => {
     return Array.from(normalizedAllocated).filter(s => !standardSeatRegex.test(s));
   }, [normalizedAllocated]);
+
+  const allExtraSeats = React.useMemo(() => {
+    const list = new Set<string>();
+    extraAllocatedSeats.forEach(s => list.add(s));
+    (tripExtraSeats || []).forEach(s => {
+      const clean = String(s).trim().toUpperCase().replace(/\s+/g, '');
+      if (clean && !standardSeatRegex.test(clean)) {
+        list.add(clean);
+      }
+    });
+    return Array.from(list);
+  }, [extraAllocatedSeats, tripExtraSeats]);
+
+  // Total visible seat capacity calculated from grid + extra seats
+  const is11Rows = rows.length >= 11;
+  const isLastRow5 = is11Rows || (totalSeats && totalSeats >= 42) || rows.includes('K');
+  const computedTotalSeats = (rows.length - (isLastRow5 ? 1 : 0)) * 4 + (isLastRow5 ? 5 : 0) + allExtraSeats.length;
 
   const renderSeatBox = (sNum: string, isWindow: boolean) => {
     const isAllocated = normalizedAllocated.has(sNum);
@@ -477,11 +702,11 @@ function MiniBusSeatMap({
         key={sNum}
         title={isAllocated ? `আপনার বরাদ্দকৃত আসন: ${sNum}` : `আসন নম্বর: ${sNum}`}
         className={`group relative flex-1 min-w-0 ${
-          isCompact ? 'h-6 text-[8px]' : 'h-6.5 text-[8.5px]'
-        } rounded-xl sm:rounded-2xl p-0.5 flex flex-col items-center justify-between font-mono select-none transition-all border-2 ${
+          isCompact || rows.length >= 11 ? 'h-5 sm:h-5.5 text-[7px] sm:text-[7.5px]' : 'h-6 text-[8px]'
+        } rounded-xl p-0.5 flex flex-col items-center justify-between font-mono select-none transition-all border-2 ${
           isAllocated
             ? isEcoMode
-              ? 'bg-black text-white border-black font-black'
+              ? 'bg-black text-white border-black font-black ring-1 ring-black'
               : 'bg-gradient-to-b from-emerald-500 via-emerald-600 to-emerald-700 text-white border-emerald-400 shadow-sm font-black ring-2 ring-emerald-400/50'
             : isEcoMode
             ? 'bg-white border-black text-black font-bold'
@@ -490,7 +715,7 @@ function MiniBusSeatMap({
       >
         {/* Curved Headrest Pillow Bar at Top */}
         <div
-          className={`w-3/5 h-[3px] rounded-full shrink-0 mt-0.5 transition-all ${
+          className={`w-3/5 h-[2px] sm:h-[2.5px] rounded-full shrink-0 mt-0.5 transition-all ${
             isAllocated
               ? isEcoMode ? 'bg-white/90' : 'bg-emerald-100 shadow-xs'
               : isEcoMode ? 'bg-black/30' : 'bg-slate-300 shadow-2xs'
@@ -501,11 +726,11 @@ function MiniBusSeatMap({
         <div className="flex-1 w-full flex items-center justify-center px-0.5 leading-none">
           {isAllocated ? (
             <span className="flex items-center justify-center gap-0.5 px-0.5 truncate leading-none">
-              <BadgeCheck className={`${isCompact ? 'w-2.5 h-2.5' : 'w-3 h-3'} text-white shrink-0`} />
-              <span className="leading-none truncate font-black text-[9px]">{sNum}</span>
+              <BadgeCheck className={`${isCompact || rows.length >= 11 ? 'w-2 h-2 sm:w-2.5 sm:h-2.5' : 'w-2.5 h-2.5'} text-white shrink-0`} />
+              <span className="leading-none truncate font-black text-[7.5px] sm:text-[8px]">{sNum}</span>
             </span>
           ) : (
-            <span className="leading-none truncate text-slate-800 font-black text-[8.5px]">{sNum}</span>
+            <span className="leading-none truncate text-slate-800 font-black text-[7.5px] sm:text-[8px]">{sNum}</span>
           )}
         </div>
 
@@ -527,13 +752,13 @@ function MiniBusSeatMap({
     }`}>
       {/* Header Bar */}
       <div>
-        <div className={`bg-[#032b69] text-white ${isCompact ? 'px-2 py-1 text-[11px]' : 'px-3 py-1.5 text-[11.5px]'} flex items-center justify-between font-bold uppercase tracking-wide`}>
+        <div className={`bg-[#032b69] text-white ${isCompact ? 'px-2 py-1 text-[10.5px]' : 'px-3 py-1.5 text-[11px]'} flex items-center justify-between font-bold uppercase tracking-wide`}>
           <div className="flex items-center gap-1.5">
             <Bus className={isCompact ? "w-3 h-3 text-sky-300" : "w-3.5 h-3.5 text-sky-300"} />
             <span>বাস আসন অবস্থান (SEAT LOCATOR)</span>
           </div>
-          <span className="text-[9px] font-mono text-emerald-300 font-bold bg-white/10 px-1.5 py-0.2 rounded border border-white/20">
-            RHD COACH
+          <span className="text-[8.5px] font-mono text-emerald-300 font-bold bg-white/10 px-1.5 py-0.2 rounded border border-white/20">
+            {computedTotalSeats} SEATS • RHD COACH
           </span>
         </div>
 
@@ -572,40 +797,40 @@ function MiniBusSeatMap({
         )}
 
         {/* Realistic Unified Bus Coach Frame with Tinted Window Glass Sides */}
-        <div className="p-2 w-full flex-1 flex flex-col justify-center">
-          <div className={`w-full px-2 py-1.5 rounded-t-3xl rounded-b-2xl border-2 ${
+        <div className="p-1.5 sm:p-2 w-full flex-1 flex flex-col justify-center">
+          <div className={`w-full px-1.5 sm:px-2 py-1 rounded-t-3xl rounded-b-2xl border-2 ${
             isEcoMode
               ? 'bg-white border-black'
               : 'bg-slate-50/60 border-slate-700 shadow-xs border-l-[3.5px] border-l-sky-600/40 border-r-[3.5px] border-r-sky-600/40'
           }`}>
             {/* Aerodynamic Windshield & Cockpit Header */}
-            <div className={`flex items-center justify-between px-2 py-1 mb-1 text-[8px] rounded-t-2xl rounded-b-lg border font-bold ${
+            <div className={`flex items-center justify-between px-2 py-0.5 mb-1 text-[7.5px] sm:text-[8px] rounded-t-2xl rounded-b-lg border font-bold ${
               isEcoMode
                 ? 'bg-slate-100 border-black text-black'
                 : 'bg-gradient-to-b from-sky-100 via-sky-50 to-white border-sky-300 text-sky-950 shadow-2xs'
             }`}>
               {/* Left Door */}
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 font-black shadow-2xs">
-                <div className="w-4.5 h-4.5 rounded-full bg-emerald-700 text-white flex items-center justify-center shrink-0 shadow-xs">
-                  <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 font-black shadow-2xs">
+                <div className="w-4 h-4 rounded-full bg-emerald-700 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <svg className="w-2 h-2 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M18 20V6a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v14" />
                     <path d="M2 20h20" />
                     <circle cx="14" cy="12" r="1" fill="currentColor" />
                   </svg>
                 </div>
-                <span className="text-[7.5px] uppercase tracking-tight">দরজা (ENTRY)</span>
+                <span className="text-[7px] sm:text-[7.5px] uppercase tracking-tight">দরজা (ENTRY)</span>
               </div>
 
               {/* Center Windshield Indicator */}
-              <div className="px-2 py-0.5 rounded-full bg-white/90 border border-sky-200 text-slate-600 font-mono text-[7px] font-black uppercase tracking-wider shadow-2xs">
+              <div className="px-1.5 py-0.5 rounded-full bg-white/90 border border-sky-200 text-slate-600 font-mono text-[6.5px] sm:text-[7px] font-black uppercase tracking-wider shadow-2xs">
                 ▲ সামনে (FRONT) ▲
               </div>
 
               {/* Right Driver Cabin with High-Contrast Solid Steering Wheel Console */}
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-blue-50 border border-blue-300 text-[#032b69] font-black shadow-2xs">
-                <span className="text-[7.5px] uppercase tracking-tight text-[#032b69] font-black">চালক (DRIVER)</span>
-                <div className="w-4.5 h-4.5 rounded-full bg-[#032b69] text-white flex items-center justify-center shrink-0 shadow-xs ring-1 ring-blue-400">
-                  <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-blue-50 border border-blue-300 text-[#032b69] font-black shadow-2xs">
+                <span className="text-[7px] sm:text-[7.5px] uppercase tracking-tight text-[#032b69] font-black">চালক (DRIVER)</span>
+                <div className="w-4 h-4 rounded-full bg-[#032b69] text-white flex items-center justify-center shrink-0 shadow-xs ring-1 ring-blue-400">
+                  <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10" />
                     <circle cx="12" cy="12" r="3" fill="currentColor" />
                     <line x1="12" y1="2" x2="12" y2="9" />
@@ -616,62 +841,73 @@ function MiniBusSeatMap({
               </div>
             </div>
 
-            {/* Extra Seat Zone Callout if extra seats (EX-1, EX-2, CABIN, etc.) are booked */}
-            {extraAllocatedSeats.length > 0 && (
-              <div className="mb-1 p-0.5 rounded-md bg-amber-50 border border-amber-300 flex items-center justify-between gap-1 text-[7.5px]">
-                <div className="flex items-center gap-1 font-bold text-amber-900">
-                  <span>💺</span>
-                  <span>অতিরিক্ত:</span>
+            {/* Extra Seat Cabin Zone (EX-1, EX-2, CABIN, GUIDE, etc.) */}
+            {allExtraSeats.length > 0 && (
+              <div className={`mb-1 p-1 rounded-xl border-2 ${
+                isEcoMode
+                  ? 'bg-slate-50 border-black'
+                  : 'bg-amber-50/90 border-amber-300 shadow-2xs'
+              }`}>
+                <div className="flex items-center justify-between mb-1 px-1 text-[7.5px] font-bold text-amber-950">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px]">💺</span>
+                    <span className="font-black uppercase tracking-tight">অতিরিক্ত আসন (EXTRA SEATS)</span>
+                  </div>
+                  <span className="text-[7px] font-mono font-black text-amber-800 bg-amber-200/80 px-1 py-0.2 rounded border border-amber-300">
+                    CABIN ZONE • {allExtraSeats.length}টি সিট
+                  </span>
                 </div>
-                <div className="flex items-center gap-0.5 flex-wrap">
-                  {extraAllocatedSeats.map(exSeat => (
-                    <span key={exSeat} className="px-1 py-0.2 rounded bg-emerald-600 text-white font-mono font-black text-[7.5px] flex items-center gap-0.5">
-                      <span>{exSeat}</span>
-                    </span>
+                <div className="flex items-center gap-1 flex-wrap justify-center">
+                  {allExtraSeats.map(exSeat => (
+                    <div key={exSeat} className="w-11 sm:w-12">
+                      {renderSeatBox(exSeat, false)}
+                    </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Coach Interior: Rows (Full-width, realistic 2x2 with central aisle runner) */}
+            {/* Coach Interior: Rows (Full-width, realistic 2x2 with central aisle runner, and 5 seats in Row K) */}
             <div className="space-y-0.5">
               {rows.map((rowChar, rIdx) => {
                 const isLastRow = rIdx === rows.length - 1;
+                const isRowK = rowChar === 'K';
+                const has5Seats = isRowK || (isLastRow && isLastRow5);
                 const s1 = `${rowChar}1`;
                 const s2 = `${rowChar}2`;
                 const s3 = `${rowChar}3`;
                 const s4 = `${rowChar}4`;
                 const s5 = `${rowChar}5`;
 
-                if (isLastRow) {
+                if (has5Seats) {
                   return (
-                    <div key={rowChar} className="flex items-center gap-1 w-full">
+                    <div key={rowChar} className="flex items-center gap-0.5 sm:gap-1 w-full">
                       {renderSeatBox(s1, true)}
                       {renderSeatBox(s2, false)}
-                      {renderSeatBox(s5, false)}
                       {renderSeatBox(s3, false)}
-                      {renderSeatBox(s4, true)}
+                      {renderSeatBox(s4, false)}
+                      {renderSeatBox(s5, true)}
                     </div>
                   );
                 }
 
                 return (
-                  <div key={rowChar} className="flex items-center justify-between gap-1 w-full">
+                  <div key={rowChar} className="flex items-center justify-between gap-0.5 sm:gap-1 w-full">
                     {/* Left Window & Aisle pair (s1, s2) */}
-                    <div className="flex-1 flex items-center gap-1">
+                    <div className="flex-1 flex items-center gap-0.5 sm:gap-1">
                       {renderSeatBox(s1, true)}
                       {renderSeatBox(s2, false)}
                     </div>
 
                     {/* Center Gangway / Aisle Runner with Row Badge */}
-                    <div className="w-5 sm:w-6 shrink-0 flex items-center justify-center">
+                    <div className="w-4 sm:w-5 shrink-0 flex items-center justify-center">
                       <span className="w-3.5 h-3.5 rounded-full bg-slate-200/95 border border-slate-300 text-slate-700 font-mono font-black text-[7.5px] flex items-center justify-center leading-none shadow-2xs">
                         {rowChar}
                       </span>
                     </div>
 
                     {/* Right Aisle & Window pair (s3, s4) */}
-                    <div className="flex-1 flex items-center gap-1">
+                    <div className="flex-1 flex items-center gap-0.5 sm:gap-1">
                       {renderSeatBox(s3, false)}
                       {renderSeatBox(s4, true)}
                     </div>
@@ -681,9 +917,9 @@ function MiniBusSeatMap({
             </div>
 
             {/* Rear Bumper & Taillights */}
-            <div className="mt-1 pt-0.5 text-[7.5px] border-t border-dashed border-slate-300 flex items-center justify-between font-mono font-bold text-slate-500">
+            <div className="mt-1 pt-0.5 text-[7px] sm:text-[7.5px] border-t border-dashed border-slate-300 flex items-center justify-between font-mono font-bold text-slate-500">
               <span className="text-rose-600 font-black">🔴 লাইট</span>
-              <span className="text-[7px] text-slate-500">▼ পেছনে (REAR) ▼</span>
+              <span className="text-[6.5px] sm:text-[7px] text-slate-500">▼ পেছনে (REAR) ▼</span>
               <span className="text-rose-600 font-black">লাইট 🔴</span>
             </div>
           </div>
@@ -691,21 +927,289 @@ function MiniBusSeatMap({
       </div>
 
       {/* Bottom note */}
-      <div className={`${isCompact ? 'px-2 py-0.5 text-[8px]' : 'px-2.5 py-1 text-[9px]'} bg-slate-100/70 border-t border-slate-200 text-center text-slate-600 font-bold`}>
+      <div className={`${isCompact ? 'px-2 py-0.5 text-[7.5px]' : 'px-2.5 py-1 text-[8.5px]'} bg-slate-100/70 border-t border-slate-200 text-center text-slate-600 font-bold`}>
         🚌 বাসে প্রবেশের পর আসন খুঁজে নিতে এই ম্যাপ অনুসরণ করুন
       </div>
     </div>
   );
 }
 
+export function HotelAccommodationPass({
+  booking,
+  hotelInfo,
+  orgBrand,
+  helplineNumber,
+  securityHash,
+  verifyUrl,
+  displayPassengers,
+  isPaidInFull,
+  paidAmount,
+  dueAmount,
+  bookingNumber,
+  receiptNumber
+}: {
+  booking: any;
+  hotelInfo: AccommodationInfo;
+  orgBrand: any;
+  helplineNumber: string;
+  securityHash: string;
+  verifyUrl: string;
+  displayPassengers: any[];
+  isPaidInFull: boolean;
+  paidAmount: number;
+  dueAmount: number;
+  bookingNumber: string;
+  receiptNumber: string;
+}) {
+  const primaryPax = displayPassengers[0] || {};
+  const guestName = primaryPax.passengerName || booking.contactName || 'সম্মানিত শিক্ষার্থী';
+  const guestPhone = primaryPax.passengerPhone || booking.contactPhone || '—';
+  const targetUni = booking.trip?.targetUniversity || 'বিশ্ববিদ্যালয় ভর্তি পরীক্ষা ২০২৬';
+  const busNumber = booking.trip?.bus?.busNumber || booking.trip?.bus?.bus_number || 'স্পেশাল কোচ';
+  const busName = booking.trip?.bus?.busName || booking.trip?.bus?.bus_name || 'বিশ্ববিদ্যালয় বাস';
+  const seatsListStr = displayPassengers.map((p: any) => p.seatNumber || p.seat_number).filter(Boolean).join(', ') || 'নির্ধারিত';
+  const departureDate = formatSafeTicketDate(booking.trip?.departureDate || booking.departureDate);
 
-type PaymentReceiptProps = {
+  return (
+    <div className="hotel-ticket-page relative bg-white text-slate-900 select-text font-sans w-full min-h-full flex-1 flex flex-col justify-between border border-slate-300 rounded-xl print:border-none print:rounded-none overflow-hidden">
+      {/* 1. TOP BRAND HERO HEADER (Royal Purple/Indigo Gradient with Verified Badge) */}
+      <div className="bg-gradient-to-r from-[#1e1b4b] via-[#312e81] to-[#4338ca] text-white py-2 px-3 flex items-center justify-between gap-4 relative overflow-hidden">
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-white/25 to-white/5 backdrop-blur-md flex items-center justify-center text-white border border-white/30 shrink-0 shadow-inner">
+            <Hotel className="w-7 h-7 text-purple-200" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black uppercase tracking-wider text-white leading-tight font-sans drop-shadow-sm">
+              {hotelInfo.hotelName}
+            </h1>
+            <p className="text-[11px] text-purple-200/90 font-medium">
+              {orgBrand?.name || 'ATOMS TRANSIT'} • অফিশিয়াল ক্যাম্পাস আবাসন ভাউচার (HOTEL PASS)
+            </p>
+          </div>
+        </div>
+
+        {/* Right: Digital Authority Seal */}
+        <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/25 shadow-sm relative z-10">
+          <div className="relative flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-tr from-purple-500/30 via-purple-400/20 to-sky-400/30 border-2 border-purple-400 shadow-inner shrink-0 text-purple-300">
+            <BadgeCheck className="w-5 h-5 text-purple-300" />
+            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-purple-500 text-white flex items-center justify-center text-[8px] font-black shadow-xs">
+              ✓
+            </span>
+          </div>
+          <div className="text-left block">
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-black tracking-wider text-white uppercase block font-mono leading-none">
+                VERIFIED GUEST PASS
+              </span>
+              <span className="text-[7.5px] bg-purple-400/20 text-purple-200 border border-purple-400/40 px-1 py-0.2 rounded font-mono font-black">
+                CONFIRMED
+              </span>
+            </div>
+            <span className="text-[8.5px] text-purple-200 font-bold font-mono block mt-0.5 tracking-tight">
+              HOTEL-REF: HTL-{bookingNumber}
+            </span>
+          </div>
+        </div>
+
+        <div className="absolute -right-8 -bottom-10 w-52 h-52 bg-purple-400/15 rounded-full blur-2xl pointer-events-none" />
+      </div>
+
+      {/* 2. OFFICIAL BAR & STATUS RIBBON */}
+      <div className="w-full bg-slate-50 px-5 py-2 border-b border-slate-300 flex items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 text-slate-900 font-black tracking-wide text-sm">
+          <div className="w-5 h-5 rounded bg-purple-900 text-white flex items-center justify-center text-[10px] shadow-2xs">
+            🏨
+          </div>
+          <span className="uppercase">OFFICIAL STUDENT ACCOMMODATION & RESIDENCE PASS</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-bold text-slate-600">
+            বাস বুকিং পিএনআর: <strong className="font-mono text-slate-900">{bookingNumber}</strong>
+          </span>
+          <span className="px-3 py-0.5 rounded-full text-xs font-black flex items-center gap-1 shadow-2xs font-mono uppercase bg-emerald-600 text-white">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            ROOM ALLOTTED
+          </span>
+        </div>
+      </div>
+
+      {/* 3. MAIN CONTENT GRID */}
+      <div className="p-4 space-y-3.5 flex-1">
+        {/* Top Info Cards */}
+        <div className="grid grid-cols-2 gap-3.5">
+          {/* Guest Manifest */}
+          <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
+              <span className="text-xs font-black text-slate-900 uppercase flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-purple-700" />
+                অতিথি ও পরীক্ষার্থীর বিবরণ (Guest Details)
+              </span>
+              <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded-full">
+                মোট: {displayPassengers.length} জন
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-bold block">প্রধান অতিথি / শিক্ষার্থী:</span>
+                <span className="font-black text-slate-900 text-sm block">{guestName}</span>
+                <span className="text-[11px] font-mono text-slate-600 block">{guestPhone}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-bold block">বিশ্ববিদ্যালয় ও ভর্তি রোল:</span>
+                <span className="font-bold text-slate-900 block">{targetUni}</span>
+                {primaryPax.admissionId && (
+                  <span className="text-[11px] font-mono text-blue-700 font-bold block">
+                    রোল: {primaryPax.admissionId}
+                  </span>
+                )}
+              </div>
+              <div className="col-span-2 pt-1.5 border-t border-slate-200/80 flex items-center justify-between text-[11px] flex-wrap gap-2">
+                <span className="text-slate-600">
+                  🚌 সংশ্লিষ্ট বাস: <strong>{busNumber}</strong> ({busName})
+                </span>
+                <span className="text-slate-600">
+                  আসন নং: <strong className="font-mono text-purple-900">{seatsListStr}</strong>
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-950 border border-purple-300">
+                  {getJourneyDirectionInfo(booking.journeyType || booking.journey_type || booking.notes).icon} {getJourneyDirectionInfo(booking.journeyType || booking.journey_type || booking.notes).labelBn}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Hotel & Room Allotment */}
+          <div className="p-3.5 bg-purple-50/50 rounded-2xl border border-purple-200 space-y-2">
+            <div className="flex items-center justify-between border-b border-purple-200 pb-1.5">
+              <span className="text-xs font-black text-purple-950 uppercase flex items-center gap-1.5">
+                <Building2 className="w-4 h-4 text-purple-700" />
+                হোটেল ও রুম বরাদ্দ (Allotment)
+              </span>
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                নিশ্চিতকৃত
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="text-[10px] text-purple-700 uppercase font-bold block">হোটেলের নাম ও ঠিকানা:</span>
+                <span className="font-black text-purple-950 text-sm block">{hotelInfo.hotelName}</span>
+                <span className="text-[10px] text-slate-600 block">{hotelInfo.locationAddress || 'বিশ্ববিদ্যালয় ক্যাম্পাস সংলগ্ন আবাসিক এলাকা'}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-purple-700 uppercase font-bold block">রুম টাইপ:</span>
+                <span className="font-bold text-purple-950 block">{hotelInfo.roomType}</span>
+                <span className="text-[10px] text-emerald-700 font-bold block">এসি ও ওয়াইফাই সুবিধা সহ</span>
+              </div>
+              <div className="col-span-2 pt-1.5 border-t border-purple-200/80 grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <span className="text-purple-900 font-bold">⏰ চেক-ইন:</span> {hotelInfo.checkIn || 'দুপুর ১২:০০'} ({departureDate})
+                </div>
+                <div>
+                  <span className="text-purple-900 font-bold">⏰ চেক-আউট:</span> {hotelInfo.checkOut || 'পরবর্তী দিন সকাল ১০:০০'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Accommodation Perks / Amenities */}
+        <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-1.5">
+          <span className="text-[11px] font-black uppercase text-slate-800 block flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+            প্যাকেজে অন্তর্ভুক্ত সুবিধাসমূহ (Complimentary Inclusions)
+          </span>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-[11px]">
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 text-center">
+              <span className="block text-base">🛏️</span>
+              <span className="font-bold text-slate-800 block text-[10px]">আরামদায়ক বেড</span>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 text-center">
+              <span className="block text-base">☕</span>
+              <span className="font-bold text-slate-800 block text-[10px]">সকালের নাস্তা</span>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 text-center">
+              <span className="block text-base">📶</span>
+              <span className="font-bold text-slate-800 block text-[10px]">ফ্রি ওয়াইফাই</span>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 text-center">
+              <span className="block text-base">🚿</span>
+              <span className="font-bold text-slate-800 block text-[10px]">গরম/ঠাণ্ডা পানি</span>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 text-center">
+              <span className="block text-base">🚌</span>
+              <span className="font-bold text-slate-800 block text-[10px]">পরীক্ষার হল শাটল</span>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 text-center">
+              <span className="block text-base">🔒</span>
+              <span className="font-bold text-slate-800 block text-[10px]">সিসিটিভি নিরাপত্তা</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Candidate Stay Guidelines */}
+        <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-200 text-xs text-amber-950 space-y-1">
+          <span className="font-black text-amber-900 block flex items-center gap-1.5 text-[11px] uppercase">
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+            শিক্ষার্থীদের জন্য আবাসন নীতিমালা ও জরুরি নির্দেশিকা (Guest Guidelines)
+          </span>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10.5px] leading-relaxed">
+            <div>• ১. চেক-ইন করার সময় এই ভাউচার ও মূল এডমিট কার্ড রিসেপশনে দেখাতে হবে।</div>
+            <div>• ২. রাত ১০:০০ ঘটিকার পর প্রধান গেট বন্ধ থাকবে। কোনো বহিরাগত ব্যক্তি রুমে প্রবেশাধিকার পাবেন না।</div>
+            <div>• ৩. পড়াশোনার জন্য নিরিবিলি ও শান্ত পরিবেশ বজায় রাখতে হবে। ধূমপান সম্পূর্ণ নিষিদ্ধ।</div>
+            <div>• ৪. পরীক্ষার দিন সকালে নির্ধারিত সময়ে ফ্রন্ট-ডেস্ক থেকে কল ও শাটল সহযোগিতা পাওয়া যাবে।</div>
+          </div>
+        </div>
+
+        {/* Verification Barcode, QR Code & Desk Signatures */}
+        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-1 bg-white rounded-xl border border-slate-200 shadow-2xs">
+              <QRCodeView value={verifyUrl} size={64} />
+            </div>
+            <div className="space-y-0.5">
+              <div className="font-mono font-black text-xs text-purple-950">
+                BARCODE: HTL-{bookingNumber}
+              </div>
+              <BarcodeView value={`HTL-${bookingNumber}`} height={28} showText={false} />
+              <span className="text-[9px] text-slate-500 block">রিসেপশনে কিউআর স্ক্যান করে দ্রুত চেক-ইন করুন</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-8 text-center text-xs">
+            <div className="space-y-1">
+              <div className="w-28 border-b border-dashed border-slate-400 pb-5" />
+              <span className="text-[10px] font-bold text-slate-700 block">হোটেল ফ্রন্ট-ডেস্ক ইনচার্জ</span>
+            </div>
+            <div className="space-y-1">
+              <div className="w-28 border-b border-dashed border-slate-400 pb-5" />
+              <span className="text-[10px] font-bold text-slate-700 block">ট্রানজিট আবাসন প্রতিনিধি</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. FOOTER */}
+      <div className="bg-[#1e1b4b] text-white py-2 px-4 flex items-center justify-between text-xs">
+        <span className="text-[10px] font-mono text-purple-200">
+          ২৪/৭ আবাসন হেল্পলাইন: {hotelInfo.contactPerson || helplineNumber} | {orgBrand?.name || 'ATOMS TRANSIT'}
+        </span>
+        <span className="text-[10px] text-emerald-300 font-bold">
+          ✓ অফিসিয়াল আবাসন কপি • ডিজিটাল সুরক্ষিত
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export type PaymentReceiptProps = {
   booking: any;
   showControls?: boolean;
   defaultViewMode?: TicketViewMode;
   defaultPaperMode?: PrintPaperMode;
   paperMode?: PrintPaperMode;
   onPaperModeChange?: (mode: PrintPaperMode) => void;
+  ticketTab?: 'BUS' | 'HOTEL' | 'BOTH';
+  onTicketTabChange?: (tab: 'BUS' | 'HOTEL' | 'BOTH') => void;
 };
 
 export function PaymentReceipt(props: PaymentReceiptProps) {
@@ -752,7 +1256,9 @@ function PaymentReceiptInner({
   defaultViewMode = 'FULL',
   defaultPaperMode = 'STANDARD_A4',
   paperMode: controlledPaperMode,
-  onPaperModeChange
+  onPaperModeChange,
+  ticketTab: controlledTicketTab,
+  onTicketTabChange
 }: PaymentReceiptProps) {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<TicketViewMode>(defaultViewMode);
@@ -950,6 +1456,30 @@ function PaymentReceiptInner({
   }, [bookingNumber, receiptNumber, grossAmount, netAmount, displayPassengers]);
 
   const busType = trip.tripBusType || bus.busType || bus.bus_type || 'MIXED';
+  const totalCapacity = Number(
+    trip.bus?.seatLayout?.totalSeats ||
+    bus.seatLayout?.totalSeats ||
+    bus.totalSeats ||
+    bus.total_seats ||
+    bus.capacity ||
+    trip.totalSeats ||
+    trip.total_seats ||
+    booking.totalSeats ||
+    45
+  );
+
+  const tripExtraSeats = React.useMemo(() => {
+    const list: string[] = [];
+    const source = booking?.trip?.extraSeats || trip?.extraSeats || bus?.extraSeats || booking?.extraSeats;
+    if (Array.isArray(source)) {
+      source.forEach((e: any) => {
+        const s = typeof e === 'string' ? e : e?.seatNumber || e?.seat_number || e?.label;
+        if (s) list.push(String(s).trim().toUpperCase());
+      });
+    }
+    return list;
+  }, [booking, trip, bus]);
+
   const verifyUrl = `${hostUrl}/bookings/${booking.id || ''}`;
 
   // Robust Bus and Coach Number resolution across all schemas & models
@@ -1005,14 +1535,51 @@ function PaymentReceiptInner({
   const isHighDensity = displayPassengers.length >= 5;
   const [showSeatMap, setShowSeatMap] = useState<boolean>(true);
 
+  const hotelInfo = React.useMemo(() => extractAccommodationInfo(booking), [booking]);
+  const hasHotelTicket = !!hotelInfo && hotelInfo.hasHotel;
+  const [internalTicketTab, setInternalTicketTab] = useState<'BUS' | 'HOTEL' | 'BOTH'>('BOTH');
+  const ticketTab = controlledTicketTab ?? internalTicketTab;
+  const setTicketTab = (tab: 'BUS' | 'HOTEL' | 'BOTH') => {
+    setInternalTicketTab(tab);
+    onTicketTabChange?.(tab);
+  };
+  const isMultiSheet = hasHotelTicket && ticketTab === 'BOTH';
+
+  const rawJourneyType = (
+    booking.journeyType ||
+    booking.journey_type ||
+    trip.journeyType ||
+    trip.journey_type ||
+    (booking.notes?.includes('শুধুমাত্র যাওয়া') || booking.notes?.includes('শুধুমাত্র যাওয়া') ? 'OUTBOUND_ONLY' :
+     booking.notes?.includes('শুধুমাত্র আসা') ? 'RETURN_ONLY' :
+     booking.notes?.includes('স্প্লিট') || booking.notes?.includes('মিশ্র') ? 'ASYMMETRIC' : 'ROUND_TRIP')
+  );
+  const journeyDirInfo = React.useMemo(() => getJourneyDirectionInfo(rawJourneyType), [rawJourneyType]);
+
   const viewportRef = React.useRef<HTMLDivElement>(null);
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const isThermal = paperMode === 'THERMAL_80MM';
 
-  // Shrink the ticket to one A4 page (thermal is a continuous slip, so it is exempt).
-  useTicketFit(canvasRef, !isThermal, [showSeatMap, paperMode, booking.id, displayPassengers.length]);
+  // Shrink the ticket to one A4 page (thermal is a continuous slip, and multi-sheet preserves standard pages).
+  useTicketFit(canvasRef, !isThermal && !isMultiSheet, [showSeatMap, paperMode, booking.id, displayPassengers.length, ticketTab]);
   useSheetViewZoom(viewportRef, 1.05);
   useSheetPageSize(isThermal ? 'THERMAL_80MM' : 'STANDARD_A4');
+
+  // Global keyboard shortcut: Ctrl+P or Cmd+P triggers the optimized ticket print
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        e.stopPropagation();
+        printReceiptElement(SHEET_ID);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, []);
 
 
   const handlePrint = () => {
@@ -1106,6 +1673,51 @@ function PaymentReceiptInner({
 
             {/* Right: Functionally Grouped & Clean Action Controls */}
             <div className="flex items-center gap-2 flex-wrap">
+              {/* বাস ও হোটেল টিকিট সুইচিং (যদি বাসের সাথে হোটেল সংযুক্ত থাকে) */}
+              {hasHotelTicket && (
+                <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-purple-500/40 text-xs shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setTicketTab('BUS')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      ticketTab === 'BUS'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="শুধুমাত্র বাসের টিকিট দেখুন ও প্রিন্ট করুন"
+                  >
+                    <Bus className="w-3.5 h-3.5" />
+                    <span>বাসের টিকিট</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTicketTab('HOTEL')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      ticketTab === 'HOTEL'
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="শুধুমাত্র হোটেলের টিকিট দেখুন ও প্রিন্ট করুন"
+                  >
+                    <Hotel className="w-3.5 h-3.5" />
+                    <span>হোটেল টিকিট</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTicketTab('BOTH')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      ticketTab === 'BOTH'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="উভয় টিকিট এক সাথে (২ পাতা প্রিন্ট/পিডিএফ)"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>উভয় টিকিট (২ পাতা)</span>
+                  </button>
+                </div>
+              )}
+
               {/* ভিউ ও প্রিন্ট ফরম্যাট নির্বাচক */}
               <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
                 <button
@@ -1218,16 +1830,17 @@ function PaymentReceiptInner({
         </div>
       )}
 
-      {/* Main Printable Ticket Container — a fixed A4 sheet shared by screen, print and PDF */}
-      <div className="ticket-print-outer w-full flex justify-center overflow-x-auto py-1 print:block print:w-auto print:p-0 print:m-0 print:overflow-visible">
-        <div ref={viewportRef} className="ticket-sheet-viewport">
+      {/* Main Printable Ticket Container — a centered A4 sheet shared by screen, print and PDF */}
+      <div className="ticket-print-outer w-full flex flex-col items-center justify-center mx-auto py-1 print:block print:w-[210mm] print:max-w-[210mm] print:p-0 print:m-0 print:overflow-visible">
+        <div ref={viewportRef} className="ticket-sheet-viewport mx-auto flex flex-col items-center">
         <div
           id="printable-payment-receipt"
           data-paper-mode={paperMode}
+          data-multi-sheet={isMultiSheet ? 'true' : 'false'}
           suppressHydrationWarning
-          className="bg-white text-slate-900 overflow-hidden relative"
+          className="bg-white text-slate-900 relative mx-auto shadow-md rounded-2xl print:shadow-none print:rounded-none"
         >
-          <div ref={canvasRef} className="ticket-canvas">
+          <div ref={canvasRef} className="ticket-canvas mx-auto">
         {booking.isOffline && (
           <div className="bg-amber-500 text-slate-950 font-black text-xs py-1.5 px-4 text-center border-b border-amber-600">
             ⚠️ অফলাইন মোডে সংরক্ষিত রেকর্ড ({booking.offlineRefId || booking.bookingNumber}) — অনলাইন হলে সার্ভারে সিঙ্ক হবে
@@ -1275,6 +1888,10 @@ function PaymentReceiptInner({
             {/* Trip Details */}
             <div className="space-y-1 text-[11px] border-b border-dashed border-black pb-2">
               <div className="font-bold">রুট: {route.routeName || 'ঢাকা ➔ বিশ্ববিদ্যালয়'}</div>
+              <div className="flex items-center gap-1 font-black text-[10.5px] py-0.5 px-1.5 bg-black text-white rounded">
+                <span>{journeyDirInfo.icon}</span>
+                <span>যাত্রার ধরণ: {journeyDirInfo.labelBn}</span>
+              </div>
               <div suppressHydrationWarning>তারিখ: {formatDate(trip.departureDate)} | সময়: {formatTime(trip.departureTime)}</div>
               <div className="font-black text-black">🚌 বাস নং: {busNumber} ({busName})</div>
               <div>ওঠার স্থান: {booking.boardingPoint || 'কাউন্টার'}</div>
@@ -1364,7 +1981,9 @@ function PaymentReceiptInner({
           /* MODE B: UNIFIED A4 EXECUTIVE TRANSIT E-TICKET & OFFICIAL TRAVEL PASS      */
           /* ULTRA-PREMIUM REFINEMENT MATCHED PIXEL-PERFECTLY TO REFERENCE DESIGN      */
           /* ========================================================================= */
-          <div className={`relative bg-white text-slate-900 select-text font-sans w-full ${isMultiPassenger ? 'min-h-[800px]' : 'min-h-[850px]'} flex flex-col justify-between border border-slate-300 rounded-lg`}>
+          <div className="space-y-6 print:space-y-0 w-full min-h-full flex-1 flex flex-col justify-between">
+            {(ticketTab === 'BUS' || ticketTab === 'BOTH') && (
+              <div className={`bus-ticket-page relative bg-white text-slate-900 select-text font-sans w-full min-h-full flex-1 flex flex-col justify-between border border-slate-300 rounded-xl print:border-none print:rounded-none overflow-hidden`}>
             {/* 1. TOP BRAND HERO HEADER (Transit Royal Navy Gradient with Single Verified Badge) */}
             <div className={`bg-gradient-to-r from-[#021f4d] via-[#053b8c] to-[#0a4fa8] text-white ${isMultiPassenger ? 'py-1.5 px-3' : 'py-2 px-3'} flex items-center justify-between gap-4 relative overflow-hidden`}>
               {/* Left Brand Identity */}
@@ -1417,11 +2036,15 @@ function PaymentReceiptInner({
 
             {/* 2. OFFICIAL BAR & PAYMENT STATUS PILL */}
             <div className={`w-full bg-slate-50 ${isMultiPassenger ? 'px-4 py-1' : 'px-5 py-2'} border-b border-slate-300 flex items-center justify-between gap-3 text-xs`}>
-              <div className={`flex items-center gap-2 text-slate-900 font-black tracking-wide ${isMultiPassenger ? 'text-xs' : 'text-sm'}`}>
+              <div className={`flex items-center gap-2 text-slate-900 font-black tracking-wide flex-wrap ${isMultiPassenger ? 'text-xs' : 'text-sm'}`}>
                 <div className="w-5 h-5 rounded bg-[#032b69] text-white flex items-center justify-center text-[10px] shadow-2xs">
                   🎫
                 </div>
                 <span className="uppercase">OFFICIAL PASSENGER E-TICKET & BOARDING PASS</span>
+                <span className={`px-2.5 py-0.5 rounded-full text-[9.5px] font-black tracking-wider flex items-center gap-1 shadow-2xs font-mono uppercase ${journeyDirInfo.badgeClass}`}>
+                  <span>{journeyDirInfo.icon}</span>
+                  <span>{journeyDirInfo.labelBn}</span>
+                </span>
               </div>
 
               <div>
@@ -1539,13 +2162,17 @@ function PaymentReceiptInner({
                         <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 border-t-2 border-r-2 border-sky-400 rotate-45" />
                       </div>
                     </div>
-                    {/* High-Visibility Bus Number Badge */}
-                    <div className="mt-1 flex flex-col items-center">
+                    {/* High-Visibility Bus Number & Journey Direction Badge */}
+                    <div className="mt-1 flex flex-col items-center gap-1">
                       <span className={`inline-flex items-center gap-1 ${isMultiPassenger ? 'px-2 py-0.2 text-[10px]' : 'px-2.5 py-0.5 text-[11px]'} rounded-full bg-[#032b69] text-white font-mono font-black shadow-xs tracking-tight border border-sky-400/40`}>
                         <span>🚌</span>
                         <span>বাস নং: {busNumber}</span>
                       </span>
-                      <span className="text-[8.5px] text-slate-600 font-bold truncate max-w-[150px] mt-0.5">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-mono font-black text-[9.5px] shadow-2xs border ${journeyDirInfo.pillClass}`}>
+                        <span>{journeyDirInfo.icon}</span>
+                        <span>{journeyDirInfo.labelBn}</span>
+                      </span>
+                      <span className="text-[8.5px] text-slate-600 font-bold truncate max-w-[150px]">
                         {busName}
                       </span>
                     </div>
@@ -1959,10 +2586,17 @@ function PaymentReceiptInner({
                   {showSeatMap && (
                     <div className="col-span-4 flex flex-col">
                       <MiniBusSeatMap
-                        allocatedSeats={displayPassengers.map((p: any) => p.seatNumber || p.seat_number || p.seat?.seatNumber).filter(Boolean)}
+                        allocatedSeats={Array.from(new Set([
+                          ...displayPassengers.map((p: any) => p.seatNumber || p.seat_number || p.seat?.seatNumber),
+                          ...rawPassengers.map((p: any) => p.seatNumber || p.seat_number || p.seat?.seatNumber),
+                          ...(booking.seats || []).map((s: any) => s.seatNumber || s.seat_number),
+                          ...(booking.passengers || []).map((p: any) => p.seatNumber || p.seat_number)
+                        ])).filter(Boolean)}
                         busType={busType}
                         isEcoMode={isEcoMode}
-                        isCompact={isMultiPassenger}
+                        isCompact={isMultiPassenger || totalCapacity >= 45}
+                        totalSeats={totalCapacity}
+                        tripExtraSeats={tripExtraSeats}
                       />
                     </div>
                   )}
@@ -2117,8 +2751,14 @@ function PaymentReceiptInner({
                 </div>
 
                 <div className="flex flex-col items-end">
-                  <BarcodeView value={bookingNumber} height={isMultiPassenger ? 20 : 28} showText={false} className={isMultiPassenger ? "w-44" : "w-56"} barColor="#032b69" />
-                  <span className="text-[7.5px] font-mono text-slate-600 font-bold tracking-widest mt-0.5">
+                  <BarcodeView
+                    value={bookingNumber}
+                    height={isMultiPassenger ? 28 : 34}
+                    showText={false}
+                    className={isMultiPassenger ? "w-48 sm:w-56" : "w-56 sm:w-64"}
+                    barColor="#000000"
+                  />
+                  <span className="text-[8px] font-mono text-slate-900 font-bold tracking-widest mt-0.5">
                     *{bookingNumber}*
                   </span>
                 </div>
@@ -2143,6 +2783,107 @@ function PaymentReceiptInner({
                 <span>Paperless Boarding Valid</span>
               </div>
             </div>
+          </div>
+        )}
+
+            {isMultiSheet && (
+              <div className="ticket-page-break print:break-after-page print:page-break-after-always my-6 print:my-0 border-t-2 border-dashed border-purple-300 print:border-none relative">
+                <div className="print:hidden py-2.5 px-4 bg-purple-50 text-purple-900 border border-purple-200 rounded-2xl text-center text-xs font-black my-4 flex items-center justify-center gap-2 shadow-xs">
+                  <Hotel className="w-4 h-4 text-purple-700" />
+                  <span>── ২য় পাতা: অফিশিয়াল হোটেল ও আবাসন টিকিট / ভাউচার (HOTEL PASS) ──</span>
+                </div>
+              </div>
+            )}
+
+            {hasHotelTicket && (ticketTab === 'BOTH' || ticketTab === 'HOTEL') && (
+              <HotelAccommodationPass
+                booking={booking}
+                hotelInfo={hotelInfo!}
+                orgBrand={orgBrand}
+                helplineNumber={helplineNumber}
+                securityHash={securityHash}
+                verifyUrl={verifyUrl}
+                displayPassengers={displayPassengers}
+                isPaidInFull={isPaidInFull}
+                paidAmount={paidAmount}
+                dueAmount={dueAmount}
+                bookingNumber={bookingNumber}
+                receiptNumber={receiptNumber}
+              />
+            )}
+
+            {/* If viewed on a Normal Bus (no hotel package), show clear professional status card */}
+            {!hasHotelTicket && ticketTab === 'HOTEL' && (
+              <div className="bus-ticket-page relative bg-white text-slate-900 select-text font-sans w-full min-h-full flex-1 flex flex-col justify-between border border-slate-300 rounded-xl p-6 sm:p-10 text-center shadow-xs overflow-hidden">
+                {/* Header Strip */}
+                <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-4 rounded-2xl flex items-center justify-between gap-3 text-left">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-xl">
+                      🏨
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black uppercase tracking-wide">হোটেল টিকিট অনুসন্ধান ও তথ্য</h3>
+                      <p className="text-xs text-sky-200">ক্যাম্পাস ট্রানজিট ও অ্যাকোমোডেশন সার্ভিস</p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-mono font-bold bg-amber-400 text-slate-950 px-2.5 py-1 rounded-xl">
+                    নরমাল বাস
+                  </span>
+                </div>
+
+                {/* Central Status */}
+                <div className="my-8 max-w-lg mx-auto space-y-4">
+                  <div className="w-20 h-20 rounded-3xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center text-4xl mx-auto shadow-inner">
+                    🏨
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300">
+                      <span>সাধারণ বাস • কোনো হোটেল প্যাকেজ সংযুক্ত নেই</span>
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900">
+                      এই বাসটিতে হোটেল টিকিট প্রযোজ্য নয়
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
+                      যাত্রী <strong>{booking.contactName || 'সম্মানিত যাত্রী'}</strong>-এর এই বুকিংটি সাধারণ বাসের (<span className="font-mono font-bold text-slate-800">{busNumber}</span>)। আলাদা হোটেল ভাউচার টিকিট <strong>শুধুমাত্র হোটেল প্যাকেজ সমন্বিত বিশেষ বাসে</strong> স্বয়ংক্রিয়ভাবে ইস্যু হয়।
+                    </p>
+                  </div>
+
+                  {/* Summary Box */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-left text-xs space-y-2 font-medium">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/80">
+                      <span className="text-slate-500 font-bold">🚌 বাস ও রুট:</span>
+                      <span className="font-bold text-slate-900">{busName} ({busNumber})</span>
+                    </div>
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/80">
+                      <span className="text-slate-500 font-bold">🎫 ইস্যুকৃত বৈধ টিকিট:</span>
+                      <span className="font-black text-emerald-700">বাস ট্রাভেল পাস (আসন: {displayPassengers.map((p: any) => p.seatNumber || p.seat_number).filter(Boolean).join(', ') || 'নির্ধারিত'})</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-bold">🏨 হোটেল টিকিট স্ট্যাটাস:</span>
+                      <span className="font-black text-amber-700">অনুপলব্ধ (শুধুমাত্র হোটেল সমন্বিত বাসে ইস্যু হয়)</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      onClick={() => setTicketTab('BUS')}
+                      className="bg-blue-600 hover:bg-blue-500 text-white font-black text-xs px-5 py-2.5 rounded-xl cursor-pointer shadow-md flex items-center gap-2"
+                    >
+                      <Bus className="w-4 h-4" />
+                      <span>বাসের মূল টিকিট দেখুন ও প্রিন্ট করুন</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Footer Notice */}
+                <div className="p-3 rounded-xl bg-slate-50 text-[11px] text-slate-500 border border-slate-200">
+                  নোট: ভর্তি পরীক্ষার্থীদের সুবিধার্থে যে বাসগুলোতে হোটেল নির্ধারিত থাকে, সেগুলোর টিকিট পেজে স্বয়ংক্রিয়ভাবে পৃথক হোটেল পাস ২য় পাতা হিসেবে প্রস্তুত থাকে।
+                </div>
+              </div>
+            )}
           </div>
         )}
           </div>

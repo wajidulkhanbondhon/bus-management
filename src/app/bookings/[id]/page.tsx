@@ -10,7 +10,7 @@ export default async function BookingDetailPage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ autoPrint?: string }>;
+  searchParams?: Promise<{ autoPrint?: string; success?: string; booked?: string; pnr?: string }>;
 }) {
   const { id } = await params;
   const sParams = searchParams ? await searchParams : {};
@@ -20,10 +20,13 @@ export default async function BookingDetailPage({
     notFound();
   }
 
+  const isSuccess = sParams?.success === 'true' || sParams?.booked === 'true';
+
   return (
     <BookingDetailView
       booking={booking}
       autoPrint={sParams?.autoPrint === 'true' || sParams?.autoPrint === '1'}
+      isSuccess={isSuccess}
     />
   );
 }

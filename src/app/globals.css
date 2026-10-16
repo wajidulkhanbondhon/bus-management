@@ -337,17 +337,20 @@ html.dark .seat-available {
 --------------------------------------------------------------------------- */
 .ticket-sheet-viewport {
   zoom: var(--ticket-view, 1);
-  width: fit-content;
+  width: 794px;
+  max-width: 100%;
   margin: 0 auto;
-  transition: zoom 0.15s ease-out;
+  display: block;
 }
 
 #printable-payment-receipt {
   width: 794px;            /* A4 @ 96dpi, 210mm */
-  height: 1123px;          /* 297mm full A4 */
-  padding: 2px;            /* 2px breathing margin around all 4 sides */
+  max-width: 100%;
+  min-height: 1123px;      /* 297mm full A4 */
+  height: auto;
+  padding: 0;              /* Zero margin around ticket so header and footer touch edges */
   box-sizing: border-box;
-  overflow: hidden;        /* pagination follows this box -> always one page */
+  overflow: hidden;        /* Clips cleanly at rounded corners with zero bottom spill */
   position: relative;
   margin: 0 auto;
   background: #ffffff;
@@ -355,6 +358,16 @@ html.dark .seat-available {
   font-size: 12px;
   border-radius: 12px;
   box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+}
+
+#printable-payment-receipt[data-multi-sheet="true"] {
+  height: auto !important;
+  min-height: 2246px !important;      /* 2 full A4 sheets on screen */
+  max-height: none !important;
+  overflow: visible !important;
+  display: block !important;
 }
 
 /* Neutralise the app-shell typography overrides applied to <main>
@@ -363,27 +376,62 @@ html.dark .seat-available {
 #printable-payment-receipt h2 { font-size: 18px; }
 #printable-payment-receipt table { font-size: 11px; }
 
-/* The ticket body. Scaled to fit the sheet when the content is taller than one
-   page; the transform does not affect the layout box, so measurement is stable.
-   Scaling around top center preserves horizontal and vertical alignment. */
+/* The ticket body. Scaled to fit the sheet vertically if content exceeds budget;
+   Width is anchored so measurements never trigger reflow feedback loops. */
 .ticket-canvas {
-  width: 790px;
+  width: 794px;
+  max-width: 794px;
+  min-height: 1123px;
+  height: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin: 0 auto;
   transform-origin: top center;
   transform: scale(var(--ticket-fit, 1));
 }
 
+#printable-payment-receipt[data-multi-sheet="true"] .ticket-canvas {
+  min-height: auto !important;
+  height: auto !important;
+  display: block !important;
+}
+
+#printable-payment-receipt .bus-ticket-page,
+#printable-payment-receipt .hotel-ticket-page {
+  min-height: 1120px;
+  height: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+#printable-payment-receipt[data-multi-sheet="true"] .bus-ticket-page,
+#printable-payment-receipt[data-multi-sheet="true"] .hotel-ticket-page {
+  min-height: 1120px;
+  height: 1120px;
+}
+
 /* 80mm POS thermal slip: continuous length, so no fixed height or scaling. */
 #printable-payment-receipt[data-paper-mode="THERMAL_80MM"] {
-  width: 80mm;
-  height: auto;
+  width: 80mm !important;
+  height: auto !important;
+  min-height: auto !important;
   padding: 2mm;
   border: 1px solid #cbd5e1;
   border-radius: 12px;
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+  display: block !important;
 }
 #printable-payment-receipt[data-paper-mode="THERMAL_80MM"] .ticket-canvas {
-  width: auto;
-  transform: none;
+  width: auto !important;
+  min-height: auto !important;
+  height: auto !important;
+  display: block !important;
+  transform: none !important;
 }
 
 @media print {
@@ -474,6 +522,7 @@ html.dark .seat-available {
     width: 210mm !important;
     max-width: 210mm !important;
     height: 297mm !important;
+    min-height: 297mm !important;
     max-height: 297mm !important;
     overflow: hidden !important;
     page-break-inside: avoid !important;
@@ -484,20 +533,84 @@ html.dark .seat-available {
     break-after: avoid !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* Support for dual-ticket (Bus Ticket + Hotel Pass) multi-page print */
+  #printable-payment-receipt[data-multi-sheet="true"] {
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    display: block !important;
+  }
+  #printable-payment-receipt[data-multi-sheet="true"] .ticket-page-break {
+    page-break-after: always !important;
+    break-after: page !important;
+    height: 0 !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  #printable-payment-receipt[data-multi-sheet="true"] .bus-ticket-page,
+  #printable-payment-receipt[data-multi-sheet="true"] .hotel-ticket-page {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    min-height: 297mm !important;
+    height: 297mm !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
   }
 
   .ticket-canvas {
-    width: 210mm !important;
-    max-width: 210mm !important;
-    margin: 0 auto !important;
+    width: calc(210mm / var(--ticket-fit, 1)) !important;
+    max-width: none !important;
+    min-height: calc(297mm / var(--ticket-fit, 1)) !important;
+    height: 100% !important;
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    margin: 0 !important;
     padding: 0 !important;
-    transform-origin: top center !important;
+    transform-origin: top left !important;
     transform: scale(var(--ticket-fit, 1)) !important;
+  }
+
+  #printable-payment-receipt[data-multi-sheet="true"] .ticket-canvas {
+    min-height: auto !important;
+    height: auto !important;
+    display: block !important;
+  }
+
+  #printable-payment-receipt .bus-ticket-page,
+  #printable-payment-receipt .hotel-ticket-page {
+    min-height: calc(297mm / var(--ticket-fit, 1)) !important;
+    height: 100% !important;
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    box-sizing: border-box !important;
   }
 
   #printable-payment-receipt[data-paper-mode="THERMAL_80MM"] {
     width: 80mm !important;
     height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    display: block !important;
+  }
+  #printable-payment-receipt[data-paper-mode="THERMAL_80MM"] .ticket-canvas {
+    width: auto !important;
+    min-height: auto !important;
+    height: auto !important;
+    display: block !important;
+    transform: none !important;
   }
 }
 

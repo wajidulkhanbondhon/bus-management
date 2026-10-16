@@ -218,20 +218,10 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
     return seats.filter(s => selectedSeatIds.includes(s.seatId));
   }, [seats, selectedSeatIds]);
 
-  // Dynamic Fare Calculation taking journey direction / legs into account
+  // Dynamic Fare Calculation taking journey direction into account
   const totalFare = useMemo(() => {
-    if (journeyType === 'ROUND_TRIP') {
-      return selectedSeats.reduce((sum, s) => sum + s.fare, 0);
-    } else if (journeyType === 'OUTBOUND_ONLY' || journeyType === 'RETURN_ONLY') {
-      return selectedSeats.reduce((sum, s) => sum + Math.round(s.fare * 0.5), 0);
-    } else {
-      // ASYMMETRIC / CUSTOM_SPLIT
-      return selectedSeats.reduce((sum, s) => {
-        const leg = seatLegs[s.seatId] || 'ROUND_TRIP';
-        return sum + (leg === 'ROUND_TRIP' ? s.fare : Math.round(s.fare * 0.5));
-      }, 0);
-    }
-  }, [selectedSeats, journeyType, seatLegs]);
+    return selectedSeats.reduce((sum, s) => sum + s.fare, 0);
+  }, [selectedSeats]);
 
   // Handle seat click (Multi-seat toggle for prebooking)
   const handleSeatClick = (seat: SeatStatusDetail) => {
@@ -1163,8 +1153,8 @@ export function InteractiveSeatMap({ trip, seats, summary, currentUserId }: Prop
                                   className="text-[11px] font-bold px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                                 >
                                   <option value="ROUND_TRIP">উভয়মুখী (যাওয়া ও আসা) - ৳{s.fare}</option>
-                                  <option value="OUTBOUND_ONLY">শুধুমাত্র যাওয়া - ৳{Math.round(s.fare * 0.5)}</option>
-                                  <option value="RETURN_ONLY">শুধুমাত্র আসা - ৳{Math.round(s.fare * 0.5)}</option>
+                                  <option value="OUTBOUND_ONLY">শুধুমাত্র যাওয়া (একমুখী) - ৳{s.fare}</option>
+                                  <option value="RETURN_ONLY">শুধুমাত্র আসা (একমুখী ফেরত) - ৳{s.fare}</option>
                                 </select>
                               </div>
                             );

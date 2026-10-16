@@ -251,8 +251,8 @@ export function QuickCounterBookingClient({ trips, currentUser }: Props) {
             ? `🎉 টিকিট বুকিং সফল হয়েছে! ট্র্যাকিং কোড: ${result.booking.bookingNumber}`
             : `🎉 Booking confirmed successfully! Code: ${result.booking.bookingNumber}`
         );
-        const autoPrintParam = autoPrintTicket ? '?autoPrint=true' : '';
-        router.push(`/bookings/${result.booking.id}${autoPrintParam}`);
+        const autoPrintParam = autoPrintTicket ? '&autoPrint=true' : '';
+        router.push(`/bookings/${result.booking.id}?success=true${autoPrintParam}`);
       } else {
         toastError(result.error || (language === 'bn' ? 'বুকিং সম্পন্ন করতে ব্যর্থ হয়েছে।' : 'Failed to confirm booking.'));
         fetchLiveSeats(activeTrip.id);

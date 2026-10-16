@@ -52,6 +52,8 @@ export interface FarePaymentProps {
   allCurrentSeats: any[];
   targetUniversity: string;
   grossAmount: number;
+  customGrossAmount?: number | null;
+  onCustomGrossAmountChange?: (amount: number | null) => void;
   discountState: DiscountState;
   appliedCoupon: AppliedCoupon | null;
   couponMessage: string | null;
@@ -128,6 +130,8 @@ export function FareAndPaymentStep({
   allCurrentSeats,
   targetUniversity,
   grossAmount,
+  customGrossAmount,
+  onCustomGrossAmountChange,
   discountState,
   appliedCoupon,
   couponMessage,
@@ -366,6 +370,47 @@ export function FareAndPaymentStep({
           </div>
         </CardHeader>
         <CardContent className="space-y-4 p-4 sm:p-6">
+          {/* Operator Manual Total Fare Override */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div className="space-y-0.5">
+              <div className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <span>{language === 'bn' ? 'ম্যানুয়াল মোট টিকিট ভাড়া নির্ধারণ (Custom Gross Fare)' : 'Custom Total Fare Override'}</span>
+                <Badge variant="outline" className="text-[10px] font-mono">কাউন্টার কন্ট্রোল</Badge>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                {language === 'bn'
+                  ? 'কাউন্টার অপারেটর নিজের ইচ্ছেমতো যেকোনো টিকিট মূল্য নির্ধারণ করতে পারেন।'
+                  : 'Counter operators can set any desired ticket fare.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="relative w-36">
+                <span className="absolute left-3 top-2.5 font-bold text-slate-500 text-xs">৳</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={customGrossAmount !== null && customGrossAmount !== undefined ? customGrossAmount : grossAmount}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? null : Math.max(0, Number(e.target.value));
+                    if (onCustomGrossAmountChange) onCustomGrossAmountChange(val);
+                  }}
+                  className="w-full pl-7 pr-2 py-2 text-sm font-mono font-black bg-white dark:bg-slate-950 border-2 border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  placeholder={String(grossAmount)}
+                />
+              </div>
+              {customGrossAmount !== null && customGrossAmount !== undefined && (
+                <button
+                  type="button"
+                  onClick={() => onCustomGrossAmountChange && onCustomGrossAmountChange(null)}
+                  className="text-xs font-bold text-slate-500 hover:text-rose-600 px-2.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 cursor-pointer transition-colors shrink-0"
+                  title="স্বাভাবিক ভাড়ায় রিসেট করুন"
+                >
+                  রিসেট
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Discount toggle */}
           <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
             <div className="space-y-0.5 cursor-pointer" onClick={() => onDiscountChange({ isDiscountApplied: !isDiscountApplied })}>
