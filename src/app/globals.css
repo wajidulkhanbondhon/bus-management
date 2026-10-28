@@ -343,7 +343,9 @@ html.dark .seat-available {
   display: block;
 }
 
-#printable-payment-receipt {
+#printable-payment-receipt,
+#printable-payment-receipt-pdf-clone,
+.printable-payment-receipt {
   width: 794px;            /* A4 @ 96dpi, 210mm */
   max-width: 100%;
   min-height: 1123px;      /* 297mm full A4 */
@@ -362,7 +364,9 @@ html.dark .seat-available {
   flex-direction: column;
 }
 
-#printable-payment-receipt[data-multi-sheet="true"] {
+#printable-payment-receipt[data-multi-sheet="true"],
+#printable-payment-receipt-pdf-clone[data-multi-sheet="true"],
+.printable-payment-receipt[data-multi-sheet="true"] {
   height: auto !important;
   min-height: 2246px !important;      /* 2 full A4 sheets on screen */
   max-height: none !important;
@@ -372,9 +376,17 @@ html.dark .seat-available {
 
 /* Neutralise the app-shell typography overrides applied to <main>
    (see contentFontClass in src/components/layout/app-shell.tsx). */
-#printable-payment-receipt h1 { font-size: 26px; line-height: 1.05; }
-#printable-payment-receipt h2 { font-size: 18px; }
-#printable-payment-receipt table { font-size: 11px; }
+#printable-payment-receipt h1,
+#printable-payment-receipt-pdf-clone h1,
+.printable-payment-receipt h1 { font-size: 26px; line-height: 1.05; }
+
+#printable-payment-receipt h2,
+#printable-payment-receipt-pdf-clone h2,
+.printable-payment-receipt h2 { font-size: 18px; }
+
+#printable-payment-receipt table,
+#printable-payment-receipt-pdf-clone table,
+.printable-payment-receipt table { font-size: 11px; }
 
 /* The ticket body. Scaled to fit the sheet vertically if content exceeds budget;
    Width is anchored so measurements never trigger reflow feedback loops. */
@@ -392,14 +404,20 @@ html.dark .seat-available {
   transform: scale(var(--ticket-fit, 1));
 }
 
-#printable-payment-receipt[data-multi-sheet="true"] .ticket-canvas {
+#printable-payment-receipt[data-multi-sheet="true"] .ticket-canvas,
+#printable-payment-receipt-pdf-clone[data-multi-sheet="true"] .ticket-canvas,
+.printable-payment-receipt[data-multi-sheet="true"] .ticket-canvas {
   min-height: auto !important;
   height: auto !important;
   display: block !important;
 }
 
 #printable-payment-receipt .bus-ticket-page,
-#printable-payment-receipt .hotel-ticket-page {
+#printable-payment-receipt-pdf-clone .bus-ticket-page,
+.printable-payment-receipt .bus-ticket-page,
+#printable-payment-receipt .hotel-ticket-page,
+#printable-payment-receipt-pdf-clone .hotel-ticket-page,
+.printable-payment-receipt .hotel-ticket-page {
   min-height: 1120px;
   height: 100%;
   flex: 1;
@@ -410,13 +428,19 @@ html.dark .seat-available {
 }
 
 #printable-payment-receipt[data-multi-sheet="true"] .bus-ticket-page,
-#printable-payment-receipt[data-multi-sheet="true"] .hotel-ticket-page {
+#printable-payment-receipt-pdf-clone[data-multi-sheet="true"] .bus-ticket-page,
+.printable-payment-receipt[data-multi-sheet="true"] .bus-ticket-page,
+#printable-payment-receipt[data-multi-sheet="true"] .hotel-ticket-page,
+#printable-payment-receipt-pdf-clone[data-multi-sheet="true"] .hotel-ticket-page,
+.printable-payment-receipt[data-multi-sheet="true"] .hotel-ticket-page {
   min-height: 1120px;
   height: 1120px;
 }
 
 /* 80mm POS thermal slip: continuous length, so no fixed height or scaling. */
-#printable-payment-receipt[data-paper-mode="THERMAL_80MM"] {
+#printable-payment-receipt[data-paper-mode="THERMAL_80MM"],
+#printable-payment-receipt-pdf-clone[data-paper-mode="THERMAL_80MM"],
+.printable-payment-receipt[data-paper-mode="THERMAL_80MM"] {
   width: 80mm !important;
   height: auto !important;
   min-height: auto !important;
@@ -426,7 +450,9 @@ html.dark .seat-available {
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
   display: block !important;
 }
-#printable-payment-receipt[data-paper-mode="THERMAL_80MM"] .ticket-canvas {
+#printable-payment-receipt[data-paper-mode="THERMAL_80MM"] .ticket-canvas,
+#printable-payment-receipt-pdf-clone[data-paper-mode="THERMAL_80MM"] .ticket-canvas,
+.printable-payment-receipt[data-paper-mode="THERMAL_80MM"] .ticket-canvas {
   width: auto !important;
   min-height: auto !important;
   height: auto !important;

@@ -278,7 +278,30 @@ export function buildWhatsAppTicketMessage(booking: any, passenger?: any, brandi
   const hostUrl = typeof window !== 'undefined' ? window.location.origin : 'https://atoms-transit.com';
   const verifyUrl = `${hostUrl}/bookings/${booking?.id || ''}`;
 
-  const orgName = branding?.name || 'ATOMS Transit Management';
+  const busOperator = (
+    busObj.operator ||
+    busObj.company ||
+    busObj.company_name ||
+    tripObj.operator ||
+    tripObj.company ||
+    tripObj.company_name ||
+    booking?.operator ||
+    booking?.company ||
+    booking?.companyName ||
+    booking?.busOperator ||
+    tripObj.busOperator ||
+    busObj.busOperator ||
+    ''
+  );
+  const hasValidOperator = Boolean(
+    busOperator &&
+    typeof busOperator === 'string' &&
+    busOperator.trim() !== '' &&
+    !busOperator.includes('পরে নির্ধারণ') &&
+    !busOperator.includes('Pending Vendor')
+  );
+  const orgNameFallback = branding?.name || booking?.tenant?.name || booking?.organization?.name || 'ATOMS Transit Management';
+  const orgName = hasValidOperator ? busOperator.trim() : orgNameFallback;
   const helpline = branding?.phone || '01711000001';
 
   const hotelInfo = extractAccommodationInfo(booking);
@@ -378,10 +401,10 @@ export function printTicketDirect(targetTab: 'BUS' | 'HOTEL' | 'BOTH' = 'BOTH', 
 }
 
 /**
- * Download the ticket as a 1-page PDF.
+ * Download the ticket as a high-fidelity 1-page (or 2-page for combo) PDF.
  *
- * The sheet is rasterised at its natural A4 size and placed onto an A4 page
- * minus any margins, so the PDF matches the browser and print output exactly.
+ * Captures the exact DOM layout, typography, SVG barcodes, QR codes and Bengali
+ * font rendering matching the on-screen browser display pixel-for-pixel.
  */
 export async function downloadReceiptAsPdf(bookingNumber: string, elementId: string = SHEET_ID) {
   if (typeof window === 'undefined') return;
@@ -395,46 +418,97 @@ export async function downloadReceiptAsPdf(bookingNumber: string, elementId: str
   const width = thermal ? THERMAL_W_PX : A4_W;
   const height = thermal ? sheet.scrollHeight || 400 : A4_H;
 
-  const offscreen = document.createElement('div');
-  offscreen.setAttribute('aria-hidden', 'true');
-  Object.assign(offscreen.style, {
-    position: 'absolute',
-    left: '-9999px',
-    top: '0',
+  // Create an off-screen sandbox container directly attached to the DOM
+  // Using fixed 0,0 with negative z-index guarantees proper font metrics, accurate layout coordinates, and eliminates scroll offsets
+  const sandbox = document.createElement('div');
+  sandbox.id = 'ticket-pdf-render-sandbox';
+  sandbox.className = 'ticket-pdf-render-sandbox';
+  Object.assign(sandbox.style, {
+    position: 'fixed',
+    left: '0px',
+    top: '0px',
     width: `${width}px`,
-    height: `${height}px`,
     background: '#ffffff',
-    zIndex: '-9999',
+    zIndex: '-99999',
     opacity: '1',
     pointerEvents: 'none',
-    overflow: 'hidden'
+    overflow: 'visible',
+    fontFamily: "'Noto Sans Bengali', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
   });
 
-  // Clone the sheet at 1:1 so the on-screen preview zoom cannot distort the PDF.
+  // Deep clone the sheet at true 1:1 scale
   const clone = sheet.cloneNode(true) as HTMLElement;
   clone.id = 'printable-payment-receipt-pdf-clone';
+  clone.className = `printable-payment-receipt ${sheet.className || ''}`.replace(/shadow-[a-z0-9-]+/g, '').replace(/rounded-[a-z0-9-]+/g, '');
   clone.style.zoom = '1';
   clone.style.margin = '0';
+  clone.style.padding = '0';
   clone.style.width = `${width}px`;
-  clone.style.height = thermal ? 'auto' : `${A4_H}px`;
+  clone.style.height = 'auto';
   clone.style.border = 'none';
   clone.style.borderRadius = '0';
   clone.style.boxShadow = 'none';
+  clone.style.transform = 'none';
 
-  // Copy CSS variable --ticket-fit from original sheet
-  const ticketFit = sheet.style.getPropertyValue('--ticket-fit') || '1';
-  clone.style.setProperty('--ticket-fit', ticketFit);
-
+  // In the PDF export clone, reset canvas scaling so html2canvas renders true 1:1 geometry without coordinate distortion
   const cloneCanvas = clone.querySelector('.ticket-canvas') as HTMLElement | null;
   if (cloneCanvas) {
-    cloneCanvas.style.setProperty('--ticket-fit', ticketFit);
-    cloneCanvas.style.transformOrigin = 'top left';
-    cloneCanvas.style.transform = `scale(${ticketFit})`;
-    cloneCanvas.style.width = `calc(${width - 4}px / ${ticketFit})`;
+    cloneCanvas.style.setProperty('--ticket-fit', '1');
+    cloneCanvas.style.transform = 'none';
+    cloneCanvas.style.width = `${width}px`;
+    cloneCanvas.style.maxWidth = `${width}px`;
+    cloneCanvas.style.height = 'auto';
+    cloneCanvas.style.margin = '0';
+    cloneCanvas.style.padding = '0';
+    cloneCanvas.style.boxSizing = 'border-box';
   }
 
-  offscreen.appendChild(clone);
-  document.body.appendChild(offscreen);
+  // Remove any print-hidden on-screen UI buttons from the clone
+  clone.querySelectorAll('.print\\:hidden').forEach((node) => node.remove());
+
+  // Remove ambient blur glow spheres that produce dark or discoloured rectangular blobs in html2canvas
+  clone.querySelectorAll('.ambient-blur-glow, .blur-2xl, .blur-xl, .blur-lg, .blur-3xl').forEach((node) => node.remove());
+
+  // Clean blur, backdrop-blur, and drop-shadow in clone that can corrupt html2canvas rendering
+  clone.querySelectorAll('.backdrop-blur-md, .backdrop-blur-sm, .backdrop-blur').forEach((node) => {
+    (node as HTMLElement).style.filter = 'none';
+    (node as HTMLElement).style.backdropFilter = 'none';
+  });
+  clone.querySelectorAll('.drop-shadow-sm, .drop-shadow-md, .drop-shadow').forEach((node) => {
+    (node as HTMLElement).style.filter = 'none';
+  });
+
+  // Flatten rounded borders on individual ticket pages so headers touch the edge cleanly
+  // Do NOT clamp maxHeight so full ticket content and bottom footer are completely rendered
+  const cloneBusPage = clone.querySelector('.bus-ticket-page') as HTMLElement | null;
+  const cloneHotelPage = clone.querySelector('.hotel-ticket-page') as HTMLElement | null;
+  if (cloneBusPage) {
+    cloneBusPage.style.borderRadius = '0';
+    cloneBusPage.style.border = 'none';
+    cloneBusPage.style.boxShadow = 'none';
+    cloneBusPage.style.width = `${width}px`;
+    cloneBusPage.style.height = 'auto';
+    cloneBusPage.style.minHeight = `${A4_H}px`;
+    cloneBusPage.style.maxHeight = 'none';
+    cloneBusPage.style.overflow = 'visible';
+    cloneBusPage.style.boxSizing = 'border-box';
+    cloneBusPage.style.margin = '0';
+  }
+  if (cloneHotelPage) {
+    cloneHotelPage.style.borderRadius = '0';
+    cloneHotelPage.style.border = 'none';
+    cloneHotelPage.style.boxShadow = 'none';
+    cloneHotelPage.style.width = `${width}px`;
+    cloneHotelPage.style.height = 'auto';
+    cloneHotelPage.style.minHeight = `${A4_H}px`;
+    cloneHotelPage.style.maxHeight = 'none';
+    cloneHotelPage.style.overflow = 'visible';
+    cloneHotelPage.style.boxSizing = 'border-box';
+    cloneHotelPage.style.margin = '0';
+  }
+
+  sandbox.appendChild(clone);
+  document.body.appendChild(sandbox);
 
   try {
     let html2canvas: any;
@@ -447,94 +521,99 @@ export async function downloadReceiptAsPdf(bookingNumber: string, elementId: str
     }
     const { jsPDF } = await import('jspdf');
 
+    // Wait for web fonts (Noto Sans Bengali, Inter) to be completely ready
     if (typeof document !== 'undefined' && document.fonts?.ready) {
       try {
         await document.fonts.ready;
       } catch {}
     }
+    // Small buffer for SVG barcodes and dynamic styles to paint
     await new Promise((resolve) => setTimeout(resolve, 150));
 
-    const busPage = clone.querySelector('.bus-ticket-page') as HTMLElement | null;
-    const hotelPage = clone.querySelector('.hotel-ticket-page') as HTMLElement | null;
+    // Dynamic capture options helper that measures the full content height so bottom footer is NEVER cut off
+    const createCaptureOptions = (target: HTMLElement) => {
+      const targetFullHeight = Math.max(A4_H, target.scrollHeight, target.offsetHeight);
+      return {
+        scale: 2, // 192+ DPI high fidelity
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        scrollX: 0,
+        scrollY: 0,
+        x: 0,
+        y: 0,
+        width: width,
+        height: thermal ? (target.scrollHeight || 400) : targetFullHeight,
+        windowWidth: width,
+        windowHeight: thermal ? (target.scrollHeight || 400) : targetFullHeight,
+        onclone: (clonedDoc: Document) => {
+          const s = clonedDoc.getElementById('ticket-pdf-render-sandbox');
+          if (s) {
+            s.style.position = 'absolute';
+            s.style.top = '0px';
+            s.style.left = '0px';
+            s.style.margin = '0px';
+            s.style.padding = '0px';
+          }
+          if (clonedDoc.defaultView) {
+            clonedDoc.defaultView.scrollTo(0, 0);
+          }
+        }
+      };
+    };
 
-    if (!thermal && busPage && hotelPage) {
+    // Case 1: Dual-ticket combo (Bus Ticket on Page 1, Hotel Ticket on Page 2)
+    if (!thermal && cloneBusPage && cloneHotelPage) {
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       
-      const renderedBus = await html2canvas(busPage, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: false,
-        logging: false,
-        backgroundColor: '#ffffff',
-        width,
-        height: A4_H,
-        windowWidth: A4_W
-      });
-      pdf.addImage(renderedBus.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 210, 297);
+      const renderedBus = await html2canvas(cloneBusPage, createCaptureOptions(cloneBusPage));
+      const busImgData = renderedBus.toDataURL('image/png');
+      pdf.addImage(busImgData, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
 
       pdf.addPage();
-      const renderedHotel = await html2canvas(hotelPage, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: false,
-        logging: false,
-        backgroundColor: '#ffffff',
-        width,
-        height: A4_H,
-        windowWidth: A4_W
-      });
-      pdf.addImage(renderedHotel.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 210, 297);
+      const renderedHotel = await html2canvas(cloneHotelPage, createCaptureOptions(cloneHotelPage));
+      const hotelImgData = renderedHotel.toDataURL('image/png');
+      pdf.addImage(hotelImgData, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
 
       pdf.save(`ticket-combo-${bookingNumber || 'pass'}.pdf`);
       return;
     }
 
+    // Case 2: Target single page (Bus Page or Hotel Page directly) if present
+    const targetElement = (!thermal && (cloneBusPage || cloneHotelPage)) ? (cloneBusPage || cloneHotelPage)! : clone;
+
+    const captureOptions = createCaptureOptions(targetElement);
     let rendered: any;
     try {
-      rendered = await html2canvas(clone, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: false,
-        logging: false,
-        backgroundColor: '#ffffff',
-        scrollX: 0,
-        scrollY: 0,
-        width,
-        height,
-        windowWidth: A4_W
-      });
+      rendered = await html2canvas(targetElement, captureOptions);
     } catch (e) {
-      console.warn('html2canvas on clone failed, capturing direct sheet:', e);
-      rendered = await html2canvas(sheet, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: false,
-        logging: false,
-        backgroundColor: '#ffffff',
-      });
+      console.warn('html2canvas on target element failed, capturing full clone:', e);
+      rendered = await html2canvas(clone, createCaptureOptions(clone));
     }
 
-    const imgData = rendered.toDataURL('image/jpeg', 0.98);
+    const imgData = rendered.toDataURL('image/png');
 
     if (thermal) {
       const pdfWidth = 80;
       const imgWidth = pdfWidth - 4;
       const imgHeight = (rendered.height * imgWidth) / rendered.width;
-      const pdfHeight = Math.max(100, Math.ceil(imgHeight) + 6);
+      const pdfHeight = Math.max(80, Math.ceil(imgHeight) + 6);
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [pdfWidth, pdfHeight] });
-      pdf.addImage(imgData, 'JPEG', 2, 3, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'PNG', 2, 3, imgWidth, imgHeight, undefined, 'FAST');
       pdf.save(`ticket-pos-${bookingNumber || 'slip'}.pdf`);
     } else {
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+      // Exact A4 dimensions 210mm x 297mm - zero clipping, zero margins, matches browser exactly
+      pdf.addImage(imgData, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
       pdf.save(`ticket-${bookingNumber || 'pass'}.pdf`);
     }
   } catch (err) {
     console.error('PDF generation error, falling back to print:', err);
     printReceiptElement(elementId);
   } finally {
-    if (document.body.contains(offscreen)) {
-      document.body.removeChild(offscreen);
+    if (document.body.contains(sandbox)) {
+      document.body.removeChild(sandbox);
     }
   }
 }
@@ -973,45 +1052,75 @@ export function HotelAccommodationPass({
   return (
     <div className="hotel-ticket-page relative bg-white text-slate-900 select-text font-sans w-full min-h-full flex-1 flex flex-col justify-between border border-slate-300 rounded-xl print:border-none print:rounded-none overflow-hidden">
       {/* 1. TOP BRAND HERO HEADER (Royal Purple/Indigo Gradient with Verified Badge) */}
-      <div className="bg-gradient-to-r from-[#1e1b4b] via-[#312e81] to-[#4338ca] text-white py-2 px-3 flex items-center justify-between gap-4 relative overflow-hidden">
+      <div
+        className="bg-gradient-to-r from-[#1e1b4b] via-[#312e81] to-[#4338ca] text-white py-2 px-3 flex items-center justify-between gap-4 relative overflow-hidden"
+        style={{
+          backgroundColor: '#1e1b4b',
+          backgroundImage: 'linear-gradient(90deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)'
+        }}
+      >
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-white/25 to-white/5 backdrop-blur-md flex items-center justify-center text-white border border-white/30 shrink-0 shadow-inner">
+          <div
+            className="w-11 h-11 rounded-2xl bg-gradient-to-br from-white/25 to-white/5 backdrop-blur-md flex items-center justify-center text-white border border-white/30 shrink-0 shadow-inner"
+            style={{ backgroundColor: 'rgba(255, 255, 255, 0.15)' }}
+          >
             <Hotel className="w-7 h-7 text-purple-200" />
           </div>
           <div>
-            <h1 className="text-xl font-black uppercase tracking-wider text-white leading-tight font-sans drop-shadow-sm">
+            <h1
+              className="text-xl font-black uppercase tracking-wider text-white leading-tight font-sans drop-shadow-sm"
+              style={{ color: '#ffffff' }}
+            >
               {hotelInfo.hotelName}
             </h1>
-            <p className="text-[11px] text-purple-200/90 font-medium">
+            <p className="text-[11px] text-purple-200/90 font-medium" style={{ color: '#e9d5ff' }}>
               {orgBrand?.name || 'ATOMS TRANSIT'} • অফিশিয়াল ক্যাম্পাস আবাসন ভাউচার (HOTEL PASS)
             </p>
           </div>
         </div>
 
         {/* Right: Digital Authority Seal */}
-        <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/25 shadow-sm relative z-10">
-          <div className="relative flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-tr from-purple-500/30 via-purple-400/20 to-sky-400/30 border-2 border-purple-400 shadow-inner shrink-0 text-purple-300">
+        <div
+          className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/25 shadow-sm relative z-10"
+          style={{ backgroundColor: 'rgba(255, 255, 255, 0.15)' }}
+        >
+          <div
+            className="relative flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-tr from-purple-500/30 via-purple-400/20 to-sky-400/30 border-2 border-purple-400 shadow-inner shrink-0 text-purple-300"
+            style={{ backgroundColor: 'rgba(168, 85, 247, 0.25)' }}
+          >
             <BadgeCheck className="w-5 h-5 text-purple-300" />
-            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-purple-500 text-white flex items-center justify-center text-[8px] font-black shadow-xs">
+            <span
+              className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-purple-500 text-white flex items-center justify-center text-[8px] font-black shadow-xs"
+              style={{ backgroundColor: '#a855f7', color: '#ffffff' }}
+            >
               ✓
             </span>
           </div>
           <div className="text-left block">
             <div className="flex items-center gap-1">
-              <span className="text-[10px] font-black tracking-wider text-white uppercase block font-mono leading-none">
+              <span
+                className="text-[10px] font-black tracking-wider text-white uppercase block font-mono leading-none"
+                style={{ color: '#ffffff' }}
+              >
                 VERIFIED GUEST PASS
               </span>
-              <span className="text-[7.5px] bg-purple-400/20 text-purple-200 border border-purple-400/40 px-1 py-0.2 rounded font-mono font-black">
+              <span
+                className="text-[7.5px] bg-purple-400/20 text-purple-200 border border-purple-400/40 px-1 py-0.2 rounded font-mono font-black"
+                style={{ color: '#e9d5ff', backgroundColor: 'rgba(192, 132, 252, 0.2)' }}
+              >
                 CONFIRMED
               </span>
             </div>
-            <span className="text-[8.5px] text-purple-200 font-bold font-mono block mt-0.5 tracking-tight">
+            <span
+              className="text-[8.5px] text-purple-200 font-bold font-mono block mt-0.5 tracking-tight"
+              style={{ color: '#e9d5ff' }}
+            >
               HOTEL-REF: HTL-{bookingNumber}
             </span>
           </div>
         </div>
 
-        <div className="absolute -right-8 -bottom-10 w-52 h-52 bg-purple-400/15 rounded-full blur-2xl pointer-events-none" />
+        <div className="ambient-blur-glow absolute -right-8 -bottom-10 w-52 h-52 bg-purple-400/15 rounded-full blur-2xl pointer-events-none" />
       </div>
 
       {/* 2. OFFICIAL BAR & STATUS RIBBON */}
@@ -1327,8 +1436,33 @@ function PaymentReceiptInner({
   }, []);
 
   const trip = booking.trip || {};
-  const bus = trip.bus || {};
+  const bus = trip.bus || booking.bus || {};
   const route = trip.route || {};
+
+  const busOperator = (
+    bus.operator ||
+    bus.company ||
+    bus.company_name ||
+    trip.operator ||
+    trip.company ||
+    trip.company_name ||
+    booking.operator ||
+    booking.company ||
+    booking.companyName ||
+    booking.busOperator ||
+    trip.busOperator ||
+    bus.busOperator ||
+    ''
+  );
+  const hasValidOperator = Boolean(
+    busOperator &&
+    typeof busOperator === 'string' &&
+    busOperator.trim() !== '' &&
+    !busOperator.includes('পরে নির্ধারণ') &&
+    !busOperator.includes('Pending Vendor')
+  );
+  const orgNameFallback = orgBrand?.name || booking?.tenant?.name || booking?.organization?.name || 'ATOMS TRANSIT';
+  const companyName = hasValidOperator ? busOperator.trim() : orgNameFallback;
   const passengers = booking.passengers || [];
   const primaryPassenger = passengers[0] || {};
 
@@ -1838,7 +1972,7 @@ function PaymentReceiptInner({
           data-paper-mode={paperMode}
           data-multi-sheet={isMultiSheet ? 'true' : 'false'}
           suppressHydrationWarning
-          className="bg-white text-slate-900 relative mx-auto shadow-md rounded-2xl print:shadow-none print:rounded-none"
+          className="printable-payment-receipt bg-white text-slate-900 relative mx-auto shadow-md rounded-2xl print:shadow-none print:rounded-none"
         >
           <div ref={canvasRef} className="ticket-canvas mx-auto">
         {booking.isOffline && (
@@ -1858,8 +1992,8 @@ function PaymentReceiptInner({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={orgBrand.logoUrl} alt="" className="w-10 h-10 mx-auto object-contain mb-1 filter grayscale" />
               )}
-              <div className="text-sm font-black uppercase tracking-wider">{orgBrand.name || 'সেন্ট্রাল এক্সপ্রেস ট্রানজিট'}</div>
-              <div className="text-[10px] text-slate-700">{orgBrand.description || 'সেন্ট্রাল এক্সপ্রেস ট্রানজিট সেবা'}</div>
+              <div className="text-sm font-black uppercase tracking-wider">{companyName}</div>
+              <div className="text-[10px] text-slate-700">{orgBrand.description || `${companyName} ট্রানজিট সেবা`}</div>
               <div className="text-[11px] font-black mt-1">
                 {viewMode === 'BOARDING_PASS'
                   ? 'PASSENGER BOARDING PASS'
@@ -1985,53 +2119,88 @@ function PaymentReceiptInner({
             {(ticketTab === 'BUS' || ticketTab === 'BOTH') && (
               <div className={`bus-ticket-page relative bg-white text-slate-900 select-text font-sans w-full min-h-full flex-1 flex flex-col justify-between border border-slate-300 rounded-xl print:border-none print:rounded-none overflow-hidden`}>
             {/* 1. TOP BRAND HERO HEADER (Transit Royal Navy Gradient with Single Verified Badge) */}
-            <div className={`bg-gradient-to-r from-[#021f4d] via-[#053b8c] to-[#0a4fa8] text-white ${isMultiPassenger ? 'py-1.5 px-3' : 'py-2 px-3'} flex items-center justify-between gap-4 relative overflow-hidden`}>
+            <div
+              className={`bg-gradient-to-r from-[#021f4d] via-[#053b8c] to-[#0a4fa8] text-white ${isMultiPassenger ? 'py-1.5 px-3' : 'py-2 px-3'} flex items-center justify-between gap-4 relative overflow-hidden`}
+              style={{
+                backgroundColor: '#021f4d',
+                backgroundImage: 'linear-gradient(90deg, #021f4d 0%, #053b8c 50%, #0a4fa8 100%)'
+              }}
+            >
               {/* Left Brand Identity */}
               <div className="relative z-10 flex items-center gap-3">
                 {orgBrand.logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={orgBrand.logoUrl}
-                    alt={orgBrand.name}
+                    alt={companyName}
                     className={`${isMultiPassenger ? 'w-10 h-10' : 'w-11 h-11'} rounded-xl object-contain bg-white/10 p-1 border border-white/20 shrink-0 shadow-sm`}
                   />
                 ) : (
-                  <div className={`${isMultiPassenger ? 'w-10 h-10' : 'w-11 h-11'} rounded-2xl bg-gradient-to-br from-white/20 to-white/5 backdrop-blur-md flex items-center justify-center text-white border border-white/30 shrink-0 shadow-inner`}>
+                  <div
+                    className={`${isMultiPassenger ? 'w-10 h-10' : 'w-11 h-11'} rounded-2xl bg-gradient-to-br from-white/20 to-white/5 backdrop-blur-md flex items-center justify-center text-white border border-white/30 shrink-0 shadow-inner`}
+                    style={{ backgroundColor: 'rgba(255, 255, 255, 0.15)' }}
+                  >
                     <Bus className={isMultiPassenger ? "w-6 h-6 text-sky-300" : "w-7 h-7 text-sky-300"} />
                   </div>
                 )}
                 <div>
-                  <h1 className={`${isMultiPassenger ? 'text-lg' : 'text-xl'} font-black uppercase tracking-wider text-white leading-tight font-sans drop-shadow-sm`}>
-                    {orgBrand.name || 'ATOMS TRANSIT'}
+                  <h1
+                    className={`${isMultiPassenger ? 'text-lg' : 'text-xl'} font-black uppercase tracking-wider text-white leading-tight font-sans`}
+                    style={{ color: '#ffffff' }}
+                  >
+                    {companyName}
                   </h1>
+                  {hasValidOperator && orgBrand.name && orgBrand.name.trim() !== companyName && (
+                    <p className="text-[10px] text-sky-200/90 font-medium mt-0.5 font-sans" style={{ color: '#bae6fd' }}>
+                      {orgBrand.name} • কেন্দ্রীয় ট্রানজিট নেটওয়ার্ক
+                    </p>
+                  )}
                 </div>
               </div>
 
               {/* Right: Executive Dual-Ring Holographic Authority Seal */}
-              <div className={`flex items-center gap-2.5 ${isMultiPassenger ? 'px-2.5 py-1.5' : 'px-3 py-1.5'} rounded-xl bg-white/10 backdrop-blur-md border border-white/25 shadow-sm relative z-10`}>
-                <div className={`relative flex items-center justify-center ${isMultiPassenger ? 'w-8 h-8' : 'w-9 h-9'} rounded-full bg-gradient-to-tr from-emerald-500/30 via-emerald-400/20 to-sky-400/30 border-2 border-emerald-400 shadow-inner shrink-0 text-emerald-300`}>
+              <div
+                className={`flex items-center gap-2.5 ${isMultiPassenger ? 'px-2.5 py-1.5' : 'px-3 py-1.5'} rounded-xl bg-white/10 backdrop-blur-md border border-white/25 shadow-sm relative z-10`}
+                style={{ backgroundColor: 'rgba(255, 255, 255, 0.15)' }}
+              >
+                <div
+                  className={`relative flex items-center justify-center ${isMultiPassenger ? 'w-8 h-8' : 'w-9 h-9'} rounded-full bg-gradient-to-tr from-emerald-500/30 via-emerald-400/20 to-sky-400/30 border-2 border-emerald-400 shadow-inner shrink-0 text-emerald-300`}
+                  style={{ backgroundColor: 'rgba(16, 185, 129, 0.25)' }}
+                >
                   <BadgeCheck className={isMultiPassenger ? "w-4.5 h-4.5 text-emerald-300" : "w-5 h-5 text-emerald-300"} />
-                  <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[8px] font-black shadow-xs">
+                  <span
+                    className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[8px] font-black shadow-xs"
+                    style={{ backgroundColor: '#10b981', color: '#ffffff' }}
+                  >
                     ✓
                   </span>
                 </div>
                 <div className="text-left block">
                   <div className="flex items-center gap-1">
-                    <span className="text-[10px] font-black tracking-wider text-white uppercase block font-mono leading-none">
+                    <span
+                      className="text-[10px] font-black tracking-wider text-white uppercase block font-mono leading-none"
+                      style={{ color: '#ffffff' }}
+                    >
                       DIGITALLY VERIFIED
                     </span>
-                    <span className="text-[7.5px] bg-emerald-400/20 text-emerald-300 border border-emerald-400/40 px-1 py-0.2 rounded font-mono font-black">
+                    <span
+                      className="text-[7.5px] bg-emerald-400/20 text-emerald-300 border border-emerald-400/40 px-1 py-0.2 rounded font-mono font-black"
+                      style={{ color: '#6ee7b7', backgroundColor: 'rgba(52, 211, 153, 0.2)' }}
+                    >
                       AUTHENTIC
                     </span>
                   </div>
-                  <span className="text-[8.5px] text-sky-200 font-bold font-mono block mt-0.5 tracking-tight">
+                  <span
+                    className="text-[8.5px] text-sky-200 font-bold font-mono block mt-0.5 tracking-tight"
+                    style={{ color: '#bae6fd' }}
+                  >
                     PASS-ID: {securityHash}
                   </span>
                 </div>
               </div>
 
               {/* Ambient light glow */}
-              <div className="absolute -right-8 -bottom-10 w-52 h-52 bg-sky-400/15 rounded-full blur-2xl pointer-events-none" />
+              <div className="ambient-blur-glow absolute -right-8 -bottom-10 w-52 h-52 bg-sky-400/15 rounded-full blur-2xl pointer-events-none" />
             </div>
 
             {/* 2. OFFICIAL BAR & PAYMENT STATUS PILL */}
@@ -2172,7 +2341,7 @@ function PaymentReceiptInner({
                         <span>{journeyDirInfo.icon}</span>
                         <span>{journeyDirInfo.labelBn}</span>
                       </span>
-                      <span className="text-[8.5px] text-slate-600 font-bold truncate max-w-[150px]">
+                      <span className="text-[8.5px] text-slate-700 font-bold truncate max-w-[210px] text-center block">
                         {busName}
                       </span>
                     </div>
@@ -2448,7 +2617,7 @@ function PaymentReceiptInner({
                               <Clock className="w-3.5 h-3.5 text-[#032b69] shrink-0" />
                               <span className="text-[9px] font-mono font-bold text-slate-600 uppercase tracking-wide">রিপোর্টিং সময়</span>
                             </div>
-                            <span className={`px-2 py-0.5 rounded-md bg-emerald-600 text-white font-black font-mono leading-none ${isMultiPassenger ? 'text-[9.5px]' : 'text-[10.5px]'}`}>
+                            <span className={`px-2.5 py-1 rounded-md bg-emerald-600 text-white font-black font-mono leading-tight whitespace-nowrap inline-flex items-center shadow-2xs ${isMultiPassenger ? 'text-[9.5px]' : 'text-[10.5px]'}`}>
                               বাস ছাড়ার ২০ মি. পূর্বে
                             </span>
                           </div>
@@ -2460,7 +2629,7 @@ function PaymentReceiptInner({
                               <MapPin className="w-3.5 h-3.5 text-[#032b69] shrink-0" />
                               <span className="text-[9px] font-mono font-bold text-slate-600 uppercase tracking-wide">বোর্ডিং পয়েন্ট</span>
                             </div>
-                            <span className={`px-2 py-0.5 rounded-md bg-[#032b69] text-white font-black font-mono leading-none max-w-[140px] truncate ${isMultiPassenger ? 'text-[9.5px]' : 'text-[10.5px]'}`}>
+                            <span className={`px-2.5 py-1 rounded-md bg-[#032b69] text-white font-black font-mono leading-tight max-w-[200px] truncate text-right inline-flex items-center shadow-2xs ${isMultiPassenger ? 'text-[9.5px]' : 'text-[10.5px]'}`}>
                               {boardingPointName}
                             </span>
                           </div>
@@ -2766,16 +2935,25 @@ function PaymentReceiptInner({
             </div>
 
             {/* 7. BOTTOM CENTRAL FOOTER STRIP — Website address ONLY here at the very bottom */}
-            <div className={`w-full bg-[#032b69] text-white ${isMultiPassenger ? 'py-1 px-4 text-[10px]' : 'py-2 px-5 text-[11px]'} text-center font-medium tracking-wide border-t border-slate-800 shrink-0`}>
+            <div
+              className={`w-full bg-[#032b69] text-white ${isMultiPassenger ? 'py-1 px-4 text-[10px]' : 'py-2 px-5 text-[11px]'} text-center font-medium tracking-wide border-t border-slate-800 shrink-0`}
+              style={{ backgroundColor: '#032b69', color: '#ffffff' }}
+            >
               <div className="font-bold flex items-center justify-center gap-2 flex-wrap">
                 <Lock className="w-3 h-3 text-sky-300" />
-                <span>{orgBrand.name || 'ATOMS Transit'} Central Secure Transit Pass Management System</span>
+                <span>{companyName} Central Secure Transit Pass Management System</span>
                 <span>•</span>
-                <span className="font-mono text-emerald-300 font-bold bg-white/10 px-2 py-0.2 rounded border border-white/20">
+                <span
+                  className="font-mono text-emerald-300 font-bold bg-white/10 px-2 py-0.2 rounded border border-white/20"
+                  style={{ color: '#6ee7b7', backgroundColor: 'rgba(255, 255, 255, 0.15)' }}
+                >
                   🌐 {orgBrand.website || 'www.atomstransit.com'}
                 </span>
               </div>
-              <div className={`text-sky-200 ${isMultiPassenger ? 'text-[8.5px]' : 'text-[10px]'} flex items-center justify-center gap-3 mt-0.5 font-mono`}>
+              <div
+                className={`text-sky-200 ${isMultiPassenger ? 'text-[8.5px]' : 'text-[10px]'} flex items-center justify-center gap-3 mt-0.5 font-mono`}
+                style={{ color: '#bae6fd' }}
+              >
                 <span>Anti-Counterfeit Protection</span>
                 <span>•</span>
                 <span>Real-Time Conductor QR Verification</span>
@@ -2799,7 +2977,7 @@ function PaymentReceiptInner({
               <HotelAccommodationPass
                 booking={booking}
                 hotelInfo={hotelInfo!}
-                orgBrand={orgBrand}
+                orgBrand={{ ...orgBrand, name: companyName }}
                 helplineNumber={helplineNumber}
                 securityHash={securityHash}
                 verifyUrl={verifyUrl}

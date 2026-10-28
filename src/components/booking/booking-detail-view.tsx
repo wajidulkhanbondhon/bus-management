@@ -36,6 +36,7 @@ import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { QRCodeView } from '@/components/common/qr-code';
 import { formatCurrency } from '@/lib/utils';
+import { CollectDueButton } from '@/components/payment/collect-due-button';
 import {
   PaymentReceipt,
   printReceiptElement,
@@ -60,6 +61,16 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
   const [copiedWa, setCopiedWa] = useState(false);
   const [layoutMode, setLayoutMode] = useState<'SPLIT' | 'FULL'>('SPLIT');
   const [hostUrl, setHostUrl] = useState('https://atoms-transit.com');
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    setIsDownloadingPdf(true);
+    try {
+      await downloadReceiptAsPdf(bookingNumber, 'printable-payment-receipt');
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
 
   const searchParams = useSearchParams();
   const isJustBooked = isSuccess || searchParams.get('success') === 'true' || searchParams.get('booked') === 'true';
@@ -203,6 +214,29 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
     'সেন্ট্রাল এক্সপ্রেস কোচ'
   );
 
+  const busOperator = (
+    bus.operator ||
+    bus.company ||
+    bus.company_name ||
+    trip.operator ||
+    trip.company ||
+    trip.company_name ||
+    currentBooking.operator ||
+    currentBooking.company ||
+    currentBooking.companyName ||
+    currentBooking.busOperator ||
+    trip.busOperator ||
+    bus.busOperator ||
+    ''
+  );
+  const hasValidOperator = Boolean(
+    busOperator &&
+    typeof busOperator === 'string' &&
+    busOperator.trim() !== '' &&
+    !busOperator.includes('পরে নির্ধারণ') &&
+    !busOperator.includes('Pending Vendor')
+  );
+
   // Locations
   const routeOrigin = cleanLocationName(route.origin || route.source || trip.origin, 'কাউন্টার পয়েন্ট');
   const routeDestination = route.destination || trip.targetUniversity || 'গন্তব্য ক্যাম্পাস';
@@ -247,7 +281,7 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
 
   const handleSendWhatsApp = () => {
     const waData = buildWhatsAppTicketMessage(booking, primaryPassenger, {
-      name: 'ATOMS TRANSIT',
+      name: hasValidOperator ? busOperator : 'ATOMS TRANSIT',
       phone: '01711000001'
     });
     if (typeof window !== 'undefined') {
@@ -353,76 +387,8 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
 
         {/* Right Layout Switcher & Fast Actions */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Direct Print Buttons (Dedicated for Bus, Hotel and Both) */}
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            onClick={() => {
-              setSelectedTicketTab('BUS');
-              printTicketDirect('BUS');
-            }}
-            className="text-xs font-black rounded-xl bg-blue-600 hover:bg-blue-500 text-white cursor-pointer shadow-xs flex items-center gap-1.5"
-            title="বাসের টিকিট প্রিন্ট করুন"
-          >
-            <Bus className="w-3.5 h-3.5" />
-            <span>বাস টিকিট প্রিন্ট</span>
-          </Button>
-
-          {hasHotelTicket ? (
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => {
-                setSelectedTicketTab('HOTEL');
-                printTicketDirect('HOTEL');
-              }}
-              className="text-xs font-black rounded-xl bg-purple-600 hover:bg-purple-500 text-white cursor-pointer shadow-xs flex items-center gap-1.5 border border-purple-500"
-              title="হোটেলের টিকিট প্রিন্ট করুন"
-            >
-              <Hotel className="w-3.5 h-3.5" />
-              <span>🏨 হোটেল টিকিট প্রিন্ট</span>
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSelectedTicketTab('HOTEL');
-              }}
-              className="text-xs font-bold rounded-xl bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800 hover:bg-purple-100 cursor-pointer shadow-2xs flex items-center gap-1.5"
-              title="হোটেল টিকিট স্ট্যাটাস দেখুন"
-            >
-              <Hotel className="w-3.5 h-3.5 text-purple-600" />
-              <span>🏨 হোটেল টিকিট (নরমাল বাস)</span>
-            </Button>
-          )}
-
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => {
-              setSelectedTicketTab('BOTH');
-              if (hasHotelTicket) {
-                printTicketDirect('BOTH');
-              } else {
-                printTicketDirect('BUS');
-              }
-            }}
-            className={`text-xs font-black rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5 ${
-              hasHotelTicket
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-            }`}
-            title={hasHotelTicket ? "বাস ও হোটেল উভয় টিকিট একত্রে প্রিন্ট করুন (২ পাতা)" : "উভয় টিকিট মোড (নরমাল বাসে শুধু বাস টিকিট)"}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>উভয় টিকিট {hasHotelTicket ? '(২ পাতা)' : ''}</span>
-          </Button>
-
-          {/* Layout Mode Selector (Utilizes the full desktop screen space) */}
-          <div className="hidden md:flex items-center bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+          {/* Layout Mode Selector */}
+          <div className="hidden md:flex items-center bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">
             <button
               type="button"
               onClick={() => setLayoutMode('SPLIT')}
@@ -431,7 +397,7 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
                   ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
-              title="টিকেট ও অপারেশনাল সাইডবার একসাথে দেখুন (ডেক্সটপ স্প্লিট ভিউ)"
+              title="টিকেট ও অপারেশনাল সাইডবার একসাথে দেখুন"
             >
               <Columns2 className="w-3.5 h-3.5" />
               <span>স্প্লিট ভিউ</span>
@@ -451,33 +417,12 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
             </button>
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleCopyLink}
-            className="text-xs font-bold rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer flex items-center gap-1.5 shadow-2xs"
-            title="টিকিটের লিঙ্ক কপি করুন"
-          >
-            {copiedLink ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-500" />
-                <span className="text-emerald-600 dark:text-emerald-400">কপি হয়েছে!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5 text-slate-500" />
-                <span>লিঙ্ক কপি</span>
-              </>
-            )}
-          </Button>
-
           <Link href="/bookings/quick">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="text-xs font-bold rounded-xl bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/70 hover:bg-amber-100 dark:hover:bg-amber-900/40 cursor-pointer shadow-2xs"
+              className="text-xs font-bold rounded-xl bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/70 hover:bg-amber-100 cursor-pointer shadow-2xs"
             >
               ⚡ কুইক কাউন্টার
             </Button>
@@ -498,272 +443,129 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
 
       {/* 2. Responsive Workspace (Spacious, Zero-Waste Screen Real Estate) */}
       <div className="w-full print:max-w-none print:w-full">
+        {/* Unified Ticket Action Toolbar (Screen Only) */}
+        <div className="w-full max-w-[840px] mx-auto mb-3 print:hidden">
+          <div className="w-full flex items-center justify-between gap-3 p-2.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl border border-indigo-500/30 shadow-md flex-wrap">
+            {/* Left: Tab Selectors */}
+            <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/10 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setSelectedTicketTab('BUS')}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                  selectedTicketTab === 'BUS' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                <Bus className="w-3.5 h-3.5" />
+                <span>১. বাসের টিকিট</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedTicketTab('HOTEL')}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                  selectedTicketTab === 'HOTEL' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                <Hotel className="w-3.5 h-3.5" />
+                <span>২. হোটেল টিকিট</span>
+                <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                  hasHotelTicket ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300'
+                }`}>
+                  {hasHotelTicket ? 'সংযুক্ত' : 'নরমাল বাস'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedTicketTab('BOTH')}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                  selectedTicketTab === 'BOTH' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>৩. উভয় টিকিট {hasHotelTicket ? '(২ পাতা)' : ''}</span>
+              </button>
+            </div>
+
+            {/* Right: Primary Unified Actions */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {selectedTicketTab === 'HOTEL' && !hasHotelTicket ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setIsAttachHotelModalOpen(true)}
+                  className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
+                >
+                  <Hotel className="w-3.5 h-3.5" />
+                  <span>+ হোটেল সুবিধা যুক্ত করুন</span>
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => printTicketDirect(selectedTicketTab)}
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-black text-xs rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>প্রিন্ট করুন</span>
+                </Button>
+              )}
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isDownloadingPdf}
+                onClick={handleDownloadPdf}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 font-bold text-xs rounded-xl cursor-pointer flex items-center gap-1.5"
+              >
+                <Download className={`w-3.5 h-3.5 ${isDownloadingPdf ? 'animate-bounce text-sky-300' : 'text-sky-400'}`} />
+                <span>{isDownloadingPdf ? 'ডাউনলোড হচ্ছে...' : 'পিডিএফ'}</span>
+              </Button>
+
+              <button
+                type="button"
+                onClick={handleSendWhatsApp}
+                className="px-3 py-1.5 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shadow-xs flex items-center gap-1.5 transition-all"
+              >
+                <span>💬 WhatsApp</span>
+              </button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCopyLink}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 font-bold text-xs rounded-xl cursor-pointer flex items-center gap-1.5"
+                title="ভেরিফিকেশন লিঙ্ক কপি"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">লিঙ্ক</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+
         {layoutMode === 'SPLIT' ? (
           /* ========================================================================= */
           /* SPLIT WORKSPACE: Ticket Preview on Left + Operations Sidebar on Right       */
-          /* Fully utilizing desktop wide-screen space with zero empty margins          */
           /* ========================================================================= */
           <div className="flex flex-col lg:flex-row gap-6 items-start justify-center">
             {/* Main Center Area: Executive Ticket Canvas */}
             <div className="flex-1 w-full min-w-0 max-w-[840px] mx-auto flex flex-col items-center">
-              <div className="w-full flex items-center justify-between gap-3 mb-2.5 print:hidden px-1">
-                <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                  <FileText className="w-3.5 h-3.5 text-blue-500" />
-                  <span>এ৪ ট্রাভেল পাস প্রিভিউ — স্ক্রিন, প্রিন্ট ও পিডিএফ নিখুঁত অনুপাত</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-lg px-2 py-0.5">
-                    ✓ ভেরিফাইড ডকুমেন্ট
-                  </span>
-                  <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-0.5">
-                    A4 • {hasHotelTicket && selectedTicketTab === 'BOTH' ? '২ পৃষ্ঠা' : '১ পৃষ্ঠা'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Interactive Ticket Switcher Bar (Screen Only - Always Visible for Both Hotel and Normal Bus) */}
-              <div className="w-full flex items-center justify-between gap-3 p-2.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl border border-indigo-500/30 print:hidden mb-3 shadow-md flex-wrap">
-                <div className="flex items-center gap-2 px-1">
-                  {hasHotelTicket ? (
-                    <Hotel className="w-4 h-4 text-purple-400" />
-                  ) : (
-                    <Bus className="w-4 h-4 text-sky-400" />
-                  )}
-                  <span className="text-xs font-black text-slate-200">টিকিট নির্বাচন করুন:</span>
-                  <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-                    hasHotelTicket
-                      ? 'bg-purple-500/20 text-purple-200 border-purple-400/30'
-                      : 'bg-blue-500/20 text-sky-200 border-sky-400/30'
-                  }`}>
-                    {hasHotelTicket ? '🏨 হোটেল সমন্বিত বাস' : '🚌 সাধারণ / নরমাল বাস'}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/10 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTicketTab('BUS')}
-                    className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
-                      selectedTicketTab === 'BUS' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    <Bus className="w-3.5 h-3.5" />
-                    <span>১. বাসের টিকিট</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTicketTab('HOTEL')}
-                    className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
-                      selectedTicketTab === 'HOTEL' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    <Hotel className="w-3.5 h-3.5" />
-                    <span>২. হোটেল টিকিট</span>
-                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
-                      hasHotelTicket ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300'
-                    }`}>
-                      {hasHotelTicket ? 'ইস্যুকৃত' : 'নরমাল বাস'}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTicketTab('BOTH')}
-                    className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
-                      selectedTicketTab === 'BOTH' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    <Layers className="w-3.5 h-3.5" />
-                    <span>৩. উভয় টিকিট {hasHotelTicket ? '(২ পাতা)' : ''}</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {selectedTicketTab === 'HOTEL' && !hasHotelTicket ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => setIsAttachHotelModalOpen(true)}
-                      className="bg-purple-600 hover:bg-purple-500 text-white font-black text-xs rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Hotel className="w-3.5 h-3.5" />
-                      <span>+ হোটেল সুবিধা যুক্ত করুন</span>
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => {
-                        if (selectedTicketTab === 'HOTEL' && !hasHotelTicket) {
-                          setIsAttachHotelModalOpen(true);
-                        } else {
-                          printTicketDirect(selectedTicketTab);
-                        }
-                      }}
-                      className="bg-white hover:bg-slate-100 text-slate-950 font-black text-xs rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Printer className="w-3.5 h-3.5 text-blue-600" />
-                      <span>নির্বাচিত টিকিট প্রিন্ট</span>
-                    </Button>
-                  )}
-                </div>
-              </div>
-
               <div className="w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/70 p-2 sm:p-5 flex flex-col items-center justify-center print:p-0 print:m-0 print:border-0 print:rounded-none print:bg-transparent shadow-inner">
                 <PaymentReceipt
                   booking={currentBooking}
-                  showControls={true}
+                  showControls={false}
                   ticketTab={selectedTicketTab}
                   onTicketTabChange={setSelectedTicketTab}
                 />
               </div>
             </div>
 
-            {/* Desktop Operations Companion Sidebar (380px - 420px wide on desktop) */}
-            <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 space-y-4 print:hidden">
-              {/* Card 1: 👤 Passenger & Allocated Seats Card */}
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
-                      <User className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-black text-slate-900 dark:text-white">যাত্রী ও আসন বিবরণ</h4>
-                      <div className="text-[10px] text-slate-500 dark:text-slate-400">বোর্ডিং পাস ও যাত্রী পরিচয়</div>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                    {seatNumbers.length}টি আসন
-                  </span>
-                </div>
-
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between items-center py-1 border-b border-slate-50 dark:border-slate-800/60">
-                    <span className="text-slate-500 font-medium">যাত্রীর নাম:</span>
-                    <span className="font-bold text-slate-800 dark:text-slate-200">{passengerName}</span>
-                  </div>
-
-                  <div className="flex justify-between items-center py-1 border-b border-slate-50 dark:border-slate-800/60">
-                    <span className="text-slate-500 font-medium">মোবাইল নম্বর:</span>
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={`tel:${passengerPhone}`}
-                        className="font-mono font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                      >
-                        <Phone className="w-3 h-3" />
-                        <span>{passengerPhone}</span>
-                      </a>
-                    </div>
-                  </div>
-
-                  {admissionId && (
-                    <div className="flex justify-between items-center py-1 border-b border-slate-50 dark:border-slate-800/60">
-                      <span className="text-slate-500 font-medium">ভর্তি রোল / আইডি:</span>
-                      <span className="font-mono font-black text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/30 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800">
-                        {admissionId}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="pt-1">
-                    <div className="text-slate-500 text-[11px] font-medium mb-1.5">বরাদ্দকৃত আসনসমূহ:</div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {seatNumbers.map((seat: string) => (
-                        <span
-                          key={seat}
-                          className="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-mono font-black text-xs shadow-2xs flex items-center gap-1"
-                        >
-                          <BadgeCheck className="w-3 h-3 text-sky-200" />
-                          <span>{seat}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 2: 🚌 Trip & Bus Details */}
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 flex items-center justify-center font-bold">
-                      <Bus className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-black text-slate-900 dark:text-white">ট্রিপ ও বাস রুট তথ্য</h4>
-                      <div className="text-[10px] text-slate-500 dark:text-slate-400">সময়সূচী ও স্টপেজ পয়েন্ট</div>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                    {busNumber}
-                  </span>
-                </div>
-
-                <div className="space-y-2 text-xs">
-                  {/* Dedicated High-Visibility Bus Number Strip */}
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 shadow-2xs">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-[#032b69] text-white flex items-center justify-center shrink-0 text-xs shadow-2xs">
-                        🚌
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block font-mono">
-                          বাস নম্বর (BUS NUMBER)
-                        </span>
-                        <span className="font-mono font-black text-[#032b69] dark:text-sky-300 text-xs block">
-                          {busNumber}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
-                      {busName}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center py-1 border-b border-slate-50 dark:border-slate-800/60">
-                    <span className="text-slate-500 font-medium">রুট:</span>
-                    <span className="font-bold text-slate-800 dark:text-slate-200">
-                      {routeOrigin} ➔ {routeDestination}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center py-1 border-b border-slate-50 dark:border-slate-800/60" suppressHydrationWarning>
-                    <span className="text-slate-500 font-medium">যাত্রার সময়সূচী:</span>
-                    <span suppressHydrationWarning className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      <span suppressHydrationWarning>{departureDate || 'নির্ধারিত'}</span>
-                      <Clock className="w-3.5 h-3.5 text-slate-400 ml-1" />
-                      <span suppressHydrationWarning>{departureTime || 'নির্ধারিত সময়'}</span>
-                    </span>
-                  </div>
-
-                  {/* Highlighted Boarding Point */}
-                  <div className="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/50 space-y-1">
-                    <div className="flex items-center gap-1 text-[11px] font-black text-amber-900 dark:text-amber-300">
-                      <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                      <span>বোর্ডিং পয়েন্ট: {boardingPointName}</span>
-                    </div>
-                    <div className="text-[11px] text-amber-800/90 dark:text-amber-400/90 pl-4 leading-relaxed">
-                      {boardingAddress}
-                    </div>
-                  </div>
-
-                  {/* Dropping Point */}
-                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 space-y-1">
-                    <div className="flex items-center gap-1 text-[11px] font-bold text-slate-800 dark:text-slate-200">
-                      <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                      <span>ড্রপিং জোন: {droppingPointName}</span>
-                    </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 pl-4 leading-relaxed">
-                      {droppingAddress}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 3: 💳 Payment & Accounts Ledger */}
+            {/* Desktop Operations Companion Sidebar */}
+            <div className="w-full lg:w-[360px] xl:w-[380px] shrink-0 space-y-4 print:hidden">
+              {/* Card 1: 💳 Payment Ledger & Due Collection */}
               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
                   <div className="flex items-center gap-2">
@@ -771,20 +573,20 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
                       <CreditCard className="w-4 h-4" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-black text-slate-900 dark:text-white">হিসাব ও পেমেন্ট বিবরণী</h4>
-                      <div className="text-[10px] text-slate-500 dark:text-slate-400">ভাড়া ব্রেকডাউন ও ক্যাশ রসিদ</div>
+                      <h4 className="text-sm font-black text-slate-900 dark:text-white">পেমেন্ট ও হিসাব</h4>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">ভাড়া ও বকেয়া কালেকশন</div>
                     </div>
                   </div>
-                  <span className={`text-[10px] font-mono font-black px-2 py-0.5 rounded ${
+                  <span className={`text-[10px] font-mono font-black px-2 py-0.5 rounded-full ${
                     isPaidInFull
                       ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                       : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                   }`}>
-                    {isPaidInFull ? 'পরিশোধিত' : `বকেয়া: ৳${dueAmount}`}
+                    {isPaidInFull ? '✓ পরিশোধিত' : `বকেয়া: ৳${dueAmount}`}
                   </span>
                 </div>
 
-                <div className="space-y-1.5 text-xs">
+                <div className="space-y-2 text-xs">
                   <div className="flex justify-between items-center py-0.5">
                     <span className="text-slate-500">মোট সিট ভাড়া:</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200">{formatCurrency(grossAmount)}</span>
@@ -807,246 +609,148 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
                     <span>{formatCurrency(paidAmount)}</span>
                   </div>
 
-                  {dueAmount > 0 && (
-                    <div className="flex justify-between items-center py-1 px-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 font-black">
-                      <span>অবশিষ্ট বকেয়া:</span>
-                      <span>{formatCurrency(dueAmount)}</span>
+                  {dueAmount > 0 ? (
+                    <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 space-y-2">
+                      <div className="flex justify-between items-center text-rose-700 dark:text-rose-300 font-black">
+                        <span>বকেয়া পরিমাণ:</span>
+                        <span className="text-sm">{formatCurrency(dueAmount)}</span>
+                      </div>
+                      <CollectDueButton
+                        bookingId={currentBooking.id}
+                        bookingNumber={bookingNumber}
+                        dueAmount={dueAmount}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Card 2: 👤 Passenger Contact & Communication */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900 dark:text-white">যাত্রী যোগাযোগ</h4>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">{passengerName} ({seatNumbers.length} সিট)</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {seatNumbers.map((s: string) => (
+                      <span key={s} className="px-2 py-0.5 rounded-md bg-blue-600 text-white font-mono text-[10px] font-bold">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700">
+                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      {passengerPhone}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <a
+                        href={`tel:${passengerPhone}`}
+                        className="p-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/40 dark:hover:bg-blue-800/60 text-blue-700 dark:text-blue-300 font-bold text-[11px] flex items-center gap-1 transition-all"
+                        title="সরাসরি কল করুন"
+                      >
+                        <Phone className="w-3 h-3" />
+                        <span>কল</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={handleSendWhatsApp}
+                        className="p-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:hover:bg-emerald-800/60 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                        title="WhatsApp মেসেজ পাঠান"
+                      >
+                        <span>WhatsApp</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {admissionId && (
+                    <div className="flex justify-between items-center py-1 border-t border-slate-100 dark:border-slate-800 text-[11px]">
+                      <span className="text-slate-500 font-medium">ভর্তি রোল / আইডি:</span>
+                      <span className="font-mono font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/30 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800">
+                        {admissionId}
+                      </span>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Card 4: 🛡️ Live Conductor QR & Digital Verification */}
+              {/* Card 3: 🏨 Hotel & Digital Pass */}
+              {hasHotelTicket && hotelInfo ? (
+                <div className="bg-gradient-to-br from-purple-50/90 via-white to-purple-50/50 dark:from-purple-950/40 dark:via-slate-900 dark:to-purple-950/20 rounded-2xl border border-purple-300 dark:border-purple-800/80 p-4 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between border-b border-purple-200/80 dark:border-purple-800 pb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold">
+                        <Hotel className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-purple-950 dark:text-purple-100">হোটেল ভাউচার</h4>
+                        <div className="text-[10px] text-purple-700 dark:text-purple-300">{hotelInfo.hotelName}</div>
+                      </div>
+                    </div>
+                    <span className="text-[9px] font-mono font-black px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300">
+                      ✓ নিশ্চিত
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <div className="text-[11px] text-slate-600 dark:text-slate-300 flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-purple-500 shrink-0" />
+                      <span className="truncate">{hotelInfo.locationAddress || 'বিশ্ববিদ্যালয় ক্যাম্পাস এলাকা'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-1">
+                      <span>রুম: <strong className="text-slate-700 dark:text-slate-200">{hotelInfo.roomType}</strong></span>
+                      <span>চেক-ইন: <strong className="text-slate-700 dark:text-slate-200">{hotelInfo.checkIn || '১২:০০'}</strong></span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-50 dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 p-3.5 shadow-sm space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Hotel className="w-4 h-4 text-purple-600" />
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">হোটেল সুবিধা নেই</h4>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsAttachHotelModalOpen(true)}
+                      className="text-[11px] font-bold rounded-lg border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 cursor-pointer h-7 px-2"
+                    >
+                      + হোটেল যুক্ত করুন
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Card 4: 🛡️ Conductor Live Verification */}
               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-3 text-center">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5 text-left">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 text-left">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
-                      <Sparkles className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-black text-slate-900 dark:text-white">লাইভ ভেরিফিকেশন কিউআর</h4>
-                      <div className="text-[10px] text-slate-500 dark:text-slate-400">কন্ডাক্টর স্ক্যান ও অথেনটিকেশন</div>
-                    </div>
+                    <Sparkles className="w-4 h-4 text-purple-600" />
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">ডিজিটাল ভেরিফিকেশন</span>
                   </div>
                   <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                     {securityHash}
                   </span>
                 </div>
 
-                <div className="py-2 flex flex-col items-center justify-center">
-                  <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-200 inline-block">
-                    <QRCodeView value={verifyUrl} size={135} />
+                <div className="py-1 flex flex-col items-center justify-center">
+                  <div className="p-2.5 bg-white rounded-xl shadow-xs border border-slate-200 inline-block">
+                    <QRCodeView value={verifyUrl} size={110} />
                   </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 font-medium">
-                    মোবাইলের ক্যামেরা বা কন্ডাক্টর স্ক্যানার দিয়ে স্ক্যান করলে তৎক্ষণাৎ ডিজিটাল তথ্য দেখা যাবে
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1.5">
+                    স্ক্যান করে লাইভ ট্রাভেল ভ্যালিডিটি ও বোর্ডিং স্ট্যাটাস যাচাই করা যাবে
                   </p>
-                </div>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCopyLink}
-                  className="w-full text-xs font-bold rounded-xl cursor-pointer"
-                >
-                  <Copy className="w-3.5 h-3.5 mr-1" />
-                  <span>ভেরিফিকেশন লিঙ্ক কপি</span>
-                </Button>
-              </div>
-
-              {/* Card 2.5: 🏨 Hotel & Accommodation Details (Active on Hotel Bus or Explanatory on Normal Bus) */}
-              {hasHotelTicket && hotelInfo ? (
-                <div className="bg-gradient-to-br from-purple-50/90 via-white to-purple-50/50 dark:from-purple-950/40 dark:via-slate-900 dark:to-purple-950/20 rounded-2xl border-2 border-purple-300 dark:border-purple-800/80 p-4 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between border-b border-purple-200/80 dark:border-purple-800 pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold shadow-xs">
-                        <Hotel className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-black text-purple-950 dark:text-purple-100">হোটেল ও আবাসন ভাউচার</h4>
-                        <div className="text-[10px] text-purple-700 dark:text-purple-300">ক্যাম্পাস রেসিডেন্সিয়াল অ্যাকোমোডেশন</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                      ✓ কনফার্মড
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-xs">
-                    <div className="p-2.5 rounded-xl bg-white dark:bg-slate-950/80 border border-purple-200 dark:border-purple-800 space-y-1">
-                      <div className="text-[10px] font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wider">হোটেল ও অবস্থান:</div>
-                      <div className="font-black text-slate-900 dark:text-white text-sm">{hotelInfo.hotelName}</div>
-                      <div className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                        <MapPin className="w-3 h-3 text-purple-500 shrink-0" />
-                        <span>{hotelInfo.locationAddress || 'বিশ্ববিদ্যালয় ক্যাম্পাস সংলগ্ন আবাসিক জোন'}</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="p-2 rounded-xl bg-white dark:bg-slate-950/80 border border-purple-100 dark:border-purple-900">
-                        <span className="text-[10px] text-slate-500 font-bold block">রুম ক্যাটাগরি:</span>
-                        <span className="font-bold text-slate-800 dark:text-slate-200 text-xs block truncate">{hotelInfo.roomType}</span>
-                      </div>
-                      <div className="p-2 rounded-xl bg-white dark:bg-slate-950/80 border border-purple-100 dark:border-purple-900">
-                        <span className="text-[10px] text-slate-500 font-bold block">হেল্পডেস্ক / যোগাযোগ:</span>
-                        <span className="font-mono font-bold text-purple-700 dark:text-purple-300 text-xs block truncate">{hotelInfo.contactPerson || '০১৭০০-০০০০০০'}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-purple-100/60 dark:bg-purple-950/50 text-[11px] font-medium text-purple-900 dark:text-purple-200 border border-purple-200 dark:border-purple-800">
-                      <span>⏰ চেক-ইন: <strong>{hotelInfo.checkIn || 'দুপুর ১২:০০'}</strong></span>
-                      <span>⏰ চেক-আউট: <strong>{hotelInfo.checkOut || 'সকাল ১০:০০'}</strong></span>
-                    </div>
-
-                    <div className="pt-1">
-                      <Button
-                        type="button"
-                        onClick={() => {
-                          setSelectedTicketTab('HOTEL');
-                          printTicketDirect('HOTEL');
-                        }}
-                        className="w-full bg-purple-600 hover:bg-purple-500 text-white font-black text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer py-2.5 transition-all"
-                      >
-                        <Printer className="w-4 h-4" />
-                        <span>🏨 হোটেল টিকিট প্রিন্ট করুন</span>
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-slate-50 dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center font-bold">
-                        <Hotel className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-black text-slate-900 dark:text-white">হোটেল ও আবাসন স্ট্যাটাস</h4>
-                        <div className="text-[10px] text-slate-500">রেগুলার বাস ট্রিপ</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                      সাধারণ বাস
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-xs">
-                    <p className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">
-                      এই বাসটির সাথে কোনো হোটেল প্যাকেজ অন্তর্ভুক্ত নেই। হোটেল টিকিট শুধুমাত্র <strong>হোটেল প্যাকেজ সমন্বিত বাসে</strong> ইস্যু হয়।
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setIsAttachHotelModalOpen(true)}
-                      className="w-full text-xs font-bold rounded-xl border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 cursor-pointer flex items-center justify-center gap-1.5 py-2"
-                    >
-                      <Hotel className="w-3.5 h-3.5 text-purple-600" />
-                      <span>+ হোটেল প্যাকেজ সংযুক্ত করুন</span>
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Card 5: ⚡ Fast Operations Hub */}
-              <div className="bg-slate-900 text-white rounded-2xl border border-slate-800 p-4 shadow-md space-y-2.5">
-                <div className="flex items-center gap-2 mb-2">
-                  <Ticket className="w-4 h-4 text-blue-400" />
-                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">কুইক অ্যাকশন হাব</h4>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    onClick={() => {
-                      setSelectedTicketTab('BUS');
-                      printTicketDirect('BUS');
-                    }}
-                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
-                  >
-                    <Bus className="w-3.5 h-3.5" />
-                    <span>বাস টিকিট প্রিন্ট</span>
-                  </Button>
-
-                  {hasHotelTicket ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedTicketTab('HOTEL');
-                        printTicketDirect('HOTEL');
-                      }}
-                      className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
-                    >
-                      <Hotel className="w-3.5 h-3.5" />
-                      <span>হোটেল টিকিট</span>
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedTicketTab('HOTEL');
-                      }}
-                      className="w-full border-purple-400 text-purple-300 hover:bg-purple-950/50 font-bold rounded-xl cursor-pointer shadow-2xs flex items-center justify-center gap-1 text-[11px]"
-                    >
-                      <Hotel className="w-3.5 h-3.5 text-purple-400" />
-                      <span>হোটেল (নরমাল)</span>
-                    </Button>
-                  )}
-
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => {
-                      setSelectedTicketTab('BOTH');
-                      if (hasHotelTicket) {
-                        printTicketDirect('BOTH');
-                      } else {
-                        printTicketDirect('BUS');
-                      }
-                    }}
-                    className={`col-span-2 w-full font-black rounded-xl cursor-pointer shadow-xs flex items-center justify-center gap-1.5 py-2 ${
-                      hasHotelTicket
-                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                    }`}
-                  >
-                    <Layers className="w-4 h-4" />
-                    <span>উভয় টিকিট একত্রে প্রিন্ট {hasHotelTicket ? '(২ পাতা)' : ''}</span>
-                  </Button>
-
-                  <button
-                    type="button"
-                    onClick={handleSendWhatsApp}
-                    className="w-full px-3 py-1.5 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shadow-xs flex items-center justify-center gap-1.5 transition-all"
-                  >
-                    <span>💬 WhatsApp</span>
-                  </button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => downloadReceiptAsPdf(bookingNumber, 'printable-payment-receipt')}
-                    className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 font-bold rounded-xl cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <Download className="w-3.5 h-3.5 text-sky-400" />
-                    <span>পিডিএফ</span>
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => downloadReceiptOfflineHtml(bookingNumber, 'printable-payment-receipt')}
-                    className="col-span-2 w-full bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 font-bold rounded-xl cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <FileDown className="w-3.5 h-3.5 text-slate-400" />
-                    <span>অফলাইন ফাইল ডাউনলোড</span>
-                  </Button>
                 </div>
               </div>
             </div>
@@ -1056,114 +760,10 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
           /* FULL FOCUS VIEW: Maximized Ticket Preview with Full Responsive Canvas     */
           /* ========================================================================= */
           <div className="w-full max-w-[850px] mx-auto flex flex-col items-center">
-            <div className="w-full flex items-center justify-between gap-3 mb-2.5 print:hidden px-1">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                <FileText className="w-3.5 h-3.5 text-blue-500" />
-                <span>ম্যাক্সিমাইজড এ৪ ভিউ — বড় স্ক্রিনে টিকিট সম্পূর্ণ ফোকাসে প্রদর্শিত</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setLayoutMode('SPLIT')}
-                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Columns2 className="w-3.5 h-3.5" />
-                <span>স্প্লিট সাইডবার চালু করুন</span>
-              </button>
-            </div>
-
-            {/* Interactive Ticket Switcher Bar in Full View */}
-            <div className="w-full flex items-center justify-between gap-3 p-2.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl border border-indigo-500/30 print:hidden mb-3 shadow-md flex-wrap">
-              <div className="flex items-center gap-2 px-1">
-                {hasHotelTicket ? (
-                  <Hotel className="w-4 h-4 text-purple-400" />
-                ) : (
-                  <Bus className="w-4 h-4 text-sky-400" />
-                )}
-                <span className="text-xs font-black text-slate-200">টিকিট নির্বাচন করুন:</span>
-                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-                  hasHotelTicket
-                    ? 'bg-purple-500/20 text-purple-200 border-purple-400/30'
-                    : 'bg-blue-500/20 text-sky-200 border-sky-400/30'
-                }`}>
-                  {hasHotelTicket ? '🏨 হোটেল সমন্বিত বাস' : '🚌 সাধারণ / নরমাল বাস'}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/10 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => setSelectedTicketTab('BUS')}
-                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
-                    selectedTicketTab === 'BUS' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  <Bus className="w-3.5 h-3.5" />
-                  <span>১. বাসের টিকিট</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedTicketTab('HOTEL')}
-                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
-                    selectedTicketTab === 'HOTEL' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  <Hotel className="w-3.5 h-3.5" />
-                  <span>২. হোটেল টিকিট</span>
-                  <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
-                    hasHotelTicket ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300'
-                  }`}>
-                    {hasHotelTicket ? 'ইস্যুকৃত' : 'নরমাল বাস'}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedTicketTab('BOTH')}
-                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
-                    selectedTicketTab === 'BOTH' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  <Layers className="w-3.5 h-3.5" />
-                  <span>৩. উভয় টিকিট {hasHotelTicket ? '(২ পাতা)' : ''}</span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {selectedTicketTab === 'HOTEL' && !hasHotelTicket ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => setIsAttachHotelModalOpen(true)}
-                    className="bg-purple-600 hover:bg-purple-500 text-white font-black text-xs rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Hotel className="w-3.5 h-3.5" />
-                    <span>+ হোটেল সুবিধা যুক্ত করুন</span>
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => {
-                      if (selectedTicketTab === 'HOTEL' && !hasHotelTicket) {
-                        setIsAttachHotelModalOpen(true);
-                      } else {
-                        printTicketDirect(selectedTicketTab);
-                      }
-                    }}
-                    className="bg-white hover:bg-slate-100 text-slate-950 font-black text-xs rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Printer className="w-3.5 h-3.5 text-blue-600" />
-                    <span>প্রিন্ট করুন</span>
-                  </Button>
-                )}
-              </div>
-            </div>
-
             <div className="w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/70 p-3 sm:p-6 flex flex-col items-center justify-center print:p-0 print:m-0 print:border-0 print:rounded-none print:bg-transparent shadow-inner">
               <PaymentReceipt
                 booking={currentBooking}
-                showControls={true}
+                showControls={false}
                 ticketTab={selectedTicketTab}
                 onTicketTabChange={setSelectedTicketTab}
               />

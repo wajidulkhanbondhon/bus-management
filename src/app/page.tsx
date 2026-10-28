@@ -40,7 +40,7 @@ export default async function PublicHomePage({
   });
 
   // Transform trips with inventory statistics
-  const tripsWithInventory = (trips || []).map((trip: TripData) => {
+  const tripsWithInventory = (trips || []).map((trip: any) => {
     const totalSeats =
       trip.bus?.seatLayout?.totalSeats || trip.bus?.capacity || 40;
     const bookedCount = trip.bookings?.length || 1;
@@ -48,18 +48,26 @@ export default async function PublicHomePage({
 
     return {
       ...trip,
+      id: trip.id,
+      tripCode: trip.tripCode || trip.trip_code || `TRIP-${trip.id?.slice(0, 6) || 'COACH'}`,
+      tripBusType: trip.tripBusType || trip.trip_bus_type || 'MIXED',
+      departureDate: trip.departureDate || trip.departure_date || new Date().toISOString(),
+      departureTime: trip.departureTime || trip.departure_time || '22:30',
+      basePrice: Number(trip.basePrice ?? trip.base_price ?? 550),
+      status: trip.status || 'SCHEDULED',
       totalSeats,
       bookedCount,
       availableCount,
-      bus: trip.bus || {
-        busName: 'Dhaka Express 01',
-        busNumber: 'DHAKA-METRO-BA-11-2024',
-        seatLayout: { totalSeats: 40 },
+      bus: {
+        busName: trip.bus?.busName || trip.bus?.bus_name || 'Dhaka Express 01',
+        busNumber: trip.bus?.busNumber || trip.bus?.bus_number || 'DHAKA-METRO-BA-11-2024',
+        regNumber: trip.bus?.regNumber || trip.bus?.reg_number,
+        seatLayout: trip.bus?.seatLayout || { totalSeats: 40 },
       },
-      route: trip.route || {
-        origin: 'Dhaka Gabtoli',
-        destination: 'Rajshahi University',
-        routeName: 'Dhaka to Rajshahi University (RU Unit-A)',
+      route: {
+        origin: trip.route?.origin || 'Dhaka Gabtoli',
+        destination: trip.route?.destination || 'Rajshahi University',
+        routeName: trip.route?.routeName || trip.route?.route_name || 'Dhaka to Rajshahi University (RU Unit-A)',
       },
     };
   });

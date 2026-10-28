@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Bus,
   AlertCircle,
@@ -319,12 +320,181 @@ export function getTripUniversityAndUnit(t: any): FormattedUniInfo {
         unitTagColor: 'bg-white text-rose-900'
       };
       break;
-    default: {
-      const fallbackName = t.targetUniversity || t.route?.destination || 'বিশ্ববিদ্যালয় ভর্তি এক্সপ্রেস';
+    case 'RUET':
       info = {
-        code: 'OTHER',
+        code: 'RUET',
+        nameBn: 'রাজশাহী প্রকৌশল ও প্রযুক্তি বিশ্ববিদ্যালয় (RUET)',
+        shortTag: 'রুয়েট • RUET',
+        badgeGradient: 'from-blue-600 to-indigo-800',
+        badgeBorder: 'border-blue-400/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-yellow-300 text-slate-900 border border-yellow-400'
+      };
+      break;
+    case 'CUET':
+      info = {
+        code: 'CUET',
+        nameBn: 'চট্টগ্রাম প্রকৌশল ও প্রযুক্তি বিশ্ববিদ্যালয় (CUET)',
+        shortTag: 'চুয়েট • CUET',
+        badgeGradient: 'from-cyan-600 to-teal-800',
+        badgeBorder: 'border-cyan-400/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-emerald-200 text-slate-900 border border-emerald-300'
+      };
+      break;
+    case 'BAU':
+      info = {
+        code: 'BAU',
+        nameBn: 'বাংলাদেশ কৃষি বিশ্ববিদ্যালয় (BAU)',
+        shortTag: 'বাকৃবি • BAU',
+        badgeGradient: 'from-lime-600 to-emerald-800',
+        badgeBorder: 'border-lime-500/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-yellow-300 text-slate-900'
+      };
+      break;
+    case 'JNU':
+      info = {
+        code: 'JNU',
+        nameBn: 'জগন্নাথ বিশ্ববিদ্যালয় (JnU)',
+        shortTag: 'জবি • JnU',
+        badgeGradient: 'from-amber-600 via-orange-600 to-amber-700',
+        badgeBorder: 'border-amber-400/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-white text-slate-900 border border-amber-300'
+      };
+      break;
+    case 'BUP':
+      info = {
+        code: 'BUP',
+        nameBn: 'বাংলাদেশ ইউনিভার্সিটি অব প্রফেশনালস (BUP)',
+        shortTag: 'বিইউপি • BUP',
+        badgeGradient: 'from-emerald-700 to-teal-900',
+        badgeBorder: 'border-emerald-500/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-white text-emerald-950'
+      };
+      break;
+    case 'IU':
+      info = {
+        code: 'IU',
+        nameBn: 'ইসলামী বিশ্ববিদ্যালয় কুষ্টিয়া (IU)',
+        shortTag: 'ইবি • IU',
+        badgeGradient: 'from-teal-600 via-emerald-700 to-teal-800',
+        badgeBorder: 'border-teal-400/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-emerald-200 text-slate-900'
+      };
+      break;
+    case 'COU':
+      info = {
+        code: 'COU',
+        nameBn: 'কুমিল্লা বিশ্ববিদ্যালয় (CoU)',
+        shortTag: 'কুবি • CoU',
+        badgeGradient: 'from-rose-600 to-red-800',
+        badgeBorder: 'border-rose-400/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-yellow-300 text-slate-900'
+      };
+      break;
+    case 'BRUR':
+      info = {
+        code: 'BRUR',
+        nameBn: 'বেগম রোকেয়া বিশ্ববিদ্যালয় (BRUR)',
+        shortTag: 'বেরোবি • BRUR',
+        badgeGradient: 'from-purple-600 to-violet-800',
+        badgeBorder: 'border-purple-400/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-pink-300 text-slate-900'
+      };
+      break;
+    case 'PSTU':
+      info = {
+        code: 'PSTU',
+        nameBn: 'পটুয়াখালী বিজ্ঞান ও প্রযুক্তি (PSTU)',
+        shortTag: 'পবিপ্রবি • PSTU',
+        badgeGradient: 'from-blue-600 to-indigo-800',
+        badgeBorder: 'border-blue-400/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-yellow-300 text-slate-900'
+      };
+      break;
+    case 'HSTU':
+      info = {
+        code: 'HSTU',
+        nameBn: 'হাজী মোহাম্মদ দানেশ বিজ্ঞান ও প্রযুক্তি (HSTU)',
+        shortTag: 'হাবিপ্রবি • HSTU',
+        badgeGradient: 'from-amber-600 to-orange-700',
+        badgeBorder: 'border-amber-400/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-white text-slate-900'
+      };
+      break;
+    case 'MBSTU':
+      info = {
+        code: 'MBSTU',
+        nameBn: 'মাওলানা ভাসানী বিজ্ঞান ও প্রযুক্তি (MBSTU)',
+        shortTag: 'মাভাবিপ্রবি • MBSTU',
+        badgeGradient: 'from-cyan-600 to-blue-800',
+        badgeBorder: 'border-cyan-400/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-yellow-300 text-slate-900'
+      };
+      break;
+    case 'NSTU':
+      info = {
+        code: 'NSTU',
+        nameBn: 'নোয়াখালী বিজ্ঞান ও প্রযুক্তি (NSTU)',
+        shortTag: 'নোবিপ্রবি • NSTU',
+        badgeGradient: 'from-teal-600 to-emerald-800',
+        badgeBorder: 'border-teal-400/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-emerald-200 text-slate-900'
+      };
+      break;
+    case 'JUST':
+      info = {
+        code: 'JUST',
+        nameBn: 'যশোর বিজ্ঞান ও প্রযুক্তি (JUST)',
+        shortTag: 'যবিপ্রবি • JUST',
+        badgeGradient: 'from-rose-600 to-pink-700',
+        badgeBorder: 'border-rose-400/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-white text-rose-900'
+      };
+      break;
+    case 'BSMRSTU':
+      info = {
+        code: 'BSMRSTU',
+        nameBn: 'বঙ্গবন্ধু শেখ মুজিবুর রহমান বিজ্ঞান ও প্রযুক্তি (BSMRSTU)',
+        shortTag: 'বশেমুরবিপ্রবি • BSMRSTU',
+        badgeGradient: 'from-indigo-600 to-purple-800',
+        badgeBorder: 'border-indigo-400/40',
+        badgeText: 'text-white',
+        unitText,
+        unitTagColor: 'bg-yellow-300 text-slate-900'
+      };
+      break;
+    default: {
+      const fallbackName = (t.targetUniversity || t.route?.destination || 'অন্যান্য বিশ্ববিদ্যালয়').trim();
+      const uniCode = code && code !== 'OTHER' ? code : (t.targetUniversity ? t.targetUniversity.trim() : 'OTHER');
+      info = {
+        code: uniCode,
         nameBn: fallbackName,
-        shortTag: 'ভর্তি এক্সপ্রেস',
+        shortTag: uniCode.length <= 10 ? uniCode : 'অন্যান্য',
         badgeGradient: 'from-indigo-600 via-blue-700 to-indigo-800 dark:from-indigo-700 dark:via-blue-800 dark:to-indigo-950',
         badgeBorder: 'border-indigo-400/40',
         badgeText: 'text-white',
@@ -396,9 +566,19 @@ export function TripSelectionStep({
     });
   };
 
+  const searchParams = useSearchParams();
+  const initialUniFromUrl = searchParams.get('university') || searchParams.get('uni') || 'ALL';
+
   // Filter values
   const [busSearchQuery, setBusSearchQuery] = useState('');
-  const [selectedUniFilter, setSelectedUniFilter] = useState('ALL');
+  const [selectedUniFilter, setSelectedUniFilter] = useState(initialUniFromUrl);
+
+  useEffect(() => {
+    const uniParam = searchParams.get('university') || searchParams.get('uni');
+    if (uniParam) {
+      setSelectedUniFilter(uniParam);
+    }
+  }, [searchParams]);
   const [selectedGenderFilter, setSelectedGenderFilter] = useState('ALL');
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState('ALL');
   const [selectedOccupancyFilter, setSelectedOccupancyFilter] = useState('ALL');
@@ -628,7 +808,14 @@ export function TripSelectionStep({
 
       // 1. Target University
       const uniInfo = getTripUniversityAndUnit(t);
-      if (selectedUniFilter !== 'ALL' && uniInfo.code !== selectedUniFilter) return false;
+      if (selectedUniFilter !== 'ALL') {
+        const sel = selectedUniFilter.trim().toLowerCase();
+        const codeMatch = uniInfo.code.toLowerCase() === sel;
+        const labelMatch = uniInfo.nameBn.toLowerCase().includes(sel);
+        const targetMatch = (t.targetUniversity || '').toLowerCase().includes(sel);
+        const destMatch = (t.route?.destination || '').toLowerCase().includes(sel);
+        if (!codeMatch && !labelMatch && !targetMatch && !destMatch) return false;
+      }
 
       // 2. Available Seats Remaining Range & Direct Count Filter
       const totalSeats = t.stats?.totalSeats || t.bus?.capacity || 45;
@@ -955,6 +1142,89 @@ export function TripSelectionStep({
           </div>
         </div>
 
+        {/* --- PROMINENT DEDICATED UNIVERSITY FILTER MATRIX / QUICK CHIPS BAR --- */}
+        <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 shadow-2xs">
+                <GraduationCap className="w-4.5 h-4.5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>{language === 'bn' ? '🎓 বিশ্ববিদ্যালয় ফিল্টার (University Filter)' : '🎓 Filter by University'}</span>
+                  {selectedUniFilter !== 'ALL' && (
+                    <span className="text-[10px] font-mono font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800">
+                      ফিল্টার সক্রিয়
+                    </span>
+                  )}
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {language === 'bn' ? 'যেকোনো বিশ্ববিদ্যালয়ে ক্লিক করে নির্দিষ্ট ভর্তি পরীক্ষার বাস ও সিট অবিলম্বে ফিল্টার করুন।' : 'Click any university to immediately filter buses for that campus admission.'}
+                </p>
+              </div>
+            </div>
+
+            {selectedUniFilter !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedUniFilter('ALL')}
+                className="px-2.5 py-1 text-xs font-bold rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 flex items-center gap-1.5 transition-all cursor-pointer self-start sm:self-auto"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>{language === 'bn' ? 'সকল বিশ্ববিদ্যালয় দেখান' : 'Show All Universities'}</span>
+              </button>
+            )}
+          </div>
+
+          {/* Horizontal University Quick Chips */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5 no-scrollbar flex-wrap">
+            {/* All Universities Chip */}
+            <button
+              type="button"
+              onClick={() => setSelectedUniFilter('ALL')}
+              className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
+                selectedUniFilter === 'ALL'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-blue-400/30 font-black'
+                  : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300'
+              }`}
+            >
+              <span>🌐 {language === 'bn' ? 'সকল বিশ্ববিদ্যালয়' : 'All Universities'}</span>
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-black ${
+                selectedUniFilter === 'ALL' ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
+              }`}>
+                {currentTabBaseTrips.length}টি বাস
+              </span>
+            </button>
+
+            {/* University Chips */}
+            {universityOptions.map((u) => {
+              const isSelected = selectedUniFilter === u.code;
+              return (
+                <button
+                  key={u.code}
+                  type="button"
+                  onClick={() => setSelectedUniFilter(isSelected ? 'ALL' : u.code)}
+                  className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
+                    isSelected
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-blue-400/30 font-black'
+                      : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-blue-50/70 hover:text-blue-700 hover:border-blue-300 dark:hover:bg-slate-800 dark:hover:text-blue-300'
+                  }`}
+                >
+                  <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-white/20 border border-white/30">
+                    {u.code}
+                  </span>
+                  <span>{u.label}</span>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-black ${
+                    isSelected ? 'bg-white/25 text-white' : 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300'
+                  }`}>
+                    {u.count} বাস • {u.freeSeats} সিট
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* --- PREMIUM FILTER SECTION WITH MINIMIZE / EXPAND TOGGLE --- */}
         <div className="bg-slate-50/90 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xs space-y-4 transition-all">
           
@@ -1008,8 +1278,9 @@ export function TripSelectionStep({
             </div>
           </div>
 
-          {/* Always Visible: Search Input + Sort Bar */}
-          <div className="flex flex-col md:flex-row gap-3 items-stretch">
+          {/* Always Visible: Search Input + University Selector + Sort Bar */}
+          <div className="flex flex-col lg:flex-row gap-3 items-stretch">
+            {/* Search Input */}
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
@@ -1030,21 +1301,59 @@ export function TripSelectionStep({
               )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="flex-1 md:flex-none flex items-center gap-2 bg-white dark:bg-slate-950 px-3 py-2 rounded-2xl border border-slate-200 dark:border-slate-700/80 min-w-[170px] shadow-2xs">
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              {/* Target University Dropdown (Always Visible) */}
+              <div className="flex-1 sm:flex-none flex items-center gap-2 bg-white dark:bg-slate-950 px-3 py-2 rounded-2xl border border-slate-200 dark:border-slate-700/80 min-w-[210px] shadow-2xs">
+                <GraduationCap className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono leading-none mb-0.5">
+                    {language === 'bn' ? 'বিশ্ববিদ্যালয় ফিল্টার' : 'University Filter'}
+                  </span>
+                  <select
+                    value={selectedUniFilter}
+                    onChange={(e) => setSelectedUniFilter(e.target.value)}
+                    className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer truncate appearance-none leading-none"
+                  >
+                    <option value="ALL">🏛️ {language === 'bn' ? `সকল বিশ্ববিদ্যালয় (${currentTabBaseTrips.length}টি বাস)` : `All Universities (${currentTabBaseTrips.length})`}</option>
+                    {universityOptions.map((u) => (
+                      <option key={u.code} value={u.code}>
+                        🏛️ {u.label} ({u.count}টি বাস • {u.freeSeats} সিট)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {selectedUniFilter !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedUniFilter('ALL')}
+                    title="রিসেট করুন"
+                    className="text-slate-400 hover:text-rose-500 text-xs font-black p-0.5"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Sort Order Dropdown */}
+              <div className="flex-1 sm:flex-none flex items-center gap-2 bg-white dark:bg-slate-950 px-3 py-2 rounded-2xl border border-slate-200 dark:border-slate-700/80 min-w-[160px] shadow-2xs">
                 <ArrowUpDown className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                <select
-                  value={selectedSortOrder}
-                  onChange={(e) => setSelectedSortOrder(e.target.value)}
-                  className="w-full bg-transparent text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer appearance-none"
-                >
-                  <option value="DEFAULT">{language === 'bn' ? 'সাজান: ডিফল্ট' : 'Sort: Default'}</option>
-                  <option value="SEATS_FREE_DESC">🟢 বেশি সিট খালি</option>
-                  <option value="SOLD_DESC">🔥 দ্রুত বিক্রি হচ্ছে</option>
-                  <option value="TIME_ASC">🕒 ছাড়ার সময় (আগে)</option>
-                  <option value="FARE_ASC">💰 কম ভাড়া (আগে)</option>
-                  <option value="FARE_DESC">💰 বেশি ভাড়া (আগে)</option>
-                </select>
+                <div className="flex-1 min-w-0">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono leading-none mb-0.5">
+                    {language === 'bn' ? 'বাছাই / সাজান' : 'Sort Order'}
+                  </span>
+                  <select
+                    value={selectedSortOrder}
+                    onChange={(e) => setSelectedSortOrder(e.target.value)}
+                    className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer appearance-none leading-none"
+                  >
+                    <option value="DEFAULT">{language === 'bn' ? 'সাজান: ডিফল্ট' : 'Sort: Default'}</option>
+                    <option value="SEATS_FREE_DESC">🟢 বেশি সিট খালি</option>
+                    <option value="SOLD_DESC">🔥 দ্রুত বিক্রি হচ্ছে</option>
+                    <option value="TIME_ASC">🕒 ছাড়ার সময় (আগে)</option>
+                    <option value="FARE_ASC">💰 কম ভাড়া (আগে)</option>
+                    <option value="FARE_DESC">💰 বেশি ভাড়া (আগে)</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
