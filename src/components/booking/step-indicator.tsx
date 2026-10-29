@@ -143,13 +143,25 @@ export function BookingSummaryBar({
         </div>
       </div>
 
-      <div className="flex items-center gap-2.5 sm:gap-4 ml-auto">
+      <div className="flex items-center gap-2.5 sm:gap-4 ml-auto flex-wrap sm:flex-nowrap justify-end">
         {discountAmount > 0 && (
           <div className="text-right hidden sm:block">
             <span className="text-[10px] uppercase tracking-wider text-rose-500 font-black block">
               {language === 'bn' ? 'অনুমোদিত ছাড়' : 'Discount'}
             </span>
             <span className="text-sm font-black text-rose-600 dark:text-rose-400 font-mono">- {formatCurrency(discountAmount)}</span>
+          </div>
+        )}
+        {paidAmount > 0 && paidAmount < netAmount && (
+          <div className="text-right hidden md:block">
+            <span className="text-[10px] uppercase tracking-wider text-amber-600 dark:text-amber-400 font-black block">
+              {language === 'bn' ? 'জমা / বকেয়া' : 'Paid / Due'}
+            </span>
+            <span className="text-xs font-black font-mono">
+              <span className="text-emerald-600 dark:text-emerald-400">{formatCurrency(paidAmount)}</span>
+              <span className="text-slate-400 mx-1">/</span>
+              <span className="text-rose-600 dark:text-rose-400">{formatCurrency(netAmount - paidAmount)}</span>
+            </span>
           </div>
         )}
         <div className="text-right bg-blue-50 dark:bg-blue-950/80 px-3 sm:px-4 py-1.5 sm:py-2 rounded-2xl border border-blue-200 dark:border-blue-800 shadow-2xs">

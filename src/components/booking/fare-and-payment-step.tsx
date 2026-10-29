@@ -1321,6 +1321,245 @@ export function FareAndPaymentStep({
             {paymentMethod === 'HAND_CASH' ? (
               /* Dedicated Counter Cash Collection & Challan Box */
               <div className="space-y-4">
+                {/* =========================================================================
+                    EXECUTIVE POS CASH REGISTER & LIVE CHANGE CALCULATOR
+                    (যাত্রী কত টাকা দিচ্ছেন এবং কত ফেরত দিতে হবে - হাইলাইট করা কালার ডিজাইন)
+                   ========================================================================= */}
+                <div className="p-5 sm:p-6 bg-gradient-to-br from-emerald-50 via-teal-50/30 to-slate-50 dark:from-slate-900 dark:via-emerald-950/20 dark:to-slate-900 rounded-3xl border-2 border-emerald-400 dark:border-emerald-600 shadow-md space-y-4">
+                  {/* Header */}
+                  <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-emerald-200 dark:border-emerald-800/80">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center shadow-md shadow-emerald-500/25 shrink-0">
+                        <Banknote className="w-6 h-6 stroke-[2.2]" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm sm:text-base font-black text-emerald-950 dark:text-emerald-100 flex items-center gap-2">
+                          <span>{language === 'bn' ? 'নগদ গ্রহণ ও ফেরত হিসাব (Cash & Change Calculator)' : 'Cash Tender & Change Due'}</span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-200 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100 font-bold">
+                            লাইভ পিওএস (Live POS)
+                          </span>
+                        </h3>
+                        <p className="text-xs text-emerald-800 dark:text-emerald-300 font-semibold mt-0.5">
+                          {language === 'bn'
+                            ? 'যাত্রী কত টাকার নোট দিলেন লিখুন — কত টাকা ফেরত দিতে হবে তা স্বয়ংক্রিয়ভাবে হাইলাইট হয়ে যাবে।'
+                            : 'Enter cash received from passenger — change to return is automatically calculated and highlighted.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-black px-3 py-1.5 rounded-xl bg-white dark:bg-slate-950 text-emerald-900 dark:text-emerald-200 border-2 border-emerald-300 dark:border-emerald-700 shadow-2xs">
+                        আদায়যোগ্য ক্যাশ: {formatCurrency(paidAmount)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Main 2-Column POS Workspace */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+                    {/* Left Column: Cash Given by Passenger (7 Cols) */}
+                    <div className="lg:col-span-7 bg-white dark:bg-slate-950 p-4 sm:p-5 rounded-2xl border-2 border-emerald-300/80 dark:border-emerald-800/80 shadow-xs flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5 uppercase tracking-wide">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <span>{language === 'bn' ? 'যাত্রী আমাকে নগদ দিলেন (Cash Received) ৳ *' : 'Received Cash Note (৳) *'}</span>
+                          </label>
+                          {tenderedAmount !== '' && (
+                            <button
+                              type="button"
+                              onClick={() => setTenderedAmount('')}
+                              className="text-[11px] font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 cursor-pointer px-1.5 py-0.5 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                            >
+                              ✕ ক্লিয়ার
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Large High-Contrast Currency Input */}
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono select-none">
+                            ৳
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={tenderedAmount}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTenderedAmount(val === '' ? '' : Number(val));
+                            }}
+                            placeholder={String(paidAmount || 'যেমন: ১০০০ বা ১৫০০ বা ২০০০')}
+                            className="w-full pl-11 pr-16 py-3.5 text-2xl sm:text-3xl font-black font-mono bg-emerald-50/40 dark:bg-slate-900 text-slate-950 dark:text-white border-2 border-emerald-500 dark:border-emerald-600 rounded-2xl shadow-inner focus:ring-4 focus:ring-emerald-400/30 focus:border-emerald-600 focus:outline-none transition-all"
+                          />
+                          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-emerald-800 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950 px-2 py-1 rounded-md font-mono select-none">
+                            BDT
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Quick Banknote Buttons with Authentic Bangladeshi Currency Chips */}
+                      <div className="space-y-1.5 pt-1">
+                        <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                          <span>⚡ দ্রুত নোট নির্বাচন করুন:</span>
+                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {/* Exact amount button */}
+                          <button
+                            type="button"
+                            onClick={() => setTenderedAmount(paidAmount)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer shadow-2xs border ${
+                              numTendered === paidAmount && paidAmount > 0
+                                ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-400/50 shadow-xs'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-200'
+                            }`}
+                          >
+                            ✓ সঠিক টাকা (৳{paidAmount})
+                          </button>
+
+                          {/* Common notes: 200, 500, 1000, 1500, 2000, 3000, 5000 */}
+                          {[200, 500, 1000, 1500, 2000, 3000, 5000].map((note) => {
+                            const isSelected = numTendered === note;
+                            return (
+                              <button
+                                key={note}
+                                type="button"
+                                onClick={() => setTenderedAmount(note)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black font-mono transition-all cursor-pointer shadow-2xs border ${
+                                  isSelected
+                                    ? 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-400/50 scale-105 shadow-xs'
+                                    : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100'
+                                }`}
+                              >
+                                ৳{note}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column: VIBRANT COLOR-HIGHLIGHTED CHANGE CARD (5 Cols) */}
+                    <div className="lg:col-span-5 flex flex-col justify-between">
+                      {changeDue > 0 ? (
+                        /* HIGHLIGHT 1: CHANGE DUE (Vibrant Glowing Emerald / Teal Card) */
+                        <div className="h-full p-5 rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-700 text-white shadow-xl shadow-emerald-600/30 border-2 border-emerald-300 flex flex-col justify-between relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                          <div className="absolute -right-6 -bottom-6 w-28 h-28 rounded-full bg-white/10 blur-xl pointer-events-none" />
+                          <div>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-black uppercase tracking-wider bg-white/20 px-2.5 py-1 rounded-full backdrop-blur-xs flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                                {language === 'bn' ? 'যাত্রীকে ফেরত দিতে হবে' : 'Change to Return'}
+                              </span>
+                              <span className="text-xl">💸</span>
+                            </div>
+
+                            <div className="mt-3">
+                              <div className="text-[11px] font-bold text-emerald-100 uppercase">
+                                {language === 'bn' ? 'নগদ ফেরত পরিমাণ' : 'Return Amount'}
+                              </div>
+                              <div className="text-3xl sm:text-4xl font-black font-mono tracking-tight drop-shadow-sm mt-0.5">
+                                ৳{changeDue}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-white/20 text-xs font-bold space-y-1">
+                            <div className="flex items-center justify-between text-emerald-50">
+                              <span>নোট দেওয়া হয়েছে:</span>
+                              <span className="font-mono font-black">৳{numTendered}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-emerald-50">
+                              <span>টিকেট ভাড়া রাখা হয়েছে:</span>
+                              <span className="font-mono font-black">৳{paidAmount}</span>
+                            </div>
+                            <div className="p-2 rounded-xl bg-white/25 backdrop-blur-sm text-center font-black text-white text-xs mt-2 border border-white/30 shadow-xs">
+                              👉 যাত্রীকে নগদ ৳{changeDue} ফেরত দিন
+                            </div>
+                          </div>
+                        </div>
+                      ) : shortageAmount > 0 ? (
+                        /* HIGHLIGHT 2: SHORTAGE WARNING (Urgent Warning Amber / Rose Card) */
+                        <div className="h-full p-5 rounded-2xl bg-gradient-to-br from-rose-600 via-rose-500 to-amber-600 text-white shadow-xl shadow-rose-600/30 border-2 border-rose-300 flex flex-col justify-between relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                          <div>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-black uppercase tracking-wider bg-white/20 px-2.5 py-1 rounded-full backdrop-blur-xs flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-white animate-bounce" />
+                                {language === 'bn' ? 'টাকা কম দেওয়া হয়েছে' : 'Shortage Detected'}
+                              </span>
+                              <span className="text-xl">⚠️</span>
+                            </div>
+
+                            <div className="mt-3">
+                              <div className="text-[11px] font-bold text-rose-100 uppercase">
+                                {language === 'bn' ? 'আরও গ্রহণ করতে হবে' : 'Still Due from Passenger'}
+                              </div>
+                              <div className="text-3xl sm:text-4xl font-black font-mono tracking-tight drop-shadow-sm mt-0.5">
+                                ৳{shortageAmount}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-white/20 text-xs font-bold space-y-1">
+                            <div className="flex items-center justify-between text-rose-50">
+                              <span>প্রদেয় ভাড়া:</span>
+                              <span className="font-mono font-black">৳{paidAmount}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-rose-50">
+                              <span>যাত্রী দিয়েছেন:</span>
+                              <span className="font-mono font-black">৳{numTendered}</span>
+                            </div>
+                            <div className="p-2 rounded-xl bg-white/25 backdrop-blur-sm text-center font-black text-white text-xs mt-2 border border-white/30 shadow-xs">
+                              ⚠️ পুরো টাকার জন্য আরও ৳{shortageAmount} গ্রহণ করুন
+                            </div>
+                          </div>
+                        </div>
+                      ) : numTendered > 0 && numTendered === paidAmount ? (
+                        /* HIGHLIGHT 3: EXACT PAYMENT (Professional Indigo / Blue Card) */
+                        <div className="h-full p-5 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-indigo-800 text-white shadow-lg border-2 border-blue-300 flex flex-col justify-between relative overflow-hidden animate-in fade-in duration-200">
+                          <div>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-black uppercase tracking-wider bg-white/20 px-2.5 py-1 rounded-full backdrop-blur-xs">
+                                {language === 'bn' ? '✓ সঠিক টাকা গ্রহণ' : 'Exact Payment'}
+                              </span>
+                              <span className="text-xl">🎯</span>
+                            </div>
+
+                            <div className="mt-3">
+                              <div className="text-[11px] font-bold text-blue-100 uppercase">
+                                {language === 'bn' ? 'ফেরতযোগ্য টাকা' : 'Change Amount'}
+                              </div>
+                              <div className="text-3xl sm:text-4xl font-black font-mono tracking-tight drop-shadow-sm mt-0.5">
+                                ৳০ (০ টাকা ফেরত)
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-white/20 text-xs font-bold space-y-1">
+                            <div className="p-2.5 rounded-xl bg-white/25 backdrop-blur-sm text-center font-black text-white text-xs border border-white/30">
+                              ✓ একদম সঠিক ৳{paidAmount} ক্যাশ পেয়েছেন। কোনো ফেরত নেই।
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* DEFAULT STATE: WAITING FOR NOTE ENTRY */
+                        <div className="h-full p-5 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border-2 border-dashed border-slate-300 dark:border-slate-700 flex flex-col justify-center items-center text-center p-6 space-y-2">
+                          <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-2xl shadow-inner">
+                            💵
+                          </div>
+                          <div className="text-xs font-black text-slate-800 dark:text-slate-200">
+                            {language === 'bn' ? 'যাত্রী কত টাকা দিয়েছেন লিখুন' : 'Enter received cash note'}
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-[220px]">
+                            {language === 'bn'
+                              ? 'বামপাশের বক্সে টাকার অঙ্ক লিখুন বা নোট বাটনে চাপুন, ফেরত স্বয়ংক্রিয়ভাবে দেখাবে।'
+                              : 'Type cash note or tap note chips to see change.'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="p-4 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-2xl border-2 border-emerald-300 dark:border-emerald-800/80 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
@@ -1484,87 +1723,6 @@ export function FareAndPaymentStep({
                       )}
                     </div>
 
-                    {/* Real-time Cash Tender & Change Due Calculator */}
-                    {paidAmount > 0 && (
-                      <div className="mt-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border-2 border-emerald-400 dark:border-emerald-700/80 shadow-sm space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
-                            <Banknote className="w-4 h-4 text-emerald-600" />
-                            <span>{language === 'bn' ? 'নগদ গ্রহণ ও ফেরত হিসাব (Tender & Change Calculator)' : 'Cash Tender & Change Due'}</span>
-                          </span>
-                          <span className="text-[11px] font-mono font-bold text-slate-500">
-                            প্রদেয় ক্যাশ: {formatCurrency(paidAmount)}
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-                          {/* Tendered input */}
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                              {language === 'bn' ? 'গ্রাহকের দেওয়া নগদ নোট (Tendered) ৳' : 'Received Cash Amount (৳)'}
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                min="0"
-                                value={tenderedAmount}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setTenderedAmount(val === '' ? '' : Number(val));
-                                }}
-                                placeholder={String(paidAmount)}
-                                className="w-full pl-3 pr-12 py-2 text-base font-black font-mono bg-emerald-50/40 dark:bg-slate-950 border-2 border-emerald-400 dark:border-emerald-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                              />
-                              <span className="absolute right-3 top-2 text-xs font-black text-slate-500 font-mono">BDT</span>
-                            </div>
-                          </div>
-
-                          {/* Instant Change Indicator */}
-                          <div className={`p-3 rounded-xl border-2 flex flex-col justify-center items-center text-center transition-all ${
-                            changeDue > 0
-                              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-950 dark:text-emerald-100 shadow-xs'
-                              : shortageAmount > 0
-                              ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-500 text-amber-950 dark:text-amber-100'
-                              : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-                          }`}>
-                            <span className="text-[10px] font-bold uppercase tracking-wider">
-                              {changeDue > 0
-                                ? (language === 'bn' ? 'যাত্রীকে ফেরত দিতে হবে' : 'Change Due')
-                                : shortageAmount > 0
-                                ? (language === 'bn' ? 'আরও গ্রহণ করতে হবে' : 'Shortage')
-                                : (language === 'bn' ? 'সঠিক নগদ গ্রহণ' : 'Exact Amount')}
-                            </span>
-                            <span className={`text-xl font-black font-mono mt-0.5 ${
-                              changeDue > 0 ? 'text-emerald-600 dark:text-emerald-400' : shortageAmount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-slate-200'
-                            }`}>
-                              {changeDue > 0 ? `৳${changeDue}` : shortageAmount > 0 ? `৳${shortageAmount}` : '৳০ (Exact)'}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Quick Tender Note Chips */}
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          <span className="text-[10px] text-slate-500 font-bold mr-1">দ্রুত নোট:</span>
-                          <button
-                            type="button"
-                            onClick={() => setTenderedAmount(paidAmount)}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-black bg-slate-100 dark:bg-slate-800 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 border border-slate-300 dark:border-slate-700 transition-colors cursor-pointer"
-                          >
-                            সঠিক (৳{paidAmount})
-                          </button>
-                          {[500, 1000, 1500, 2000, 3000, 5000].filter(n => n >= paidAmount).slice(0, 4).map(note => (
-                            <button
-                              key={note}
-                              type="button"
-                              onClick={() => setTenderedAmount(note)}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-black font-mono bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer"
-                            >
-                              ৳{note}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>

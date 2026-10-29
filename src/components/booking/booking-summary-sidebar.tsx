@@ -103,6 +103,10 @@ export function BookingSummarySidebar({
 }: BookingSummarySidebarProps) {
   const { language } = useApp();
   const [showFeeTaxSettings, setShowFeeTaxSettings] = React.useState(false);
+  const [tenderedAmount, setTenderedAmount] = React.useState<number | ''>('');
+  const numTendered = typeof tenderedAmount === 'number' ? tenderedAmount : 0;
+  const changeDue = numTendered > paidAmount ? numTendered - paidAmount : 0;
+  const shortageAmount = paidAmount > numTendered && numTendered > 0 ? paidAmount - numTendered : 0;
   const dueAmount = Math.max(0, netAmount - paidAmount);
 
   return (
@@ -532,6 +536,89 @@ export function BookingSummarySidebar({
             </div>
           </div>
         </div>
+
+        {/* Counter Cash Tender & Change Due Calculator (Color Highlighted) */}
+        {(paymentMethod === 'CASH' || paymentMethod === 'HAND_CASH') && paidAmount > 0 && (
+          <div className="mt-2.5 p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-slate-900 dark:to-emerald-950/30 border-2 border-emerald-400 dark:border-emerald-600 shadow-xs space-y-2.5 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
+                <Banknote className="w-4 h-4 text-emerald-600" />
+                <span>{language === 'bn' ? 'নগদ গ্রহণ ও ফেরত হিসাব' : 'Tender & Change'}</span>
+              </span>
+              <span className="text-[10px] font-mono font-bold bg-white dark:bg-slate-950 px-2 py-0.5 rounded-md text-emerald-800 dark:text-emerald-300 border border-emerald-300">
+                প্রদেয়: {formatCurrency(paidAmount)}
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                {language === 'bn' ? 'যাত্রী নগদ দিলেন (Tendered) ৳' : 'Received Cash ৳'}
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  value={tenderedAmount}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTenderedAmount(val === '' ? '' : Number(val));
+                  }}
+                  placeholder={String(paidAmount)}
+                  className="w-full pl-3 pr-10 py-2 text-base font-black font-mono bg-white dark:bg-slate-950 border-2 border-emerald-400 dark:border-emerald-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+                <span className="absolute right-2.5 top-2 text-[10px] font-black text-slate-400 font-mono select-none">BDT</span>
+              </div>
+            </div>
+
+            {/* Quick Banknote Buttons */}
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                onClick={() => setTenderedAmount(paidAmount)}
+                className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                সঠিক ({formatCurrency(paidAmount)})
+              </button>
+              {[500, 1000, 1500, 2000].map((note) => (
+                <button
+                  key={note}
+                  type="button"
+                  onClick={() => setTenderedAmount(note)}
+                  className="px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-200 cursor-pointer"
+                >
+                  ৳{note}
+                </button>
+              ))}
+            </div>
+
+            {/* Dynamic Highlighted Change Pill */}
+            {changeDue > 0 ? (
+              <div className="p-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-sm flex items-center justify-between font-bold text-xs">
+                <span className="flex items-center gap-1">
+                  <span>💸</span>
+                  <span>যাত্রীকে ফেরত দিন:</span>
+                </span>
+                <span className="text-base font-mono font-black bg-white/20 px-2 py-0.5 rounded-lg">
+                  ৳{changeDue}
+                </span>
+              </div>
+            ) : shortageAmount > 0 ? (
+              <div className="p-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 text-white shadow-sm flex items-center justify-between font-bold text-xs">
+                <span className="flex items-center gap-1">
+                  <span>⚠️</span>
+                  <span>আরও নিতে হবে:</span>
+                </span>
+                <span className="text-base font-mono font-black bg-white/20 px-2 py-0.5 rounded-lg">
+                  ৳{shortageAmount}
+                </span>
+              </div>
+            ) : numTendered > 0 && numTendered === paidAmount ? (
+              <div className="p-2 rounded-xl bg-blue-600 text-white shadow-xs text-center font-bold text-[11px]">
+                ✓ সঠিক টাকা গ্রহণ করা হয়েছে (০৳ ফেরত)
+              </div>
+            ) : null}
+          </div>
+        )}
       </div>
 
       {/* Auto-print Toggle */}
