@@ -1609,66 +1609,15 @@ export function BookingWizard({
 
   return (
     <div suppressHydrationWarning className="w-full space-y-5 pb-44 sm:pb-52">
-      {/* Top Navigation & Status Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3" suppressHydrationWarning>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          suppressHydrationWarning
-          onClick={() => {
-            if (step > 1) {
-              setStep(step - 1);
-            } else {
-              router.push('/bookings');
-            }
-          }}
-          className="rounded-2xl px-4 py-2.5 text-xs font-black flex items-center gap-2 cursor-pointer shadow-sm border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 shrink-0 transition-all hover:-translate-x-1"
-          title={step > 1 ? (language === 'bn' ? 'পূর্ববর্তী ধাপে ফিরে যান [Alt+B]' : 'Back to previous step [Alt+B]') : (language === 'bn' ? 'বুকিং তালিকায় ফিরে যান [Alt+B]' : 'Back to bookings list [Alt+B]')}
-        >
-          <ArrowLeft className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-          <span>{step > 1 ? (language === 'bn' ? 'পূর্ববর্তী ধাপ (Back)' : 'Previous Step') : (language === 'bn' ? 'বুকিং তালিকা (Back)' : 'Bookings List')}</span>
-          <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-slate-100 dark:bg-slate-800 rounded border border-slate-300 dark:border-slate-700 text-slate-500 font-semibold">Alt+B</kbd>
-        </Button>
-
-        <div className="flex items-center gap-2 flex-wrap" suppressHydrationWarning>
-          <Badge variant="primary" suppressHydrationWarning className="text-xs px-3 py-1 font-bold">
-            {targetUniversity}
-          </Badge>
-          <span suppressHydrationWarning className="text-xs font-mono font-bold text-slate-500">
-            {activeCapacity} {language === 'bn' ? 'সিট কোচ' : 'Seat Coach'}
-          </span>
-
-          {!isOnline && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 text-xs font-bold border border-rose-300 dark:border-rose-800 animate-pulse">
-              <WifiOff className="w-3 h-3 text-rose-600" />
-              <span>{language === 'bn' ? 'অফলাইন মোড (লোকাল সেভ)' : 'Offline Mode (Local Save)'}</span>
-            </span>
-          )}
-
-          {isOnline && pendingOfflineCount > 0 && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-200 text-xs font-bold border border-amber-300 dark:border-amber-700">
-              <RefreshCw className={`w-3 h-3 text-amber-700 ${isSyncingOffline ? 'animate-spin' : ''}`} />
-              <span>{pendingOfflineCount} {language === 'bn' ? 'সিঙ্ক বাকি' : 'Pending Sync'}</span>
-              <button
-                type="button"
-                onClick={handleManualSync}
-                disabled={isSyncingOffline}
-                className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer transition-colors"
-              >
-                {isSyncingOffline ? 'সিঙ্ক হচ্ছে...' : 'এখনই সিঙ্ক'}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Title & Full-Width Stepper */}
-      <div className="space-y-3.5" suppressHydrationWarning>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start sm:items-center gap-2.5 sm:gap-3">
-            <button
+      {/* Unified Executive Header */}
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-4" suppressHydrationWarning>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
+              suppressHydrationWarning
               onClick={() => {
                 if (step > 1) {
                   setStep(step - 1);
@@ -1676,26 +1625,65 @@ export function BookingWizard({
                   router.push('/bookings');
                 }
               }}
-              className="px-3 py-2 rounded-2xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all hover:-translate-x-0.5 shrink-0"
-              title={step > 1 ? (language === 'bn' ? 'পূর্ববর্তী ধাপে ফিরে যান' : 'Go Back to Previous Step') : (language === 'bn' ? 'বুকিং তালিকায় ফিরে যান' : 'Back to Bookings')}
+              className="rounded-2xl px-3.5 py-2 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 shrink-0 transition-all hover:-translate-x-0.5"
+              title={step > 1 ? (language === 'bn' ? 'পূর্ববর্তী ধাপে ফিরে যান [Alt+B]' : 'Back to previous step [Alt+B]') : (language === 'bn' ? 'বুকিং তালিকায় ফিরে যান [Alt+B]' : 'Back to bookings list [Alt+B]')}
             >
-              <ArrowLeft className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <span>{step > 1 ? (language === 'bn' ? '← পেছনে যান' : '← Back') : (language === 'bn' ? '← বুকিং তালিকা' : '← Bookings')}</span>
-            </button>
+              <ArrowLeft className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <span>{step > 1 ? (language === 'bn' ? 'পেছনে যান' : 'Back') : (language === 'bn' ? 'বুকিং তালিকা' : 'Bookings')}</span>
+              <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-mono bg-white dark:bg-slate-900 rounded border border-slate-300 dark:border-slate-700 text-slate-500 font-semibold">Alt+B</kbd>
+            </Button>
+
             <div>
-              <h1 suppressHydrationWarning className="text-lg sm:text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                <Armchair suppressHydrationWarning className="w-7 h-7" style={{ color: currentColor?.primaryHex || 'var(--primary-color)' }} />
-                {language === 'bn' ? 'নতুন সিট বুকিং ও টিকিট ইস্যু' : 'New Seat Booking & Ticket Issue'}
-              </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 suppressHydrationWarning className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                  <Armchair suppressHydrationWarning className="w-6 h-6 text-blue-600" />
+                  {language === 'bn' ? 'নতুন সিট বুকিং ও টিকিট ইস্যু' : 'New Seat Booking & Ticket Issue'}
+                </h1>
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-mono">
+                  ধাপ {step}/৫: {stepLabel ? (language === 'bn' ? stepLabel.labelBn : stepLabel.labelEn) : ''}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 {language === 'bn'
-                  ? 'কাস্টম সিট বিল্ডার ফরম্যাটে যে বিশ্ববিদ্যালয়ের জন্য যেমন সিট প্ল্যান ও ভাড়া কনফিগার করা হয়েছে, ঠিক সেভাবে বুকিং করুন।'
-                  : 'Select your university admission trip and pick seats matching the exact custom seat builder configuration.'}
+                  ? 'টার্গেট বিশ্ববিদ্যালয়ের ভর্তি কোচ নির্বাচন করে রিয়েলটাইম সিট ম্যাপ থেকে পছন্দমতো টিকিট বুকিং করুন।'
+                  : 'Select your admission bus and pick seats directly from the live interactive seat builder layout.'}
               </p>
             </div>
           </div>
+
+          {/* Header Right Status Badges */}
+          <div className="flex items-center gap-2 flex-wrap" suppressHydrationWarning>
+            {selectedTrip && (
+              <Badge variant="primary" suppressHydrationWarning className="text-xs px-3 py-1 font-bold">
+                {targetUniversity}
+              </Badge>
+            )}
+
+            {!isOnline && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 text-xs font-bold border border-rose-300 dark:border-rose-800 animate-pulse">
+                <WifiOff className="w-3 h-3 text-rose-600" />
+                <span>{language === 'bn' ? 'অফলাইন মোড' : 'Offline Mode'}</span>
+              </span>
+            )}
+
+            {isOnline && pendingOfflineCount > 0 && (
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-200 text-xs font-bold border border-amber-300 dark:border-amber-700">
+                <RefreshCw className={`w-3 h-3 text-amber-700 ${isSyncingOffline ? 'animate-spin' : ''}`} />
+                <span>{pendingOfflineCount} {language === 'bn' ? 'সিঙ্ক বাকি' : 'Pending'}</span>
+                <button
+                  type="button"
+                  onClick={handleManualSync}
+                  disabled={isSyncingOffline}
+                  className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                >
+                  {isSyncingOffline ? 'সিঙ্ক...' : 'এখনই সিঙ্ক'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
+        {/* Stepper Progress Bar */}
         <StepIndicator currentStep={step} maxReachableStep={maxReachableStep} onNavigate={handleNavigate} />
       </div>
 
@@ -1716,23 +1704,35 @@ export function BookingWizard({
         </div>
       )}
 
-      {/* Sticky summary bar */}
-      <BookingSummaryBar
-        selectedSeatCount={selectedSeatIds.length}
-        seatLabels={seatLabels}
-        destinationLabel={targetUniversity}
-        netAmount={netAmount}
-        discountAmount={discountAmount}
-        paidAmount={paidAmount}
-        stepLabel={stepLabel ? (language === 'bn' ? stepLabel.labelBn : stepLabel.labelEn) : ''}
-        busNumber={selectedTrip?.bus?.busNumber || selectedTrip?.bus?.bus_number}
-      />
+      {/* Context-Aware Sticky Summary Bar (Shown from Step 2 onwards once Trip/Seats selected) */}
+      {step > 1 && selectedTrip && (
+        <BookingSummaryBar
+          selectedSeatCount={selectedSeatIds.length}
+          seatLabels={seatLabels}
+          destinationLabel={targetUniversity}
+          netAmount={netAmount}
+          discountAmount={discountAmount}
+          paidAmount={paidAmount}
+          stepLabel={stepLabel ? (language === 'bn' ? stepLabel.labelBn : stepLabel.labelEn) : ''}
+          busNumber={selectedTrip?.bus?.busNumber || selectedTrip?.bus?.bus_number}
+        />
+      )}
 
-      {/* Error banner */}
+      {/* Unified Error Alert Banner */}
       {errorMessage && (
-        <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/80 rounded-2xl flex items-center gap-3 text-rose-700 dark:text-rose-300 text-xs font-medium">
-          <AlertCircle className="w-5 h-5 shrink-0" />
-          <span>{errorMessage}</span>
+        <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/80 rounded-2xl flex items-center justify-between gap-3 text-rose-700 dark:text-rose-300 text-xs font-medium animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
+            <span className="font-bold">{errorMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrorMessage(null)}
+            className="text-rose-600 hover:text-rose-900 font-black text-sm cursor-pointer p-1"
+            title="বন্ধ করুন"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -1904,29 +1904,6 @@ export function BookingWizard({
           onGoToStep={(target) => setStep(target)}
           onConfirm={handleFinalSubmit}
         />
-      )}
-
-      {/* Floating Bottom Error Notification - Always visible regardless of scroll position, cleared from bottom-right AI tab */}
-      {errorMessage && (
-        <div className="fixed bottom-24 left-4 right-4 sm:left-auto sm:right-36 sm:max-w-xl z-50 bg-rose-600 dark:bg-rose-700 text-white p-4 rounded-2xl shadow-2xl border-2 border-rose-300 dark:border-rose-500 flex items-start justify-between gap-3 animate-bounce">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-rose-200 shrink-0 mt-0.5" />
-            <div>
-              <span className="block font-black text-xs uppercase tracking-wider text-rose-200">
-                {language === 'bn' ? '⚠️ ত্রুটি / মনোযোগ দিন:' : 'Attention Required:'}
-              </span>
-              <span className="text-sm font-bold mt-0.5 block text-white">{errorMessage}</span>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setErrorMessage(null)}
-            className="w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 text-white font-black text-sm flex items-center justify-center shrink-0 cursor-pointer"
-            title={language === 'bn' ? 'বন্ধ করুন' : 'Close'}
-          >
-            ✕
-          </button>
-        </div>
       )}
 
 

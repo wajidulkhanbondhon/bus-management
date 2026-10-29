@@ -4,6 +4,7 @@ import { QuickCounterBookingClient } from '@/components/booking/quick-counter-bo
 import { getAllTrips, normalizeTrip } from '@/services/trip.service';
 import { getAllBuses } from '@/services/bus.service';
 import { getCurrentUser } from '@/lib/auth';
+import { getAllBookings } from '@/services/booking.service';
 
 export const revalidate = 0;
 
@@ -21,14 +22,52 @@ export default async function QuickBookingPage({
   const tripIdParam = typeof sParams.tripId === 'string' ? sParams.tripId : '';
   const busIdParam = typeof sParams.busId === 'string' ? sParams.busId : '';
 
-  const [tripsData, busesData, user] = await Promise.all([
+  const [tripsData, busesData, user, allBookingsData] = await Promise.all([
     getAllTrips({ status: 'SCHEDULED' }).catch(() => []),
     getAllBuses().catch(() => []),
-    getCurrentUser()
+    getCurrentUser(),
+    getAllBookings().catch(() => [])
   ]);
 
   const rawTrips = Array.isArray(tripsData) ? tripsData : [];
   const rawBuses = Array.isArray(busesData) ? busesData : [];
+  const allBookings = Array.isArray(allBookingsData) ? allBookingsData : [];
+
+  // Helper to compute live seat booking stats for a trip/bus
+  const computeTripSeatStats = (tripId: string, busId?: string, capacity: number = 45) => {
+    const relevantBookings = allBookings.filter((b: any) => {
+      const bTripId = b.trip_id || b.tripId || b.trip?.id;
+      const bBusId = b.bus_id || b.busId || b.bus?.id || b.trip?.bus?.id;
+      const isStatusValid = b.booking_status !== 'CANCELLED' && b.bookingStatus !== 'CANCELLED';
+      if (!isStatusValid) return false;
+      return bTripId === tripId || (busId && bBusId === busId);
+    });
+
+    const bookedSeatLabelsSet = new Set<string>();
+    relevantBookings.forEach((b: any) => {
+      const passengers = Array.isArray(b.passengers) ? b.passengers : [];
+      const seatBookings = Array.isArray(b.seat_bookings || b.seats) ? (b.seat_bookings || b.seats) : [];
+      passengers.forEach((p: any) => {
+        const sNum = (p.seatNumber || p.seat_number || p.seatId || p.seat_id || '').toUpperCase();
+        if (sNum) bookedSeatLabelsSet.add(sNum);
+      });
+      seatBookings.forEach((sb: any) => {
+        const sNum = (sb.seatNumber || sb.seat_number || sb.seat?.seatNumber || sb.seatId || '').toUpperCase();
+        if (sNum) bookedSeatLabelsSet.add(sNum);
+      });
+    });
+
+    const bookedCount = bookedSeatLabelsSet.size;
+    const availableCount = Math.max(0, capacity - bookedCount);
+    const soldPercentage = capacity > 0 ? Math.min(100, Math.round((bookedCount / capacity) * 100)) : 0;
+
+    return {
+      totalSeats: capacity,
+      bookedCount,
+      availableCount,
+      soldPercentage
+    };
+  };
 
   // Existing bus IDs that already have a trip scheduled
   const existingBusIdsWithTrips = new Set(
@@ -75,37 +114,72 @@ export default async function QuickBookingPage({
   // Combine real database trips with any additional active bus trips
   const allAvailableTrips = [...rawTrips, ...fallbackBusTrips];
 
-  // Determine initial selected trip based on searchParams or upcoming trip
+  // Domain Rule: Only show buses whose booking is currently running ("বুকিং চলছে")
+  // Exclude completed, cancelled, arrived, closed, draft, expired, or full buses ("যে গুলো হয়ে গেছে, বা পরে হবে")
+  const isTripBookingRunning = (t: any) => {
+    // 1. Bus status must be ACTIVE
+    const busStatus = (t.bus?.status || 'ACTIVE').toUpperCase();
+    if (busStatus !== 'ACTIVE') return false;
+
+    // 2. Trip status must be active (not completed/cancelled/draft/pending/closed)
+    const tripStatus = (t.status || 'SCHEDULED').toUpperCase();
+    if (['COMPLETED', 'CANCELLED', 'ARRIVED', 'CLOSED', 'EXPIRED', 'DRAFT', 'PENDING', 'INACTIVE', 'MAINTENANCE'].includes(tripStatus)) {
+      return false;
+    }
+
+    // 3. Must have available seats (not sold out/full)
+    if (t.stats) {
+      if (t.stats.availableCount <= 0 || t.stats.soldPercentage >= 100) return false;
+    }
+
+    // 4. Departure date must not be in the past
+    const dep = t.departureDate || t.departure_date;
+    if (dep) {
+      try {
+        const depDateOnly = new Date(dep).toISOString().split('T')[0];
+        const todayDateOnly = new Date().toISOString().split('T')[0];
+        if (depDateOnly < todayDateOnly) {
+          return false;
+        }
+      } catch {}
+    }
+
+    return true;
+  };
+
+  const runningTrips = allAvailableTrips
+    .map((t) => {
+      const cap = Number(t.bus?.capacity) || 45;
+      const stats = computeTripSeatStats(t.id, t.bus_id || t.bus?.id, cap);
+      return { ...t, stats };
+    })
+    .filter(isTripBookingRunning);
+
+  // Determine initial selected trip based on searchParams or upcoming trip among running trips
   let initialTripId = '';
   if (tripIdParam) {
-    const foundByTrip = allAvailableTrips.find((t) => t.id === tripIdParam);
+    const foundByTrip = runningTrips.find((t) => t.id === tripIdParam);
     if (foundByTrip) initialTripId = foundByTrip.id;
   }
   if (!initialTripId && busIdParam) {
-    const foundByBus = allAvailableTrips.find((t) => (t.bus?.id === busIdParam || t.bus_id === busIdParam || t.id === busIdParam));
+    const foundByBus = runningTrips.find((t) => (t.bus?.id === busIdParam || t.bus_id === busIdParam || t.id === busIdParam));
     if (foundByBus) initialTripId = foundByBus.id;
   }
-  if (!initialTripId && allAvailableTrips.length > 0) {
-    // Prefer today's trip or the trip with the newest/upcoming departure date
+  if (!initialTripId && runningTrips.length > 0) {
+    // Prefer today's trip or the trip with the earliest/active upcoming departure
     const todayStr = new Date().toISOString().split('T')[0];
-    const todayTrip = allAvailableTrips.find((t) => (t.departureDate || t.departure_date || '').includes(todayStr));
+    const todayTrip = runningTrips.find((t) => (t.departureDate || t.departure_date || '').includes(todayStr));
     if (todayTrip) {
       initialTripId = todayTrip.id;
     } else {
-      // Sort to pick the latest/active scheduled trip
-      const sorted = [...allAvailableTrips].sort((a, b) => {
-        const dateA = new Date(a.departureDate || a.departure_date || 0).getTime();
-        const dateB = new Date(b.departureDate || b.departure_date || 0).getTime();
-        return dateB - dateA;
-      });
-      initialTripId = sorted[0].id;
+      initialTripId = runningTrips[0].id;
     }
   }
 
   return (
     <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950/40 p-3 sm:p-5 lg:p-7">
       <QuickCounterBookingClient
-        trips={allAvailableTrips}
+        trips={runningTrips}
         initialTripId={initialTripId}
         currentUser={user}
       />
