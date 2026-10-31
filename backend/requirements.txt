@@ -6,7 +6,7 @@
 # Core Web Framework & Server
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
-pydantic>=2.8.0
+pydantic>=2.13.5
 pydantic-settings>=2.4.0
 
 # Database & ORM Layer (PostgreSQL Asynchronous)
