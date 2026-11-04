@@ -136,7 +136,7 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       colorClass: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
       items: [
         { href: '/bookings/quick', label: language === 'bn' ? 'কুইক কাউন্টার বুকিং' : 'Quick Counter Booking', icon: Zap, badge: 'Fast', highlight: true },
-        { href: '/bookings/shift', label: language === 'bn' ? 'সিট শিফট বা পরিবর্তন' : 'Seat Shift / Swap', icon: ArrowLeftRight, badge: 'New', highlight: true },
+        { href: '/bookings/shift', label: language === 'bn' ? 'আসন পরিবর্তন, সোয়াপ ও বাতিল' : 'Seat Shift, Swap & Cancel', icon: ArrowLeftRight, badge: 'Smart', highlight: true },
         { href: '/bookings/group', label: language === 'bn' ? 'কোচিং ও গ্রুপ বুকিং' : 'Group & Coaching Booking', icon: Building2, badge: 'Bulk' },
         { href: '/bookings/waiting-list', label: language === 'bn' ? 'ওয়েটিং লিস্ট ও অ্যালার্ট' : 'Waiting List & Alert', icon: Clock },
         { href: '/bookings/new', label: language === 'bn' ? 'নতুন টিকিট বুকিং (উইজার্ড)' : 'New Booking (Wizard)', icon: TicketPlus },

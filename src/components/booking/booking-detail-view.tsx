@@ -180,13 +180,19 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
     .filter(Boolean);
 
   // Accounting & Ledger
-  const grossAmount = Number(currentBooking.totalAmount || currentBooking.grossAmount || 0);
+  const grossAmount = Number(currentBooking.totalAmount ?? currentBooking.total_amount ?? currentBooking.grossAmount ?? currentBooking.gross_amount ?? 0);
   const discountAmount = Number(currentBooking.discountAmount || 0);
   const processingFee = Number(currentBooking.processingFee || currentBooking.processing_fee || 0);
   const netAmount = Math.max(0, grossAmount - discountAmount + processingFee);
-  const paidAmount = Number(currentBooking.paidAmount || (currentBooking.paymentStatus === 'PAID' ? netAmount : 0));
+  const rawPaidAmount = currentBooking.paidAmount ?? currentBooking.paid_amount;
+  const rawPaymentStatus = (currentBooking.paymentStatus || currentBooking.payment_status || '').toUpperCase();
+  const paidAmount = Number(
+    rawPaidAmount !== undefined && rawPaidAmount !== null
+      ? rawPaidAmount
+      : (rawPaymentStatus === 'PAID' || rawPaymentStatus === 'CONFIRMED' ? netAmount : 0)
+  );
   const dueAmount = Math.max(0, netAmount - paidAmount);
-  const isPaidInFull = dueAmount <= 0;
+  const isPaidInFull = dueAmount <= 0 || rawPaymentStatus === 'PAID';
 
   // Initialize collect amount with actual due
   useEffect(() => {

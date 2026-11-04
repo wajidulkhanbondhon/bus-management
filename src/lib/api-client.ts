@@ -155,6 +155,14 @@ export const fastApiClient = {
     apiRequest(`/bookings/${bookingId}/cancel?reason=${encodeURIComponent(reason)}`, { method: 'POST', ...options }),
   rejectPreBooking: (bookingId: string, reason: string = 'Verification Failed', options?: RequestInit) =>
     apiRequest(`/bookings/${bookingId}/reject?reason=${encodeURIComponent(reason)}`, { method: 'POST', ...options }),
+  shiftBookingSeat: (data: { booking_id: string; current_seat: string; target_seat: string; reason?: string }, options?: RequestInit) =>
+    apiRequest('/bookings/shift-seat', { method: 'POST', body: JSON.stringify(data), ...options }),
+  swapBookingSeats: (data: { booking_id_1: string; seat_1: string; booking_id_2: string; seat_2: string; reason?: string }, options?: RequestInit) =>
+    apiRequest('/bookings/swap-seats', { method: 'POST', body: JSON.stringify(data), ...options }),
+  transferBookingTrip: (data: { booking_id: string; current_seat: string; target_trip_id: string; target_seat: string; reason?: string }, options?: RequestInit) =>
+    apiRequest('/bookings/transfer-bus', { method: 'POST', body: JSON.stringify(data), ...options }),
+  cancelBookingSeat: (data: { booking_id: string; seat_number?: string; reason?: string; refund_amount?: number; cancellation_fee?: number }, options?: RequestInit) =>
+    apiRequest('/bookings/cancel-seat', { method: 'POST', body: JSON.stringify(data), ...options }),
 
   // Inventory & Locking
   acquireSeatHold: (tripId: string, data: { seat_id?: string; seatId?: string; client_id?: string; clientId?: string; duration_minutes?: number }, options?: RequestInit) =>

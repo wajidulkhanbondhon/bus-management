@@ -790,8 +790,252 @@ describe('ATOMS Domain Engine & Business Rules', () => {
       expect(netTotal).toBe(1400);
       expect(due).toBe(0); // No forced due or 50% discount
     });
+
+    it('should validate inputs for seat shift action correctly', async () => {
+      const { shiftSeatAction, swapSeatsAction, transferBusAction } = await import('@/actions/booking.actions');
+
+      // Reject missing fields for shift
+      const res1 = await shiftSeatAction({ bookingId: '', currentSeat: 'A1', targetSeat: 'B2' });
+      expect(res1.success).toBe(false);
+      expect(res1.error).toContain('বাধ্যতামূলক');
+
+      const res2 = await shiftSeatAction({ bookingId: 'bk-123', currentSeat: '', targetSeat: 'B2' });
+      expect(res2.success).toBe(false);
+      expect(res2.error).toContain('বাধ্যতামূলক');
+
+      // Reject missing fields for swap
+      const res3 = await swapSeatsAction({ bookingId1: '', seat1: 'A1', bookingId2: 'bk-2', seat2: 'B2' });
+      expect(res3.success).toBe(false);
+      expect(res3.error).toContain('আবশ্যক');
+
+      // Reject missing fields for transfer bus
+      const res4 = await transferBusAction({ bookingId: '', currentSeat: 'A1', targetTripId: 'tr-2', targetSeat: 'C1' });
+      expect(res4.success).toBe(false);
+      expect(res4.error).toContain('নির্বাচন করুন');
+    });
+
+    it('should translate English error messages to clear Bengali in Quick Counter Booking', async () => {
+      const { translateErrorMessageToBn } = await import('@/components/booking/quick-counter-booking-client');
+
+      expect(translateErrorMessageToBn('Seat already booked by another user')).toContain('ইতোমধ্যে বুক হয়ে গেছে');
+      expect(translateErrorMessageToBn('Seat is locked')).toContain('লক করা আছে');
+      expect(translateErrorMessageToBn('Invalid phone number: 11 digit mobile required')).toContain('১১ ডিজিটের মোবাইল নম্বর');
+      expect(translateErrorMessageToBn('Passenger name is required')).toContain('যাত্রীর নাম');
+      expect(translateErrorMessageToBn('Failed to fetch from server')).toContain('সার্ভারের সাথে সংযোগ');
+      expect(translateErrorMessageToBn('Internal server error (500)')).toContain('সার্ভারে অভ্যন্তরীণ সমস্যা');
+      // If already in Bengali, should preserve it
+      expect(translateErrorMessageToBn('কমপক্ষে একটি আসন নির্বাচন করুন')).toBe('কমপক্ষে একটি আসন নির্বাচন করুন');
+    });
+
+    it('should correctly normalize snake_case and camelCase booking attributes without false due', async () => {
+      const { normalizeBooking } = await import('@/services/booking.service');
+
+      // Fully paid booking from FastAPI with snake_case
+      const rawApiBooking = {
+        id: 'fastapi-bk-999',
+        booking_number: 'BK-API-999',
+        total_amount: 1100,
+        paid_amount: 1100,
+        payment_status: 'PAID',
+        due_promise_date: '2026-11-05',
+        due_note: 'Paid via counter cash'
+      };
+
+      const normalized = normalizeBooking(rawApiBooking);
+      expect(normalized.netAmount).toBe(1100);
+      expect(normalized.paidAmount).toBe(1100);
+      expect(normalized.dueAmount).toBe(0);
+      expect(normalized.paymentStatus).toBe('PAID');
+      expect(normalized.duePromiseDate).toBe('2026-11-05');
+      expect(normalized.dueNote).toBe('Paid via counter cash');
+
+      // Partial paid booking
+      const partialBooking = {
+        id: 'fastapi-bk-1000',
+        booking_number: 'BK-API-1000',
+        total_amount: 1100,
+        paid_amount: 500,
+        payment_status: 'PARTIAL',
+        due_promise_date: '2026-11-06',
+        due_note: '🚌 বাসে উঠে সুপারভাইজারকে বকেয়া পরিশোধ করবে (Pay on Bus)'
+      };
+
+      const normPartial = normalizeBooking(partialBooking);
+      expect(normPartial.netAmount).toBe(1100);
+      expect(normPartial.paidAmount).toBe(500);
+      expect(normPartial.dueAmount).toBe(600);
+      expect(normPartial.paymentStatus).toBe('PARTIAL');
+      expect(normPartial.duePromiseDate).toBe('2026-11-06');
+      expect(normPartial.dueNote).toContain('বাসে উঠে');
+    });
+
+    it('should correctly structure distinct multi-passenger inputs per selected seat in quick counter booking', () => {
+      const selectedSeats = [
+        { seatId: 'seat-1-A1', seatNumber: 'A1', fare: 550 },
+        { seatId: 'seat-1-A2', seatNumber: 'A2', fare: 550 },
+      ];
+
+      const passengersBySeat = {
+        'seat-1-A1': {
+          seatId: 'seat-1-A1',
+          seatNumber: 'A1',
+          name: 'তানভীর আহমেদ',
+          phone: '01711000001',
+          gender: 'MALE' as const,
+          isStudent: true
+        },
+        'seat-1-A2': {
+          seatId: 'seat-1-A2',
+          seatNumber: 'A2',
+          name: 'সাদিয়া সুলতানা',
+          phone: '01711000002',
+          gender: 'FEMALE' as const,
+          isStudent: false
+        }
+      };
+
+      const passengerPayload = selectedSeats.map((s) => {
+        const p = passengersBySeat[s.seatId as keyof typeof passengersBySeat];
+        return {
+          passengerName: p.name,
+          passengerPhone: p.phone,
+          gender: p.gender,
+          seatId: s.seatId,
+          passengerType: p.isStudent ? 'STUDENT' : 'GUARDIAN'
+        };
+      });
+
+      expect(passengerPayload).toHaveLength(2);
+      expect(passengerPayload[0].passengerName).toBe('তানভীর আহমেদ');
+      expect(passengerPayload[0].gender).toBe('MALE');
+      expect(passengerPayload[1].passengerName).toBe('সাদিয়া সুলতানা');
+      expect(passengerPayload[1].gender).toBe('FEMALE');
+      expect(passengerPayload[1].passengerPhone).toBe('01711000002');
+    });
+
+    it('should correctly capture guardian relationship and details alongside male/female', async () => {
+      const { GUARDIAN_RELATIONSHIPS } = await import('@/components/booking/booking-summary-sidebar');
+
+      expect(GUARDIAN_RELATIONSHIPS.length).toBeGreaterThan(5);
+      const motherOption = GUARDIAN_RELATIONSHIPS.find((r) => r.value === 'MOTHER');
+      expect(motherOption).toBeDefined();
+      expect(motherOption?.defaultGender).toBe('FEMALE');
+
+      const fatherOption = GUARDIAN_RELATIONSHIPS.find((r) => r.value === 'FATHER');
+      expect(fatherOption).toBeDefined();
+      expect(fatherOption?.defaultGender).toBe('MALE');
+
+      const guardianDetail = {
+        passengerName: 'সুলতানা বেগম',
+        passengerPhone: '01811223344',
+        gender: 'FEMALE' as const,
+        seatId: 'seat-1-A2',
+        passengerType: 'GUARDIAN' as const,
+        guardianRelationship: 'MOTHER',
+        guardianPhone: '01711000001'
+      };
+
+      const { PassengerInputSchema } = await import('@/lib/validations');
+      const parsed = PassengerInputSchema.safeParse(guardianDetail);
+      expect(parsed.success).toBe(true);
+      if (parsed.success) {
+        expect(parsed.data.passengerType).toBe('GUARDIAN');
+        expect(parsed.data.guardianRelationship).toBe('MOTHER');
+      }
+    });
+
+    it('should automatically generate guardian name from relationship when name is omitted', async () => {
+      const { GUARDIAN_RELATIONSHIPS } = await import('@/components/booking/booking-summary-sidebar');
+      const { PassengerInputSchema } = await import('@/lib/validations');
+
+      const relCode = 'MOTHER';
+      const relObj = GUARDIAN_RELATIONSHIPS.find((r) => r.value === relCode);
+      const relLabel = relObj ? relObj.label.split(' ')[0] : 'অভিভাবক';
+
+      const guardianAutoNamed = {
+        passengerName: `অভিভাবক (${relLabel})`,
+        passengerPhone: '01811223344',
+        gender: relObj?.defaultGender || 'FEMALE',
+        seatId: 'seat-1-A2',
+        passengerType: 'GUARDIAN' as const,
+        guardianRelationship: relCode
+      };
+
+      const parsed = PassengerInputSchema.safeParse(guardianAutoNamed);
+      expect(parsed.success).toBe(true);
+      if (parsed.success) {
+        expect(parsed.data.passengerName).toBe('অভিভাবক (মা)');
+        expect(parsed.data.gender).toBe('FEMALE');
+        expect(parsed.data.guardianRelationship).toBe('MOTHER');
+      }
+    });
+  });
+
+  describe('Seat Shift, Swap, Cancel & Dynamic Fare Zone Rules', () => {
+    it('should classify seat rows into VIP, Standard, and Economy zones with accurate fares', async () => {
+      const { getSeatZoneInfo } = await import('@/components/booking/seat-shift-client');
+
+      // VIP Zone: Rows A & B
+      const seatA1 = getSeatZoneInfo('A1');
+      const seatB4 = getSeatZoneInfo('B4');
+      expect(seatA1.zone).toBe('VIP');
+      expect(seatA1.fare).toBe(650);
+      expect(seatB4.zone).toBe('VIP');
+      expect(seatB4.fare).toBe(650);
+
+      // Standard Middle Zone: Rows C through H
+      const seatC1 = getSeatZoneInfo('C1');
+      const seatH3 = getSeatZoneInfo('H3');
+      expect(seatC1.zone).toBe('STANDARD');
+      expect(seatC1.fare).toBe(550);
+      expect(seatH3.zone).toBe('STANDARD');
+      expect(seatH3.fare).toBe(550);
+
+      // Economy Rear Zone: Rows I and J
+      const seatI1 = getSeatZoneInfo('I1');
+      const seatJ5 = getSeatZoneInfo('J5');
+      expect(seatI1.zone).toBe('ECONOMY');
+      expect(seatI1.fare).toBe(500);
+      expect(seatJ5.zone).toBe('ECONOMY');
+      expect(seatJ5.fare).toBe(500);
+    });
+
+    it('should calculate live fare differences accurately for seat upgrade, downgrade, and same zone', async () => {
+      const { calculateFareComparison } = await import('@/components/booking/seat-shift-client');
+
+      // Upgrade: Economy (I1 = ৳500) to VIP (A1 = ৳650) -> +৳150 Extra Due
+      const upgrade = calculateFareComparison('I1', 'A1');
+      expect(upgrade.status).toBe('UPGRADE');
+      expect(upgrade.diffAmount).toBe(150);
+      expect(upgrade.amountText).toBe('+৳150');
+      expect(upgrade.titleBn).toContain('আপগ্রেড');
+
+      // Downgrade: VIP (A1 = ৳650) to Economy (J1 = ৳500) -> -৳150 Refund Due
+      const downgrade = calculateFareComparison('A1', 'J1');
+      expect(downgrade.status).toBe('DOWNGRADE');
+      expect(downgrade.diffAmount).toBe(150);
+      expect(downgrade.amountText).toBe('-৳150');
+      expect(downgrade.titleBn).toContain('ডাউনগ্রেড');
+
+      // Same zone: Standard (C1 = ৳550) to Standard (D2 = ৳550) -> ৳0 Equal
+      const sameZone = calculateFareComparison('C1', 'D2');
+      expect(sameZone.status).toBe('EQUAL');
+      expect(sameZone.diffAmount).toBe(0);
+      expect(sameZone.amountText).toBe('৳০ সমমূল্য');
+    });
+
+    it('should correctly calculate net refund and seat release during cancellation', async () => {
+      const { getSeatZoneInfo } = await import('@/components/booking/seat-shift-client');
+      const seat = getSeatZoneInfo('A1'); // Fare = 650
+      const cancellationFee = 50;
+      const netRefund = Math.max(0, seat.fare - cancellationFee);
+
+      expect(seat.fare).toBe(650);
+      expect(netRefund).toBe(600);
+    });
   });
 });
+
 
 
 

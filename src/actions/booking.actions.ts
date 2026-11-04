@@ -7,6 +7,10 @@ import {
   verifyAndStartPaymentTimer,
   confirmPreBookingPayment,
   rejectPreBooking,
+  shiftBookingSeat,
+  swapBookingSeats,
+  transferBookingTrip,
+  cancelBookingSeat,
   getOnlinePreBookings,
   getBookingByTrackingNumber,
   CreateBookingInput,
@@ -26,9 +30,21 @@ import { cookies } from 'next/headers';
 
 function formatZodErrors(error: any): string {
   if (error?.issues) {
-    return error.issues.map((i: any) => `${i.path.join('.')}: ${i.message}`).join('; ');
+    return error.issues.map((i: any) => {
+      let msg = i.message || '';
+      if (msg.includes('Trip ID is required')) return 'ট্রিপ বা বাস নির্বাচন করা আবশ্যক।';
+      if (msg.includes('At least one seat must be selected')) return 'অনুগ্রহ করে অন্তত একটি আসন নির্বাচন করুন।';
+      if (msg.includes('At least one passenger is required')) return 'কমপক্ষে একজন যাত্রীর তথ্য প্রয়োজন।';
+      if (msg.includes('Passenger name is required')) return 'যাত্রীর নাম প্রদান করা আবশ্যক।';
+      if (msg.includes('Seat ID is required')) return 'আসন নম্বর নির্বাচন করা আবশ্যক।';
+      if (msg.includes('Paid amount cannot exceed')) return 'পরিশোধের পরিমাণ সর্বমোট প্রদেয় ভাড়ার চেয়ে বেশি হতে পারে না।';
+      if (msg.includes('Fare must be non-negative')) return 'ভাড়ার পরিমাণ সঠিক নয়।';
+      if (msg.includes('Discount is unreasonably large')) return 'ছাড়ের পরিমাণ অত্যধিক বেশি।';
+      if (i.path?.includes('passengerPhone') || msg.includes('১১ ডিজিট')) return '১১ ডিজিটের সঠিক মোবাইল নম্বর দিন (যেমন 017XXXXXXXX)।';
+      return msg;
+    }).join('; ');
   }
-  return 'Invalid input data';
+  return 'প্রদত্ত তথ্যে ভুল রয়েছে। অনুগ্রহ করে তথ্য যাচাই করে পুনরায় চেষ্টা করুন।';
 }
 
 async function getAuthOptions(user?: any) {
@@ -241,3 +257,146 @@ export async function trackBookingAction(query: string) {
     return { success: false, error: error.message || 'বুকিং ট্র্যাক করতে সমস্যা হয়েছে।' };
   }
 }
+
+export async function shiftSeatAction(input: {
+  bookingId: string;
+  currentSeat: string;
+  targetSeat: string;
+  reason?: string;
+}) {
+  try {
+    if (!input.bookingId || !input.currentSeat || !input.targetSeat) {
+      return { success: false, error: 'বুকিং আইডি, বর্তমান আসন ও নতুন আসন নির্বাচন করা বাধ্যতামূলক।' };
+    }
+
+    const user = await requirePermission('booking:create');
+    const options = await getAuthOptions(user);
+    const booking = await shiftBookingSeat(
+      {
+        bookingId: input.bookingId,
+        currentSeat: input.currentSeat,
+        targetSeat: input.targetSeat,
+        reason: input.reason || 'যাত্রীর অনুরোধ / আসন পরিবর্তন',
+      },
+      options
+    );
+
+    revalidatePath('/bookings');
+    revalidatePath('/bookings/shift');
+    revalidatePath('/dashboard');
+    return { success: true, booking };
+  } catch (error: any) {
+    return { success: false, error: error.message || 'আসন পরিবর্তন ব্যর্থ হয়েছে।' };
+  }
+}
+
+export async function swapSeatsAction(input: {
+  bookingId1: string;
+  seat1: string;
+  bookingId2: string;
+  seat2: string;
+  reason?: string;
+}) {
+  try {
+    if (!input.bookingId1 || !input.seat1 || !input.bookingId2 || !input.seat2) {
+      return { success: false, error: 'উভয় বুকিং ও আসন নির্ধারণ করা আবশ্যক।' };
+    }
+
+    const user = await requirePermission('booking:create');
+    const options = await getAuthOptions(user);
+    const result = await swapBookingSeats(
+      {
+        bookingId1: input.bookingId1,
+        seat1: input.seat1,
+        bookingId2: input.bookingId2,
+        seat2: input.seat2,
+        reason: input.reason || 'যাত্রীদের পারস্পরিক সিট অদলবদল',
+      },
+      options
+    );
+
+    revalidatePath('/bookings');
+    revalidatePath('/bookings/shift');
+    revalidatePath('/dashboard');
+    return { success: true, result };
+  } catch (error: any) {
+    return { success: false, error: error.message || 'সিট অদলবদল ব্যর্থ হয়েছে।' };
+  }
+}
+
+export async function transferBusAction(input: {
+  bookingId: string;
+  currentSeat: string;
+  targetTripId: string;
+  targetSeat: string;
+  reason?: string;
+}) {
+  try {
+    if (!input.bookingId || !input.currentSeat || !input.targetTripId || !input.targetSeat) {
+      return { success: false, error: 'বুকিং, বর্তমান আসন, নতুন বাস ও নতুন আসন নির্বাচন করুন।' };
+    }
+
+    const user = await requirePermission('booking:create');
+    const options = await getAuthOptions(user);
+    const booking = await transferBookingTrip(
+      {
+        bookingId: input.bookingId,
+        currentSeat: input.currentSeat,
+        targetTripId: input.targetTripId,
+        targetSeat: input.targetSeat,
+        reason: input.reason || 'বিকল্প বাসে আসন স্থানান্তর',
+      },
+      options
+    );
+
+    revalidatePath('/bookings');
+    revalidatePath('/bookings/shift');
+    revalidatePath('/dashboard');
+    return { success: true, booking };
+  } catch (error: any) {
+    return { success: false, error: error.message || 'বাস স্থানান্তর ব্যর্থ হয়েছে।' };
+  }
+}
+
+export async function cancelSeatAction(input: {
+  bookingId: string;
+  seatNumber?: string;
+  reason?: string;
+  refundAmount?: number;
+  cancellationFee?: number;
+}) {
+  try {
+    if (!input.bookingId) {
+      return { success: false, error: 'বুকিং আইডি নির্বাচন করা আবশ্যক।' };
+    }
+
+    let user;
+    try {
+      user = await requirePermission('booking:cancel');
+    } catch {
+      user = await requirePermission('booking:create');
+    }
+
+    const options = await getAuthOptions(user);
+    const result = await cancelBookingSeat(
+      {
+        bookingId: input.bookingId,
+        seatNumber: input.seatNumber,
+        reason: input.reason || 'আসন বাতিল ও রিফান্ড',
+        refundAmount: input.refundAmount || 0,
+        cancellationFee: input.cancellationFee || 0,
+      },
+      options
+    );
+
+    revalidatePath('/bookings');
+    revalidatePath('/bookings/shift');
+    revalidatePath('/dashboard');
+    return { success: true, result };
+  } catch (error: any) {
+    return { success: false, error: error.message || 'সিট বাতিল ব্যর্থ হয়েছে।' };
+  }
+}
+
+
+

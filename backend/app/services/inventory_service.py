@@ -268,6 +268,7 @@ async def get_trip_seat_inventory(
             "fare": effective_fare,
             "status": status,
             "booking_number": booking_info.booking_number if booking_info else None,
+            "booking_id": booking_info.id if booking_info else None,
             "passenger_name": p_name,
             "passenger_phone": p_phone,
             "gender": p_gender,

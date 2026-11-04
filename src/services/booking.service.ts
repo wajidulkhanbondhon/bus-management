@@ -40,6 +40,11 @@ export interface CreateBookingInput {
   discountReference?: string;
   paymentMethod: 'BKASH' | 'NAGAD' | 'ROCKET' | 'HAND_CASH' | 'BANK_TRANSFER' | 'OTHER';
   paidAmount: number;
+  dueAmount?: number;
+  duePromiseDate?: string | null;
+  dueNote?: string | null;
+  isPayOnBus?: boolean;
+  paymentStatus?: 'PAID' | 'PARTIAL' | 'UNPAID' | 'CONFIRMED';
   processingFee?: number;
   vatAmount?: number;
   cashoutFee?: number;
@@ -115,24 +120,81 @@ export async function getOnlinePreBookings(filterOrStatus?: string | { status?: 
   return all.filter((b: any) => b.booking_status === 'PRE_BOOKED' || b.booking_status === 'PAYMENT_TIMER_ACTIVE' || b.source === 'ONLINE');
 }
 
+export function normalizeBooking(b: any) {
+  if (!b) return b;
+  const totalAmount = Number(b.totalAmount ?? b.total_amount ?? b.grossAmount ?? b.gross_amount ?? 0);
+  const discountAmount = Number(b.discountAmount ?? b.discount_amount ?? 0);
+  const processingFee = Number(b.processingFee ?? b.processing_fee ?? 0);
+  const vatAmount = Number(b.vatAmount ?? b.vat_amount ?? 0);
+  const cashoutFee = Number(b.cashoutFee ?? b.cashout_fee ?? 0);
+  const netAmount = Math.max(0, totalAmount - discountAmount + processingFee + vatAmount + cashoutFee);
+
+  const rawPaymentStatus = (b.paymentStatus || b.payment_status || '').toUpperCase();
+  const rawPaidAmount = b.paidAmount ?? b.paid_amount;
+  const paidAmount = Number(
+    rawPaidAmount !== undefined && rawPaidAmount !== null
+      ? rawPaidAmount
+      : (rawPaymentStatus === 'PAID' ? netAmount : 0)
+  );
+  const dueAmount = Math.max(0, netAmount - paidAmount);
+  const paymentStatus = (dueAmount <= 0 || rawPaymentStatus === 'PAID') ? 'PAID' : (paidAmount > 0 ? 'PARTIAL' : 'UNPAID');
+
+  return {
+    ...b,
+    id: b.id,
+    bookingNumber: b.bookingNumber || b.booking_number,
+    booking_number: b.bookingNumber || b.booking_number,
+    totalAmount,
+    total_amount: totalAmount,
+    grossAmount: totalAmount,
+    gross_amount: totalAmount,
+    discountAmount,
+    discount_amount: discountAmount,
+    processingFee,
+    processing_fee: processingFee,
+    vatAmount,
+    vat_amount: vatAmount,
+    cashoutFee,
+    cashout_fee: cashoutFee,
+    netAmount,
+    net_amount: netAmount,
+    paidAmount,
+    paid_amount: paidAmount,
+    dueAmount,
+    due_amount: dueAmount,
+    paymentStatus,
+    payment_status: paymentStatus,
+    contactName: b.contactName || b.contact_name,
+    contact_name: b.contactName || b.contact_name,
+    contactPhone: b.contactPhone || b.contact_phone,
+    contact_phone: b.contactPhone || b.contact_phone,
+    duePromiseDate: b.duePromiseDate || b.due_promise_date,
+    due_promise_date: b.duePromiseDate || b.due_promise_date,
+    dueNote: b.dueNote || b.due_note,
+    due_note: b.dueNote || b.due_note
+  };
+}
+
 export async function getBookingById(id: string, options?: RequestInit) {
   if (!id) return null;
   const res = await fastApiClient.getBookingById(id, options);
   if (res.success && res.data) {
-    return res.data;
+    return normalizeBooking(res.data);
   }
   const all = await getAllBookings();
-  return all.find((b: any) => b.id === id) || null;
+  const found = all.find((b: any) => b.id === id);
+  return found ? normalizeBooking(found) : null;
 }
 
 export async function getBookingByTrackingNumber(trackingNumber: string) {
   if (!trackingNumber) return null;
   const res = await fastApiClient.trackBooking(trackingNumber);
   if (res.success && res.data) {
-    return res.data;
+    return normalizeBooking(res.data);
   }
   const all = await getAllBookings();
-  return all.find((b: any) => b.booking_number === trackingNumber || b.contact_phone === trackingNumber) || null;
+  const found = all.find((b: any) => b.booking_number === trackingNumber || b.contact_phone === trackingNumber);
+  return found ? normalizeBooking(found) : null;
 }
 
 export async function createBooking(input: CreateBookingInput, options?: RequestInit) {
@@ -174,6 +236,7 @@ export async function createBooking(input: CreateBookingInput, options?: Request
         student_admission_id: p.admissionId,
         admission_id: p.admissionId,
         guardian_phone: p.guardianPhone,
+        guardian_relationship: p.guardianRelationship,
         phone_type: p.phoneType || (p.hasWhatsapp !== false ? 'WHATSAPP' : 'NORMAL'),
         has_whatsapp: p.hasWhatsapp ?? (p.phoneType === 'WHATSAPP'),
         whatsapp_number: p.whatsappNumber || (p.phoneType === 'WHATSAPP' ? p.passengerPhone : undefined)
@@ -188,6 +251,10 @@ export async function createBooking(input: CreateBookingInput, options?: Request
     discount_reason: input.discountReason || input.discountReference,
     payment_method: input.paymentMethod,
     paid_amount: input.paidAmount,
+    due_amount: input.dueAmount,
+    due_promise_date: input.duePromiseDate,
+    due_note: input.dueNote,
+    payment_status: input.paymentStatus || ((input.dueAmount === 0 || input.paidAmount >= input.seats.reduce((s, x) => s + x.fare, 0)) ? 'PAID' : (input.paidAmount > 0 ? 'PARTIAL' : 'UNPAID')),
     processing_fee: input.processingFee || 0,
     vat_amount: input.vatAmount || 0,
     cashout_fee: input.cashoutFee || 0,
@@ -274,6 +341,96 @@ export async function rejectPreBooking(bookingIdOrInput: any, reason?: string, o
   const res = await fastApiClient.rejectPreBooking(bookingId, rejectionReason, options);
   if (!res.success) {
     throw new Error(res.error || 'Failed to reject pre-booking');
+  }
+  return res.data;
+}
+
+export interface ShiftBookingSeatInput {
+  bookingId: string;
+  currentSeat: string;
+  targetSeat: string;
+  reason?: string;
+}
+
+export async function shiftBookingSeat(input: ShiftBookingSeatInput, options?: RequestInit) {
+  const res = await fastApiClient.shiftBookingSeat({
+    booking_id: input.bookingId,
+    current_seat: input.currentSeat,
+    target_seat: input.targetSeat,
+    reason: input.reason || 'Customer Request',
+  }, options);
+
+  if (!res.success) {
+    throw new Error(res.error || 'Failed to shift seat');
+  }
+  return res.data;
+}
+
+export interface SwapBookingSeatsInput {
+  bookingId1: string;
+  seat1: string;
+  bookingId2: string;
+  seat2: string;
+  reason?: string;
+}
+
+export async function swapBookingSeats(input: SwapBookingSeatsInput, options?: RequestInit) {
+  const res = await fastApiClient.swapBookingSeats({
+    booking_id_1: input.bookingId1,
+    seat_1: input.seat1,
+    booking_id_2: input.bookingId2,
+    seat_2: input.seat2,
+    reason: input.reason || 'যাত্রীদের পারস্পরিক সিট অদলবদল',
+  }, options);
+
+  if (!res.success) {
+    throw new Error(res.error || 'Failed to swap seats');
+  }
+  return res.data;
+}
+
+export interface TransferBookingTripInput {
+  bookingId: string;
+  currentSeat: string;
+  targetTripId: string;
+  targetSeat: string;
+  reason?: string;
+}
+
+export async function transferBookingTrip(input: TransferBookingTripInput, options?: RequestInit) {
+  const res = await fastApiClient.transferBookingTrip({
+    booking_id: input.bookingId,
+    current_seat: input.currentSeat,
+    target_trip_id: input.targetTripId,
+    target_seat: input.targetSeat,
+    reason: input.reason || 'বিকল্প বাসে আসন স্থানান্তর',
+  }, options);
+
+  if (!res.success) {
+    throw new Error(res.error || 'Failed to transfer bus/trip');
+  }
+  return res.data;
+}
+
+export interface CancelBookingSeatInput {
+  bookingId: string;
+  seatNumber?: string;
+  reason?: string;
+  refundAmount?: number;
+  cancellationFee?: number;
+}
+
+export async function cancelBookingSeat(input: CancelBookingSeatInput, options?: RequestInit) {
+  const res = await fastApiClient.cancelBookingSeat({
+    booking_id: input.bookingId,
+    seat_number: input.seatNumber,
+    reason: input.reason || 'Customer Request / আসন বাতিল',
+    refund_amount: input.refundAmount || 0,
+    cancellation_fee: input.cancellationFee || 0,
+  }, options);
+
+  if (!res.success) {
+    throw new Error(res.error || 'Failed to cancel seat');
   }
   return res.data;
 }

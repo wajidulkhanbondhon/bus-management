@@ -27,7 +27,7 @@ export const OptionalBdPhoneNumberSchema = z
 // --- Booking Schemas ---
 
 export const PassengerInputSchema = z.object({
-  passengerName: z.string().min(1, 'Passenger name is required').max(200),
+  passengerName: z.string().min(1, 'যাত্রীর নাম প্রদান করা আবশ্যক').max(200),
   passengerPhone: BdPhoneNumberSchema,
   email: z.string().email().optional().or(z.literal('')).nullable(),
   phoneType: z.enum(['WHATSAPP', 'NORMAL']).optional().default('WHATSAPP'),
@@ -35,7 +35,7 @@ export const PassengerInputSchema = z.object({
   whatsappNumber: OptionalBdPhoneNumberSchema,
   passengerType: PassengerTypeSchema,
   gender: GenderSchema,
-  seatId: z.string().min(1, 'Seat ID is required'),
+  seatId: z.string().min(1, 'আসন নির্বাচন করা আবশ্যক'),
   admissionId: z.string().max(50).optional().nullable(),
   institution: z.string().max(200).optional().nullable(),
   groupCategory: z.string().max(100).optional().nullable(),
@@ -56,22 +56,27 @@ export const CouponCodeSchema = z
   });
 
 export const CreateBookingSchema = z.object({
-  tripId: z.string().min(1, 'Trip ID is required'),
+  tripId: z.string().min(1, 'ট্রিপ বা বাস নির্বাচন করা আবশ্যক'),
   seats: z.array(z.object({
     seatId: z.string().min(1),
-    fare: z.number().min(0, 'Fare must be non-negative'),
-  })).min(1, 'At least one seat must be selected').max(6, 'এক সাথে সর্বোচ্চ ৬টির বেশি সিট বুকিং করা যাবে না (A4 সিঙ্গেল-পেজ প্রিন্ট নীতি অনুযায়ী)'),
-  passengers: z.array(PassengerInputSchema).min(1, 'At least one passenger is required').max(6, 'এক সাথে সর্বোচ্চ ৬টির বেশি টিকিট কাটা যাবে না (A4 সিঙ্গেল-পেজ প্রিন্ট নীতি অনুযায়ী)'),
+    fare: z.number().min(0, 'ভাড়ার পরিমাণ সঠিক নয়'),
+  })).min(1, 'কমপক্ষে একটি আসন নির্বাচন করতে হবে').max(6, 'এক সাথে সর্বোচ্চ ৬টির বেশি সিট বুকিং করা যাবে না (A4 সিঙ্গেল-পেজ প্রিন্ট নীতি অনুযায়ী)'),
+  passengers: z.array(PassengerInputSchema).min(1, 'কমপক্ষে একজন যাত্রীর তথ্য প্রয়োজন').max(6, 'এক সাথে সর্বোচ্চ ৬টির বেশি টিকিট কাটা যাবে না (A4 সিঙ্গেল-পেজ প্রিন্ট নীতি অনুযায়ী)'),
   contactName: z.string().optional(),
   contactPhone: z.string().optional(),
   contactEmail: z.string().email().optional().or(z.literal('')).nullable(),
   isDiscountApplied: z.boolean().optional(),
   discountType: z.enum(['FIXED', 'PERCENTAGE']).optional(),
-  discountRate: z.number().min(0).max(50000, 'Discount is unreasonably large').optional(),
+  discountRate: z.number().min(0).max(50000, 'ছাড়ের পরিমাণ অত্যধিক বেশি').optional(),
   discountReason: z.string().max(500).optional(),
   discountReference: z.string().max(200).optional(),
   paymentMethod: PaymentMethodSchema,
-  paidAmount: z.number().min(0, 'Paid amount must be non-negative'),
+  paidAmount: z.number().min(0, 'পরিশোধের পরিমাণ ঋণাত্মক হতে পারে না'),
+  dueAmount: z.number().min(0).optional(),
+  duePromiseDate: z.string().optional().nullable(),
+  dueNote: z.string().max(500).optional().nullable(),
+  isPayOnBus: z.boolean().optional(),
+  paymentStatus: z.enum(['PAID', 'PARTIAL', 'UNPAID', 'CONFIRMED']).optional(),
   journeyType: z.enum(['ROUND_TRIP', 'OUTBOUND_ONLY', 'RETURN_ONLY', 'ASYMMETRIC']).optional(),
   boardingPoint: z.string().max(200).optional().nullable(),
   droppingPoint: z.string().max(200).optional().nullable(),
@@ -93,7 +98,7 @@ export const CreateBookingSchema = z.object({
   // Paid amount should not exceed net total payable (with a small buffer of 1 Tk for rounding)
   return data.paidAmount <= maxPayable + 1;
 }, {
-  message: 'Paid amount cannot exceed total payable fare including fees',
+  message: 'পরিশোধের পরিমাণ সর্বমোট প্রদেয় ভাড়ার চেয়ে বেশি হতে পারে না',
   path: ['paidAmount']
 });
 

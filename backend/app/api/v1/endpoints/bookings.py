@@ -9,6 +9,10 @@ from app.models.booking import Booking
 from app.models.trip import Trip
 from app.models.user import User
 from app.schemas.booking import (
+    CancelSeatRequest,
+    ShiftSeatRequest,
+    SwapSeatRequest,
+    TransferBusRequest,
     CreateBookingRequest,
     CreatePreBookingRequest,
     VerifyTimerRequest,
@@ -17,6 +21,10 @@ from app.schemas.booking import (
     OfflineSyncRequest
 )
 from app.services.booking_service import (
+    cancel_seat_service,
+    shift_booking_seat_service,
+    swap_booking_seats_service,
+    transfer_booking_trip_service,
     create_counter_booking,
     create_pre_booking,
     verify_and_start_timer,
@@ -252,3 +260,110 @@ async def sync_offline_bookings_endpoint(
     results = await sync_offline_bookings(db, req.bookings, staff_id)
     return {"success": True, "results": results}
 
+
+
+@router.post("/shift-seat", response_model=BookingOut)
+async def shift_seat(
+    req: ShiftSeatRequest,
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
+):
+    try:
+        staff_id = current_user.id if current_user else None
+        return await shift_booking_seat_service(
+            db=db,
+            booking_id=req.booking_id,
+            current_seat=req.current_seat,
+            target_seat=req.target_seat,
+            reason=req.reason or "Customer Request",
+            staff_id=staff_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/swap-seats")
+async def swap_seats_endpoint(
+    req: SwapSeatRequest,
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
+):
+    try:
+        staff_id = current_user.id if current_user else None
+        return await swap_booking_seats_service(
+            db=db,
+            booking_id_1=req.booking_id_1,
+            seat_1=req.seat_1,
+            booking_id_2=req.booking_id_2,
+            seat_2=req.seat_2,
+            reason=req.reason or "যাত্রীদের পারস্পরিক সিট অদলবদল",
+            staff_id=staff_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/transfer-bus", response_model=BookingOut)
+async def transfer_bus_endpoint(
+    req: TransferBusRequest,
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
+):
+    try:
+        staff_id = current_user.id if current_user else None
+        return await transfer_booking_trip_service(
+            db=db,
+            booking_id=req.booking_id,
+            current_seat=req.current_seat,
+            target_trip_id=req.target_trip_id,
+            target_seat=req.target_seat,
+            reason=req.reason or "বিকল্প বাসে আসন স্থানান্তর",
+            staff_id=staff_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/cancel-seat")
+async def cancel_seat_endpoint(
+    req: CancelSeatRequest,
+    db: WrappedAsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "BOOKING_STAFF"]))
+):
+    try:
+        staff_id = current_user.id if current_user else None
+        return await cancel_seat_service(
+            db=db,
+            booking_id=req.booking_id,
+            seat_number=req.seat_number,
+            reason=req.reason or "Customer Request / আসন বাতিল",
+            refund_amount=req.refund_amount or 0.0,
+            cancellation_fee=req.cancellation_fee or 0.0,
+            staff_id=staff_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=400, detail=str(e))

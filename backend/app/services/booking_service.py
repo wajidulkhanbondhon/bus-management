@@ -23,6 +23,7 @@ from app.schemas.booking import (
 from app.core.redis_client import hold_seat_redis, release_seat_redis, get_seat_hold_status_redis
 from app.core.idempotency import check_or_set_idempotency, complete_idempotency, clear_idempotency
 from app.services.seat_layout_service import (
+    adjacent_partners,
     resolve_requested_seats,
     validate_booking_request_seats,
     find_active_conflict,
@@ -1023,3 +1024,350 @@ async def sync_offline_bookings(
             })
     return results
 
+
+
+async def shift_booking_seat_service(
+    db: Session,
+    booking_id: str,
+    current_seat: str,
+    target_seat: str,
+    reason: Optional[str] = "Customer Request",
+    staff_id: Optional[str] = None
+) -> Booking:
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    booking = await db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise ValueError(f"বুকিং আইডি '{booking_id}' খুঁজে পাওয়া যায়নি")
+
+    if booking.booking_status in ["CANCELLED", "EXPIRED", "REJECTED"]:
+        raise ValueError(f"বাতিল বা মেয়াদোত্তীর্ণ বুকিংয়ের ({booking.booking_status}) আসন পরিবর্তন করা যাবে না")
+
+    curr_clean = current_seat.strip().upper()
+    target_clean = target_seat.strip().upper()
+
+    if curr_clean == target_clean:
+        raise ValueError("বর্তমান আসন এবং নতুন আসন একই হতে পারে না")
+
+    # 1. Verify passenger/seat in current booking
+    passengers = await db.query(BookingPassenger).filter(BookingPassenger.booking_id == booking.id).all()
+    target_passenger = None
+    for p in passengers:
+        p_seat = (p.seat_number or "").strip().upper()
+        if p_seat == curr_clean or curr_clean.endswith(p_seat) or p_seat.endswith(curr_clean):
+            target_passenger = p
+            break
+
+    if not target_passenger:
+        raise ValueError(f"বর্তমান বুকিংয়ে আসন '{current_seat}' বরাদ্দকৃত যাত্রী পাওয়া যায়নি")
+
+    # 2. Check if target_seat is already booked on the same trip by ANY active booking
+    active_bookings = await db.query(Booking).filter(
+        Booking.trip_id == booking.trip_id,
+        Booking.id != booking.id,
+        Booking.booking_status.in_(["CONFIRMED", "COMPLETED", "PAYMENT_TIMER_ACTIVE", "PRE_BOOKED", "HELD"])
+    ).all()
+
+    active_b_ids = [b.id for b in active_bookings]
+    if active_b_ids:
+        conflict_passenger = await db.query(BookingPassenger).filter(
+            BookingPassenger.booking_id.in_(active_b_ids),
+            BookingPassenger.seat_number == target_clean
+        ).first()
+        if conflict_passenger:
+            raise ValueError(f"নতুন আসন '{target_clean}' ইতিমধ্যে অন্য যাত্রী বুক করে নিয়েছেন!")
+
+        conflict_seat = await db.query(BookingSeat).filter(
+            BookingSeat.booking_id.in_(active_b_ids),
+            or_(BookingSeat.seat_id == target_clean, BookingSeat.seat_id.like(f"%-{target_clean}"))
+        ).first()
+        if conflict_seat:
+            raise ValueError(f"নতুন আসন '{target_clean}' ইতিমধ্যে অন্য বুকিংয়ে যুক্ত আছে!")
+
+    # 3. Check if target_seat is locked
+    locked = await db.query(SeatLock).filter(
+        SeatLock.trip_id == booking.trip_id,
+        or_(SeatLock.seat_id == target_clean, SeatLock.seat_id.like(f"%-{target_clean}")),
+        SeatLock.is_active == True,
+        or_(SeatLock.locked_until == None, SeatLock.locked_until > now)
+    ).first()
+    if locked:
+        raise ValueError(f"আসন '{target_clean}' বর্তমানে লক/সংরক্ষিত অবস্থায় আছে ({locked.reason})")
+
+    # 4. Resolve DB Seat row if available for target_seat
+    target_seat_row = await db.query(Seat).filter(
+        Seat.seat_number == target_clean,
+        Seat.is_active == True
+    ).first()
+
+    # 5. Update BookingSeat
+    b_seats = await db.query(BookingSeat).filter(BookingSeat.booking_id == booking.id).all()
+    updated_b_seat = False
+    for bs in b_seats:
+        s_id = (bs.seat_id or "").strip().upper()
+        if s_id == curr_clean or s_id.endswith(f"-{curr_clean}"):
+            if target_seat_row:
+                bs.seat_id = target_seat_row.id
+            else:
+                bs.seat_id = f"{booking.trip_id}-{target_clean}"
+            updated_b_seat = True
+            break
+
+    if not updated_b_seat and b_seats:
+        if len(b_seats) == 1:
+            b_seats[0].seat_id = target_seat_row.id if target_seat_row else f"{booking.trip_id}-{target_clean}"
+
+    # 6. Update BookingPassenger seat_number
+    old_seat_label = target_passenger.seat_number
+    target_passenger.seat_number = target_clean
+
+    # 7. Add audit trail to booking notes
+    shift_ts = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    shift_record = f"[আসন স্থানান্তর: {old_seat_label} ➔ {target_clean} | কারণ: {reason or 'যাত্রীর অনুরোধ'} | সময়: {shift_ts} | স্টাফ: {staff_id or 'System'}]"
+    if booking.notes:
+        booking.notes = f"{booking.notes} | {shift_record}"
+    else:
+        booking.notes = shift_record
+
+    # 8. Add system AuditLog
+    db.add(AuditLog(
+        user_id=staff_id,
+        action="SEAT_SHIFTED",
+        entity="Booking",
+        entity_id=booking.id,
+        new_value=f"Seat shifted from {old_seat_label} to {target_clean} for booking {booking.booking_number}. Reason: {reason}"
+    ))
+
+    # 9. Release any Redis hold keys
+    try:
+        release_seat_redis("default", booking.trip_id, curr_clean)
+        release_seat_redis("default", booking.trip_id, target_clean)
+    except Exception:
+        pass
+
+    await db.commit()
+    await db.refresh(booking)
+    return booking
+
+
+async def swap_booking_seats_service(
+    db: Session,
+    booking_id_1: str,
+    seat_1: str,
+    booking_id_2: str,
+    seat_2: str,
+    reason: Optional[str] = "যাত্রীদের পারস্পরিক সিট অদলবদল",
+    staff_id: Optional[str] = None
+) -> Dict[str, Any]:
+    b1 = await db.query(Booking).filter(Booking.id == booking_id_1).first()
+    b2 = await db.query(Booking).filter(Booking.id == booking_id_2).first()
+    if not b1 or not b2:
+        raise ValueError("এক বা একাধিক বুকিং রেকর্ড খুঁজে পাওয়া যায়নি")
+
+    if b1.trip_id != b2.trip_id:
+        raise ValueError("আসন অদলবদল শুধুমাত্র একই বাসের যাত্রীদের মধ্যে সম্ভব")
+
+    s1_clean = seat_1.strip().upper()
+    s2_clean = seat_2.strip().upper()
+
+    p1 = await db.query(BookingPassenger).filter(
+        BookingPassenger.booking_id == b1.id,
+        BookingPassenger.seat_number == s1_clean
+    ).first()
+    p2 = await db.query(BookingPassenger).filter(
+        BookingPassenger.booking_id == b2.id,
+        BookingPassenger.seat_number == s2_clean
+    ).first()
+
+    if not p1 or not p2:
+        raise ValueError("উভয় আসনের জন্য নির্ধারিত যাত্রী খুঁজে পাওয়া যায়নি")
+
+    # Gender adjacency safety check for both passengers in swapped seats
+    p1_gen = (p1.gender or "MALE").strip().upper()
+    p2_gen = (p2.gender or "MALE").strip().upper()
+
+    for p, target_s, other_s, other_gen in [(p1, s2_clean, s1_clean, p2_gen), (p2, s1_clean, s2_clean, p1_gen)]:
+        p_gen = (p.gender or "MALE").strip().upper()
+        for nb in adjacent_partners(target_s):
+            if nb == other_s:
+                if other_gen != p_gen:
+                    raise ValueError(f"রুলস লঙ্ঘন: সিট {target_s} এবং {other_s} পাশাপাশি বিপরীত জেন্ডারের। ছেলের পাশে ছেলে, মেয়ের পাশে মেয়ে নিয়ম বজায় রাখতে হবে।")
+            else:
+                adj = await db.query(BookingPassenger).join(Booking, Booking.id == BookingPassenger.booking_id).filter(
+                    Booking.trip_id == b1.trip_id,
+                    Booking.id.notin_([b1.id, b2.id]),
+                    Booking.booking_status.in_(["CONFIRMED", "COMPLETED", "PAYMENT_TIMER_ACTIVE", "PRE_BOOKED", "HELD"]),
+                    BookingPassenger.seat_number == nb
+                ).first()
+                if adj:
+                    adj_gen = (adj.gender or "").strip().upper()
+                    if adj_gen and adj_gen != p_gen:
+                        adj_desc = "নারী" if adj_gen == "FEMALE" else "পুরুষ"
+                        p_desc = "নারী" if p_gen == "FEMALE" else "পুরুষ"
+                        raise ValueError(f"রুলস লঙ্ঘন: সিট {target_s}-এর সংলগ্ন সিট {nb} একজন {adj_desc} যাত্রী বুক করেছেন। {p_desc} যাত্রী এই আসনে সোয়াপ করতে পারবেন না।")
+
+    # Perform swap
+    p1.seat_number = s2_clean
+    p2.seat_number = s1_clean
+
+    s1_row = await db.query(Seat).filter(Seat.seat_number == s1_clean).first()
+    s2_row = await db.query(Seat).filter(Seat.seat_number == s2_clean).first()
+
+    bs1 = await db.query(BookingSeat).filter(BookingSeat.booking_id == b1.id).all()
+    bs2 = await db.query(BookingSeat).filter(BookingSeat.booking_id == b2.id).all()
+    for bs in bs1:
+        if (bs.seat_id or "").upper().endswith(s1_clean):
+            bs.seat_id = s2_row.id if s2_row else f"{b1.trip_id}-{s2_clean}"
+    for bs in bs2:
+        if (bs.seat_id or "").upper().endswith(s2_clean):
+            bs.seat_id = s1_row.id if s1_row else f"{b2.trip_id}-{s1_clean}"
+
+    ts = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    note1 = f"[আসন অদলবদল: {s1_clean} ⇄ {s2_clean} (বুকিং #{b2.booking_number}-এর সাথে) | কারণ: {reason} | সময়: {ts}]"
+    note2 = f"[আসন অদলবদল: {s2_clean} ⇄ {s1_clean} (বুকিং #{b1.booking_number}-এর সাথে) | কারণ: {reason} | সময়: {ts}]"
+    b1.notes = f"{b1.notes} | {note1}" if b1.notes else note1
+    b2.notes = f"{b2.notes} | {note2}" if b2.notes else note2
+
+    db.add(AuditLog(user_id=staff_id, action="SEAT_SWAPPED", entity="Booking", entity_id=b1.id, new_value=note1))
+    db.add(AuditLog(user_id=staff_id, action="SEAT_SWAPPED", entity="Booking", entity_id=b2.id, new_value=note2))
+
+    await db.commit()
+    await db.refresh(b1)
+    await db.refresh(b2)
+    return {"success": True, "booking1": b1, "booking2": b2}
+
+
+async def transfer_booking_trip_service(
+    db: Session,
+    booking_id: str,
+    current_seat: str,
+    target_trip_id: str,
+    target_seat: str,
+    reason: Optional[str] = "বিকল্প বাসে আসন স্থানান্তর",
+    staff_id: Optional[str] = None
+) -> Booking:
+    booking = await db.query(Booking).filter(Booking.id == booking_id).first()
+    target_trip = await db.query(Trip).filter(Trip.id == target_trip_id).first()
+    if not booking:
+        raise ValueError("বুকিং খুঁজে পাওয়া যায়নি")
+    if not target_trip:
+        raise ValueError("গন্তব্য বাস/ট্রিপ খুঁজে পাওয়া যায়নি")
+
+    curr_clean = current_seat.strip().upper()
+    target_clean = target_seat.strip().upper()
+
+    passenger = await db.query(BookingPassenger).filter(
+        BookingPassenger.booking_id == booking.id,
+        BookingPassenger.seat_number == curr_clean
+    ).first()
+    if not passenger:
+        raise ValueError(f"বুকিংয়ে আসন {curr_clean} পাওয়া যায়নি")
+
+    # Check target_seat availability on target_trip
+    occupied = await db.query(BookingPassenger).join(Booking, Booking.id == BookingPassenger.booking_id).filter(
+        Booking.trip_id == target_trip.id,
+        Booking.booking_status.in_(["CONFIRMED", "COMPLETED", "PAYMENT_TIMER_ACTIVE", "PRE_BOOKED", "HELD"]),
+        BookingPassenger.seat_number == target_clean
+    ).first()
+    if occupied:
+        raise ValueError(f"গন্তব্য বাসে আসন {target_clean} ইতিমধ্যে অন্য যাত্রী বুক করে নিয়েছেন")
+
+    # Check gender adjacency on target_trip
+    p_gen = (passenger.gender or "MALE").strip().upper()
+    for nb in adjacent_partners(target_clean):
+        adj = await db.query(BookingPassenger).join(Booking, Booking.id == BookingPassenger.booking_id).filter(
+            Booking.trip_id == target_trip.id,
+            Booking.booking_status.in_(["CONFIRMED", "COMPLETED", "PAYMENT_TIMER_ACTIVE", "PRE_BOOKED", "HELD"]),
+            BookingPassenger.seat_number == nb
+        ).first()
+        if adj:
+            adj_gen = (adj.gender or "").strip().upper()
+            if adj_gen and adj_gen != p_gen:
+                adj_desc = "নারী" if adj_gen == "FEMALE" else "পুরুষ"
+                p_desc = "নারী" if p_gen == "FEMALE" else "পুরুষ"
+                raise ValueError(f"রুলস লঙ্ঘন: নতুন বাসের সিট {target_clean}-এর সংলগ্ন সিট {nb} একজন {adj_desc} যাত্রী বুক করেছেন। ছেলের পাশে ছেলে, মেয়ের পাশে মেয়ে নিয়ম প্রযোজ্য।")
+
+    old_trip_id = booking.trip_id
+    booking.trip_id = target_trip.id
+    passenger.seat_number = target_clean
+
+    target_seat_row = await db.query(Seat).filter(Seat.seat_number == target_clean).first()
+    b_seats = await db.query(BookingSeat).filter(BookingSeat.booking_id == booking.id).all()
+    for bs in b_seats:
+        if (bs.seat_id or "").upper().endswith(curr_clean):
+            bs.seat_id = target_seat_row.id if target_seat_row else f"{target_trip.id}-{target_clean}"
+
+    ts = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    note = f"[বাস ও আসন স্থানান্তর: ট্রিপ {old_trip_id} (সিট {curr_clean}) ➔ ট্রিপ {target_trip.id} (সিট {target_clean}) | কারণ: {reason} | সময়: {ts}]"
+    booking.notes = f"{booking.notes} | {note}" if booking.notes else note
+
+    db.add(AuditLog(user_id=staff_id, action="TRIP_TRANSFERRED", entity="Booking", entity_id=booking.id, new_value=note))
+    await db.commit()
+    await db.refresh(booking)
+    return booking
+
+
+async def cancel_seat_service(
+    db: Session,
+    booking_id: str,
+    seat_number: Optional[str] = None,
+    reason: str = "Customer Request / আসন বাতিল",
+    refund_amount: float = 0.0,
+    cancellation_fee: float = 0.0,
+    staff_id: Optional[str] = None
+) -> Dict[str, Any]:
+    booking = await db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise ValueError("বুকিং খুঁজে পাওয়া যায়নি")
+
+    clean_seat = seat_number.strip().upper() if seat_number else None
+    passengers = await db.query(BookingPassenger).filter(BookingPassenger.booking_id == booking.id).all()
+    b_seats = await db.query(BookingSeat).filter(BookingSeat.booking_id == booking.id).all()
+
+    # If only 1 passenger or no specific seat given -> Cancel entire booking
+    if len(passengers) <= 1 or not clean_seat:
+        booking.booking_status = "CANCELLED"
+        released_seats = [p.seat_number for p in passengers]
+        for p in passengers:
+            db.delete(p)
+        for bs in b_seats:
+            db.delete(bs)
+
+        # Release redis holds
+        for s in released_seats:
+            try:
+                release_seat_redis("default", booking.trip_id, s)
+            except Exception:
+                pass
+
+        ts = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+        note = f"[সম্পূর্ণ টিকিট বাতিল: রিফান্ড=৳{refund_amount}, ফি=৳{cancellation_fee} | কারণ: {reason} | সময়: {ts}]"
+        booking.notes = f"{booking.notes} | {note}" if booking.notes else note
+
+        db.add(AuditLog(user_id=staff_id, action="BOOKING_CANCELLED", entity="Booking", entity_id=booking.id, new_value=note))
+        await db.commit()
+        await db.refresh(booking)
+        return {"success": True, "type": "FULL_CANCEL", "released_seat": clean_seat, "refund": refund_amount, "booking": booking}
+
+    # Cancel only the specific seat
+    target_p = next((p for p in passengers if p.seat_number.upper() == clean_seat), None)
+    if not target_p:
+        raise ValueError(f"বুকিংয়ে আসন {clean_seat} পাওয়া যায়নি")
+
+    db.delete(target_p)
+    target_bs = next((bs for bs in b_seats if (bs.seat_id or '').upper().endswith(clean_seat)), None)
+    if target_bs:
+        db.delete(target_bs)
+
+    try:
+        release_seat_redis("default", booking.trip_id, clean_seat)
+    except Exception:
+        pass
+
+    ts = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    note = f"[নির্দিষ্ট আসন {clean_seat} বাতিল: রিফান্ড=৳{refund_amount}, ফি=৳{cancellation_fee} | কারণ: {reason} | সময়: {ts}]"
+    booking.notes = f"{booking.notes} | {note}" if booking.notes else note
+
+    db.add(AuditLog(user_id=staff_id, action="SEAT_CANCELLED", entity="Booking", entity_id=booking.id, new_value=note))
+    await db.commit()
+    await db.refresh(booking)
+    return {"success": True, "type": "SEAT_CANCEL", "released_seat": clean_seat, "refund": refund_amount, "booking": booking}

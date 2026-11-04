@@ -87,6 +87,37 @@ class ConfirmPreBookingPaymentRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class SwapSeatRequest(BaseModel):
+    booking_id_1: str
+    seat_1: str
+    booking_id_2: str
+    seat_2: str
+    reason: Optional[str] = "যাত্রীদের পারস্পরিক সিট অদলবদল"
+
+
+class TransferBusRequest(BaseModel):
+    booking_id: str
+    current_seat: str
+    target_trip_id: str
+    target_seat: str
+    reason: Optional[str] = "বিকল্প বাসে আসন স্থানান্তর"
+
+
+class CancelSeatRequest(BaseModel):
+    booking_id: str
+    seat_number: Optional[str] = None
+    reason: Optional[str] = "Customer Request / আসন বাতিল"
+    refund_amount: Optional[float] = 0.0
+    cancellation_fee: Optional[float] = 0.0
+
+
+class ShiftSeatRequest(BaseModel):
+    booking_id: str
+    current_seat: str
+    target_seat: str
+    reason: Optional[str] = "Customer Request / জানালার পাশের আসন পছন্দ"
+
+
 class BookingPassengerOut(BaseModel):
     id: str
     passenger_name: str

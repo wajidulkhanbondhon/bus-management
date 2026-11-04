@@ -33,6 +33,50 @@ export default async function QuickBookingPage({
   const rawBuses = Array.isArray(busesData) ? busesData : [];
   const allBookings = Array.isArray(allBookingsData) ? allBookingsData : [];
 
+  // Helper to parse bus notes for rich university & route metadata
+  const parseBusNotes = (notes: string = '') => {
+    let departureTime = '22:30';
+    let departureDate = new Date().toISOString().split('T')[0];
+    let origin = 'ঢাকা';
+    let destination = '';
+    let targetUni = '';
+    let fare = 550;
+    let examUnit = 'সকল ইউনিট';
+
+    if (notes) {
+      const uniMatch = notes.match(/\[🎯\s*UNI:\s*([^\]]+)\]/i);
+      if (uniMatch) targetUni = uniMatch[1].trim();
+
+      const timeMatch = notes.match(/DEP_TIME:\s*([^\n;]+)/i);
+      if (timeMatch) departureTime = timeMatch[1].trim();
+
+      const dateMatch = notes.match(/DEP_DATE:\s*([^\n;]+)/i);
+      if (dateMatch) departureDate = dateMatch[1].trim();
+
+      const routeMatch = notes.match(/ROUTE:\s*([^\n;]+)/i);
+      if (routeMatch) {
+        const parts = routeMatch[1].split('➔').map((s) => s.trim());
+        if (parts.length === 2) {
+          origin = parts[0];
+          destination = parts[1];
+        } else {
+          destination = routeMatch[1].trim();
+        }
+      }
+
+      const fareMatch = notes.match(/FARE:\s*([^\n;]+)/i);
+      if (fareMatch) {
+        const num = parseInt(fareMatch[1].replace(/[^0-9]/g, ''), 10);
+        if (num > 0) fare = num;
+      }
+
+      const unitMatch = notes.match(/UNIT:\s*([^\n;]+)/i);
+      if (unitMatch) examUnit = unitMatch[1].trim();
+    }
+
+    return { departureTime, departureDate, origin, destination: destination || targetUni, targetUni, fare, examUnit };
+  };
+
   // Helper to compute live seat booking stats for a trip/bus
   const computeTripSeatStats = (tripId: string, busId?: string, capacity: number = 45) => {
     const relevantBookings = allBookings.filter((b: any) => {
@@ -69,6 +113,44 @@ export default async function QuickBookingPage({
     };
   };
 
+  // Build passenger directory map for instant phone number suggestions
+  const recentPassengersMap = new Map<string, any>();
+  allBookings.forEach((b: any) => {
+    const cPhone = (b.contactPhone || b.contact_phone || '').replace(/[\s\-\+]/g, '');
+    const cName = b.contactName || b.contact_name;
+    if (cPhone.length >= 11 && cName) {
+      if (!recentPassengersMap.has(cPhone)) {
+        recentPassengersMap.set(cPhone, {
+          name: cName,
+          phone: cPhone,
+          gender: b.passengerGender || b.passenger_gender || 'MALE',
+          passengerType: (b.isStudent ?? b.is_student) ? 'STUDENT' : 'GUEST',
+          admissionId: b.studentAdmissionId || b.student_admission_id || '',
+        });
+      }
+    }
+
+    if (Array.isArray(b.passengers)) {
+      b.passengers.forEach((p: any) => {
+        const pPhone = (p.passengerPhone || p.passenger_phone || '').replace(/[\s\-\+]/g, '');
+        const pName = p.passengerName || p.passenger_name;
+        if (pPhone.length >= 11 && pName) {
+          if (!recentPassengersMap.has(pPhone)) {
+            recentPassengersMap.set(pPhone, {
+              name: pName,
+              phone: pPhone,
+              gender: p.gender || 'MALE',
+              passengerType: p.passengerType || p.passenger_type || 'STUDENT',
+              admissionId: p.admissionId || p.admission_id || p.studentAdmissionId || '',
+            });
+          }
+        }
+      });
+    }
+  });
+
+  const recentPassengers = Array.from(recentPassengersMap.values());
+
   // Existing bus IDs that already have a trip scheduled
   const existingBusIdsWithTrips = new Set(
     rawTrips.map((t: any) => t.busId || t.bus_id || t.bus?.id).filter(Boolean)
@@ -78,11 +160,16 @@ export default async function QuickBookingPage({
   const fallbackBusTrips = rawBuses
     .filter((b: any) => !existingBusIdsWithTrips.has(b.id) && (b.status || 'ACTIVE') === 'ACTIVE')
     .map((b: any, idx: number) => {
+      const parsedNotes = parseBusNotes(b.notes || '');
       const busNum = b.busNumber || b.bus_number || `বাস-${idx + 1}`;
       const busName = b.busName || b.bus_name || `স্পেশাল কোচ (${busNum})`;
-      const targetUni = b.targetUniversity || 'বিশ্ববিদ্যালয় ভর্তি কেন্দ্র';
-      const routeOrigin = b.routeOrigin || 'ঢাকা';
-      const routeDest = b.routeDestination || targetUni;
+      const targetUni = b.targetUniversity || b.target_university || parsedNotes.targetUni || parsedNotes.destination || 'রাজশাহী বিশ্ববিদ্যালয় (RU)';
+      const routeOrigin = b.routeOrigin || b.origin || parsedNotes.origin || 'ঢাকা';
+      const routeDest = b.routeDestination || b.destination || targetUni;
+      const depDate = b.departureDate || b.departure_date || parsedNotes.departureDate;
+      const depTime = b.departureTime || b.departure_time || parsedNotes.departureTime;
+      const examUnit = b.examUnit || b.exam_unit || parsedNotes.examUnit || 'সকল ইউনিট';
+      const basePrice = b.basePrice || b.base_price || parsedNotes.fare || 550;
 
       return normalizeTrip({
         id: b.id,
@@ -98,20 +185,20 @@ export default async function QuickBookingPage({
           routeName: `${routeOrigin} ➔ ${routeDest}`
         },
         targetUniversity: targetUni,
-        examUnit: b.examUnit || 'সকল ইউনিট',
-        departure_date: b.departureDate || new Date().toISOString(),
-        departureDate: b.departureDate || new Date().toISOString(),
-        departure_time: b.departureTime || '22:30',
-        departureTime: b.departureTime || '22:30',
-        base_price: b.basePrice || 550,
-        basePrice: b.basePrice || 550,
+        examUnit,
+        departure_date: depDate,
+        departureDate: depDate,
+        departure_time: depTime,
+        departureTime: depTime,
+        base_price: basePrice,
+        basePrice: basePrice,
         status: 'SCHEDULED',
         trip_bus_type: b.busType || b.bus_type || 'MIXED',
         tripBusType: b.busType || b.bus_type || 'MIXED'
       });
     });
 
-  // Combine real database trips with any additional active bus trips
+  // Combine real database trips with active synthesized bus trips
   const allAvailableTrips = [...rawTrips, ...fallbackBusTrips];
 
   // Domain Rule: Only show buses whose booking is currently running ("বুকিং চলছে")
@@ -182,6 +269,7 @@ export default async function QuickBookingPage({
         trips={runningTrips}
         initialTripId={initialTripId}
         currentUser={user}
+        recentPassengers={recentPassengers}
       />
     </div>
   );
