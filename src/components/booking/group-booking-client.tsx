@@ -885,8 +885,8 @@ export function GroupBookingClient({ initialTrips = [] }: GroupBookingClientProp
     });
 
     lines.forEach((line, i) => {
-      let clean = line.replace(/^\s*\d+[\.\)\-\]\s]+/, '').trim();
-      let parts = clean.split(/[,;\t|]+/).map((s) => s.trim());
+      const clean = line.replace(/^\s*\d+[\.\)\-\]\s]+/, '').trim();
+      const parts = clean.split(/[,;\t|]+/).map((s) => s.trim());
 
       if (parts.length === 0 || !parts[0]) return;
 

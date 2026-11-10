@@ -20,7 +20,10 @@ import {
   Percent,
   Receipt,
   Inbox,
-  UserCheck
+  UserCheck,
+  FileSpreadsheet,
+  GraduationCap,
+  Plus
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -61,6 +64,25 @@ export function DashboardView({ data, currentUser }: Props) {
   const passengerDemographics = data?.passengerDemographics || { male: 0, female: 0, student: 0, guardian: 0 };
   const recentTransactions = data?.recentTransactions || [];
   const activityFeed = data?.activityFeed || [];
+  const admissionService = data?.admissionService || null;
+  const admToday = admissionService?.today || {
+    total_slips: 0,
+    total_forms: 0,
+    net_cash_collected: 0,
+    net_service_profit: 0,
+    total_govt_fee: 0,
+    total_due: 0,
+    pending_forms: 0,
+  };
+  const admOverall = admissionService?.overall || {
+    total_slips: 0,
+    total_forms: 0,
+    pending_forms: 0,
+    total_due: 0,
+    net_cash_collected: 0,
+    net_service_profit: 0,
+  };
+  const admRecentSlips = admissionService?.recent_slips || [];
 
   return (
     <div className="space-y-6 pb-12">
@@ -191,6 +213,147 @@ export function DashboardView({ data, currentUser }: Props) {
           </span>
         </Card>
       </div>
+
+      {/* ADMISSION FORM SERVICE LIVE OVERVIEW (Separate Accounting Section) */}
+      <Card className="rounded-3xl border-fuchsia-200/80 dark:border-fuchsia-900/60 bg-gradient-to-br from-fuchsia-50/50 via-white to-indigo-50/40 dark:from-fuchsia-950/20 dark:via-slate-900 dark:to-indigo-950/20 shadow-md">
+        <CardHeader className="flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-fuchsia-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-fuchsia-500/25 shrink-0">
+              <FileSpreadsheet className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <CardTitle className="text-base md:text-lg font-black">
+                  {language === 'bn' ? 'ভর্তি ফরম সার্ভিস ওভারভিউ' : 'Admission Form Service Live'}
+                </CardTitle>
+                <Badge variant="purple" className="text-[10px]">
+                  {language === 'bn' ? 'আলাদা হিসাব-নিকাশ' : 'Separate Accounts'}
+                </Badge>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {language === 'bn'
+                  ? 'বিশ্ববিদ্যালয় ভর্তি ফরম জমা, স্লিপ কালেকশন ও সার্ভিস চার্জ আয় (বাস টিকেট থেকে পৃথক)'
+                  : 'University admission form submissions, slips & isolated service revenue'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/admission-service/accounts">
+              <Button variant="outline" size="sm" className="rounded-xl font-bold text-xs">
+                {language === 'bn' ? 'ভর্তি হিসাব ও লেজার' : 'Admission Accounts'}
+              </Button>
+            </Link>
+            <Link href="/admission-service">
+              <Button variant="outline" size="sm" className="rounded-xl font-bold text-xs">
+                {language === 'bn' ? 'সব স্লিপ' : 'All Slips'}
+              </Button>
+            </Link>
+            <Link href="/admission-service/new">
+              <Button variant="primary" size="sm" className="rounded-xl font-black text-xs shadow-md">
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                {language === 'bn' ? 'নতুন ফরম স্লিপ' : 'New Slip'}
+              </Button>
+            </Link>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800">
+              <div className="text-[11px] font-bold text-slate-500">
+                {language === 'bn' ? 'আজকের স্লিপ ও ফরম' : "Today's Slips / Forms"}
+              </div>
+              <div className="text-xl font-black font-mono text-slate-900 dark:text-white mt-1">
+                {admToday.total_slips} <span className="text-xs font-bold text-slate-400">/ {admToday.total_forms} ফরম</span>
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                মোট: {admOverall.total_slips} স্লিপ ({admOverall.total_forms} ফরম)
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800">
+              <div className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                {language === 'bn' ? 'আজকের কালেকশন' : "Today's Collected"}
+              </div>
+              <div className="text-xl font-black font-mono text-emerald-600 mt-1">
+                {formatCurrency(admToday.net_cash_collected)}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                মোট জমা: {formatCurrency(admOverall.net_cash_collected)}
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-indigo-200/80 dark:border-indigo-900">
+              <div className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                {language === 'bn' ? 'আজকের সার্ভিস আয়' : 'Today Service Profit'}
+              </div>
+              <div className="text-xl font-black font-mono text-indigo-600 dark:text-indigo-400 mt-1">
+                {formatCurrency(admToday.net_service_profit)}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                মোট আয়: {formatCurrency(admOverall.net_service_profit)}
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800">
+              <div className="text-[11px] font-bold text-slate-500">
+                {language === 'bn' ? 'বিশ্ববিদ্যালয় ফি (Govt)' : 'Govt Fee'}
+              </div>
+              <div className="text-xl font-black font-mono text-slate-900 dark:text-white mt-1">
+                {formatCurrency(admToday.total_govt_fee)}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {language === 'bn' ? 'আজকের পোর্টাল ফি' : 'Today portal fee'}
+              </div>
+            </div>
+
+            <div className="col-span-2 lg:col-span-1 p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80 dark:border-amber-900/60">
+              <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                {language === 'bn' ? 'পেন্ডিং আবেদন ও বকেয়া' : 'Pending & Due'}
+              </div>
+              <div className="text-xl font-black font-mono text-amber-600 mt-1">
+                {admOverall.pending_forms} <span className="text-xs">ফরম বাকি</span>
+              </div>
+              <div className="text-[10px] font-bold text-rose-600 mt-0.5">
+                মোট বকেয়া: {formatCurrency(admOverall.total_due)}
+              </div>
+            </div>
+          </div>
+
+          {admRecentSlips.length > 0 && (
+            <div className="bg-white/90 dark:bg-slate-900/80 rounded-2xl border border-slate-200/80 dark:border-slate-800 overflow-x-auto">
+              <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300">
+                <span>সাম্প্রতিক ভর্তি ফরম স্লিপসমূহ</span>
+                <Link href="/admission-service" className="text-indigo-600 hover:underline flex items-center gap-1">
+                  সব দেখুন <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {admRecentSlips.map((slip: any) => (
+                  <div key={slip.id} className="px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{slip.slip_number}</span>
+                      <span className="font-bold text-slate-900 dark:text-white">{slip.student_name}</span>
+                      <span className="text-slate-400 font-mono">{slip.student_phone}</span>
+                      <Badge variant="default">{slip.forms_count} ফরম</Badge>
+                    </div>
+                    <div className="flex items-center gap-3 font-mono">
+                      <span className="font-bold text-emerald-600">{formatCurrency(slip.paid_amount)}</span>
+                      {Number(slip.due_amount) > 0 && (
+                        <span className="text-rose-600 font-bold">বকেয়া {formatCurrency(slip.due_amount)}</span>
+                      )}
+                      <Badge variant={slip.payment_status === 'PAID' ? 'success' : 'warning'}>
+                        {slip.payment_status}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* BUS OVERVIEW SECTION: Active Scheduled Buses with Direct "Select Seats" Trigger */}
       <div className="space-y-4">

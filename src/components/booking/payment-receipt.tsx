@@ -1522,6 +1522,7 @@ function PaymentReceiptInner({
   const primaryTx = transactions[0] || {};
 
   // Live editable Billing Settings states — initialized dynamically from Main Settings (Finance)
+  const isPersistedPaidBooking = (booking.paymentStatus || booking.payment_status || '').toUpperCase() === 'PAID' || Number(booking.dueAmount ?? booking.due_amount) === 0;
   const hasBookingProcessingFee = (booking.processingFee ?? booking.processing_fee) !== undefined && (booking.processingFee ?? booking.processing_fee) !== null;
   const hasBookingVat = (booking.vatAmount ?? booking.vat_amount ?? booking.taxAmount) !== undefined && (booking.vatAmount ?? booking.vat_amount ?? booking.taxAmount) !== null;
   const hasBookingCashout = (booking.cashoutFee ?? booking.cashout_fee ?? booking.cashoutCharge) !== undefined && (booking.cashoutFee ?? booking.cashout_fee ?? booking.cashoutCharge) !== null;
@@ -1529,23 +1530,30 @@ function PaymentReceiptInner({
   const [processingFee, setProcessingFee] = useState<number>(
     hasBookingProcessingFee
       ? Number(booking.processingFee ?? booking.processing_fee)
+      : isPersistedPaidBooking
+      ? 0
       : computeProcessingFeeFromSettings(fullSettings.finance, grossAmount)
   );
   const [vatAmount, setVatAmount] = useState<number>(
     hasBookingVat
       ? Number(booking.vatAmount ?? booking.vat_amount ?? booking.taxAmount)
+      : isPersistedPaidBooking
+      ? 0
       : computeVatFromSettings(fullSettings.finance, grossAmount)
   );
   const [cashoutFee, setCashoutFee] = useState<number>(
     hasBookingCashout
       ? Number(booking.cashoutFee ?? booking.cashout_fee ?? booking.cashoutCharge)
+      : isPersistedPaidBooking
+      ? 0
       : computeCashoutFromSettings(fullSettings.finance, grossAmount)
   );
   const [discountAmount, setDiscountAmount] = useState<number>(booking.discountAmount ?? booking.discount_amount ?? 0);
   const [paidAmount, setPaidAmount] = useState<number>(booking.paidAmount ?? booking.paid_amount ?? 0);
 
-  // Dynamically update fees when Main Settings change (if not explicitly overridden by booking)
+  // Dynamically update fees when Main Settings change (if not explicitly overridden by booking and not already paid)
   useEffect(() => {
+    if (isPersistedPaidBooking) return;
     if (!hasBookingProcessingFee) {
       setProcessingFee(computeProcessingFeeFromSettings(fullSettings.finance, grossAmount));
     }
@@ -1555,7 +1563,7 @@ function PaymentReceiptInner({
     if (!hasBookingCashout) {
       setCashoutFee(computeCashoutFromSettings(fullSettings.finance, grossAmount));
     }
-  }, [fullSettings.finance, grossAmount, hasBookingProcessingFee, hasBookingVat, hasBookingCashout]);
+  }, [fullSettings.finance, grossAmount, hasBookingProcessingFee, hasBookingVat, hasBookingCashout, isPersistedPaidBooking]);
 
   // Synchronize initial paidAmount if full payment was originally recorded
   useEffect(() => {
@@ -1989,7 +1997,6 @@ function PaymentReceiptInner({
             {/* Thermal Header */}
             <div className="text-center space-y-1 border-b-2 border-dashed border-black pb-3">
               {orgBrand.logoUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img src={orgBrand.logoUrl} alt="" className="w-10 h-10 mx-auto object-contain mb-1 filter grayscale" />
               )}
               <div className="text-sm font-black uppercase tracking-wider">{companyName}</div>
@@ -2129,7 +2136,6 @@ function PaymentReceiptInner({
               {/* Left Brand Identity */}
               <div className="relative z-10 flex items-center gap-3">
                 {orgBrand.logoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={orgBrand.logoUrl}
                     alt={companyName}

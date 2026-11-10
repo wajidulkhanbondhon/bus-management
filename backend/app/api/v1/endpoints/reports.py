@@ -13,6 +13,7 @@ from app.models.payment import Payment
 from app.models.finance import FinancialLedger
 from app.models.user import User
 from app.models.audit import AuditLog
+from app.services.admission_service import get_admission_dashboard_summary
 
 router = APIRouter()
 
@@ -23,7 +24,7 @@ async def get_dashboard_kpi(
     db: WrappedAsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "VIEWER"]))
 ) -> Dict[str, Any]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 
@@ -36,7 +37,7 @@ async def get_dashboard_kpi(
         Booking.booking_status.in_(["CONFIRMED", "COMPLETED"])
     )
     booking_q = apply_tenant_filter(booking_q, Booking, current_user, tenant_id)
-    today_sales = float(booking_q.scalar() or 0.0)
+    today_sales = float((await booking_q.scalar()) or 0.0)
 
     ticket_q = db.query(func.count(BookingSeat.id)).join(Booking).filter(
         Booking.created_at >= today_start,
@@ -44,7 +45,7 @@ async def get_dashboard_kpi(
         Booking.booking_status.in_(["CONFIRMED", "COMPLETED"])
     )
     ticket_q = apply_tenant_filter(ticket_q, Booking, current_user, tenant_id)
-    today_tickets = int(ticket_q.scalar() or 0)
+    today_tickets = int((await ticket_q.scalar()) or 0)
 
     # 2. Payments collected today
     payment_q = db.query(
@@ -54,13 +55,13 @@ async def get_dashboard_kpi(
         Payment.created_at <= today_end
     )
     payment_q = apply_tenant_filter(payment_q, Booking, current_user, tenant_id)
-    today_collected = float(payment_q.scalar() or 0.0)
+    today_collected = float((await payment_q.scalar()) or 0.0)
     today_due = max(0.0, today_sales - today_collected)
 
     # 3. Active buses & trips
     bus_q = db.query(func.count(Bus.id)).filter(Bus.status == "ACTIVE")
     bus_q = apply_tenant_filter(bus_q, Bus, current_user, tenant_id)
-    active_buses = int(bus_q.scalar() or 0)
+    active_buses = int((await bus_q.scalar()) or 0)
 
     trip_q = db.query(func.count(Trip.id)).filter(
         Trip.departure_date >= today_start,
@@ -68,7 +69,9 @@ async def get_dashboard_kpi(
         Trip.status.in_(["SCHEDULED", "BOARDING", "ON_ROUTE"])
     )
     trip_q = apply_tenant_filter(trip_q, Trip, current_user, tenant_id)
-    active_trips = int(trip_q.scalar() or 0)
+    active_trips = int((await trip_q.scalar()) or 0)
+
+    admission_summary = await get_admission_dashboard_summary(db, current_user, tenant_id)
 
     return {
         "today_sales": today_sales,
@@ -77,6 +80,7 @@ async def get_dashboard_kpi(
         "today_due": today_due,
         "active_buses": active_buses,
         "active_trips": active_trips,
+        "admission_service": admission_summary,
         "timestamp": now.isoformat()
     }
 

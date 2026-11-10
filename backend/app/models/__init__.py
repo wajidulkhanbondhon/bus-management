@@ -16,6 +16,14 @@ from app.models.analytics import DailyAnalytics
 from app.models.passenger_pin import PassengerPin
 from app.models.communication import MessageLog
 from app.models.portal import LandingConfig, UniversityCircular
+from app.models.admission_service import (
+    AdmissionFeePreset,
+    AdmissionOrder,
+    AdmissionOrderItem,
+    AdmissionPayment,
+    AdmissionLedgerEntry,
+    AdmissionDayClosing,
+)
 __all__ = [
     "Base",
     "Tenant",
@@ -59,4 +67,10 @@ __all__ = [
     "MessageLog",
     "LandingConfig",
     "UniversityCircular",
+    "AdmissionFeePreset",
+    "AdmissionOrder",
+    "AdmissionOrderItem",
+    "AdmissionPayment",
+    "AdmissionLedgerEntry",
+    "AdmissionDayClosing",
 ]

@@ -37,8 +37,8 @@ export type MetricType = 'sales' | 'routes' | 'payments' | 'demographics' | 'occ
 interface InteractiveDashboardAnalyticsProps {
   progressiveSales: any[];
   routeBreakdown: any[];
-  paymentBreakdown: any[];
-  passengerDemographics: any[];
+  paymentBreakdown: any[] | Record<string, any>;
+  passengerDemographics: any[] | Record<string, any>;
   busPerformance: any[];
 }
 
@@ -109,32 +109,58 @@ export function InteractiveDashboardAnalytics({
       case 'sales':
         return progressiveSales;
       case 'routes':
-        return routeBreakdown.map(r => ({
-          name: r.routeName.length > 20 ? `${r.routeName.slice(0, 18)}...` : r.routeName,
-          fullName: r.routeName,
-          revenue: r.revenue,
-          tickets: r.tickets
+        return (Array.isArray(routeBreakdown) ? routeBreakdown : []).map(r => ({
+          name: (r.routeName || 'Route').length > 20 ? `${(r.routeName || 'Route').slice(0, 18)}...` : (r.routeName || 'Route'),
+          fullName: r.routeName || 'Route',
+          revenue: r.revenue || 0,
+          tickets: r.tickets ?? r.ticketsSold ?? 0
         }));
-      case 'payments':
-        return paymentBreakdown.map(p => ({
-          name: p.method.replace('_', ' '),
-          value: p.amount,
-          count: p.count,
-          percentage: p.percentage
-        }));
-      case 'demographics':
-        return passengerDemographics.map(d => ({
-          name: d.name,
-          value: d.count,
-          color: d.color
-        }));
+      case 'payments': {
+        if (Array.isArray(paymentBreakdown)) {
+          return paymentBreakdown.map(p => ({
+            name: (p.method || 'OTHER').replace('_', ' '),
+            value: p.amount ?? p.total ?? 0,
+            count: p.count || 0,
+            percentage: p.percentage || 0
+          }));
+        }
+        const entries = Object.entries(paymentBreakdown || {});
+        const grandTotal = entries.reduce((acc, [, v]) => acc + (typeof v === 'number' ? v : (v?.total ?? v?.amount ?? 0)), 0);
+        return entries
+          .map(([method, val]) => {
+            const amount = typeof val === 'number' ? val : (val?.total ?? val?.amount ?? 0);
+            return {
+              name: method.replace('_', ' '),
+              value: amount,
+              count: typeof val === 'object' ? (val?.count || 0) : (amount > 0 ? 1 : 0),
+              percentage: grandTotal > 0 ? Math.round((amount / grandTotal) * 100) : 0
+            };
+          })
+          .filter(p => p.value > 0);
+      }
+      case 'demographics': {
+        if (Array.isArray(passengerDemographics)) {
+          return passengerDemographics.map(d => ({
+            name: d.name,
+            value: d.count ?? d.value ?? 0,
+            color: d.color
+          }));
+        }
+        const dObj = passengerDemographics || {};
+        return [
+          { name: language === 'bn' ? 'ছাত্র-ছাত্রী' : 'Students', value: dObj.students || 0, color: '#2563eb' },
+          { name: language === 'bn' ? 'অভিভাবক' : 'Guardians', value: dObj.guardians || 0, color: '#7c3aed' },
+          { name: language === 'bn' ? 'মহিলা' : 'Female', value: dObj.female || 0, color: '#ec4899' },
+          { name: language === 'bn' ? 'পুরুষ' : 'Male', value: dObj.male || 0, color: '#059669' }
+        ];
+      }
       case 'occupancy':
-        return busPerformance.map(b => ({
-          name: b.busName.length > 16 ? `${b.busName.slice(0, 14)}...` : b.busName,
-          sold: b.sold,
-          available: b.available,
-          total: b.totalSeats,
-          occupancy: b.occupancy
+        return (Array.isArray(busPerformance) ? busPerformance : []).map(b => ({
+          name: (b.busName || 'Bus').length > 16 ? `${(b.busName || 'Bus').slice(0, 14)}...` : (b.busName || 'Bus'),
+          sold: b.sold ?? b.bookedSeats ?? 0,
+          available: b.available ?? Math.max(0, (b.totalSeats || 0) - (b.bookedSeats || 0)),
+          total: b.totalSeats || 0,
+          occupancy: b.occupancy ?? b.occupancyPercent ?? 0
         }));
       default:
         return progressiveSales;

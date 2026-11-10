@@ -474,42 +474,47 @@ export function QuickCounterBookingClient({ trips, initialTripId, currentUser, r
     return selectedSeatItems.reduce((acc, s) => acc + s.fare, 0);
   }, [selectedSeatItems]);
 
-  const netAmount = grossAmount + processingFee + vatTaxAmount + cashoutCharge;
+  const netAmount = selectedSeatItems.length > 0
+    ? grossAmount + processingFee + vatTaxAmount + cashoutCharge
+    : 0;
+
+  // Track whether the operator manually entered a partial/due amount
+  const isManualPaymentRef = React.useRef<boolean>(false);
 
   // Two-way synchronization handlers for Paid and Due
   const handlePaidAmountChange = useCallback((newPaid: number) => {
     const safePaid = Math.min(newPaid, netAmount);
+    const computedDue = Math.max(0, netAmount - safePaid);
+    isManualPaymentRef.current = computedDue > 0;
     setPaidAmount(safePaid);
-    setDueAmount(Math.max(0, netAmount - safePaid));
+    setDueAmount(computedDue);
   }, [netAmount]);
 
   const handleDueAmountChange = useCallback((newDue: number) => {
     const safeDue = Math.min(newDue, netAmount);
+    isManualPaymentRef.current = safeDue > 0;
     setDueAmount(safeDue);
     setPaidAmount(Math.max(0, netAmount - safeDue));
   }, [netAmount]);
 
   // Keep paid and due synced when netAmount changes (e.g. seats selected/removed or fee modified)
-  const prevNetAmountRef = React.useRef<number>(netAmount);
   useEffect(() => {
-    const prevNet = prevNetAmountRef.current;
-    prevNetAmountRef.current = netAmount;
-
     if (netAmount === 0) {
+      isManualPaymentRef.current = false;
       setPaidAmount(0);
       setDueAmount(0);
       return;
     }
 
-    // If it was previous full paid or starting from 0, auto-fill full paid
-    if (prevNet === 0 || paidAmount === prevNet) {
+    if (!isManualPaymentRef.current) {
       setPaidAmount(netAmount);
       setDueAmount(0);
     } else {
-      // User entered a custom paid or due amount
-      const safePaid = Math.min(paidAmount, netAmount);
-      setPaidAmount(safePaid);
-      setDueAmount(Math.max(0, netAmount - safePaid));
+      setPaidAmount((prevPaid) => {
+        const safePaid = Math.min(prevPaid, netAmount);
+        setDueAmount(Math.max(0, netAmount - safePaid));
+        return safePaid;
+      });
     }
   }, [netAmount]);
 
@@ -893,11 +898,14 @@ export function QuickCounterBookingClient({ trips, initialTripId, currentUser, r
           router.push(`/bookings/${result.booking.id}?success=true&autoPrint=true`);
         } else {
           // Stay on counter page and refresh seats immediately
+          isManualPaymentRef.current = false;
           fetchLiveSeats(activeTrip.id, false);
           setSelectedSeatIds([]);
           setPassengersBySeat({});
           setPaidAmount(0);
           setDueAmount(0);
+          setIsPayOnBus(false);
+          setDueNote('');
         }
       } else {
         const translatedErr = translateErrorMessageToBn(result.error);

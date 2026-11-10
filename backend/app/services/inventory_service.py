@@ -1,4 +1,5 @@
 import uuid
+from types import SimpleNamespace
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
@@ -50,6 +51,24 @@ async def get_trip_seat_inventory(
             Trip.bus_id == trip_id,
             Trip.status.in_(["SCHEDULED", "BOARDING"])
         ).first()
+
+    if not trip:
+        # Fallback 2: Synthesize a virtual read-only trip from an active Bus ID so
+        # Quick Counter & Seat Map display exact SeatLayout fares before first booking.
+        bus_fallback = await db.query(Bus).filter(Bus.id == trip_id, Bus.status != "DELETED").first()
+        if bus_fallback:
+            clean_num = "".join(ch for ch in (bus_fallback.bus_number or "COACH") if ch.isalnum()).upper() or "COACH"
+            trip = SimpleNamespace(
+                id=bus_fallback.id,
+                bus_id=bus_fallback.id,
+                trip_code=f"TRIP-{clean_num}",
+                trip_bus_type=bus_fallback.bus_type or "MIXED",
+                departure_date=now,
+                departure_time=now,
+                base_price=550.0,
+                tenant_id=bus_fallback.tenant_id,
+                route_id=None,
+            )
 
     if not trip:
         raise ValueError("Trip not found")

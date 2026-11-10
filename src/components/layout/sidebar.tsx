@@ -61,6 +61,8 @@ import {
   Database,
   Clock,
   ArrowRightLeft,
+  FileSpreadsheet,
+  ClipboardList,
   LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -93,7 +95,7 @@ interface SidebarProps {
 const ROLE_ACCESS: Record<string, string[]> = {
   admin: ['all'],
   manager: ['all'],
-  counter_staff: ['dashboard', 'bookings', 'trips', 'sales', 'payments', 'student-portal'],
+  counter_staff: ['dashboard', 'bookings', 'admission-service', 'trips', 'sales', 'payments', 'student-portal'],
   supervisor: ['dashboard', 'bookings', 'trips', 'buses', 'supervisor'],
 };
 
@@ -145,6 +147,19 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
         { href: '/bookings/holds', label: language === 'bn' ? 'হোল্ড ও লক সিট ম্যানেজার' : 'Seat Holds & Locks', icon: LockKeyhole, badge: 'Seats' },
         { href: '/bookings/search', label: language === 'bn' ? 'টিকিট অনুসন্ধান ও রি-প্রিন্ট' : 'Search & Print Ticket', icon: Search },
         { href: '/bookings/offline', label: language === 'bn' ? 'অফলাইন সিঙ্ক কিউ' : 'Offline Queue & Sync', icon: WifiOff }
+      ]
+    },
+    {
+      id: 'admission-service',
+      title: language === 'bn' ? 'ভর্তি সার্ভিস' : 'Admission Service',
+      subtitle: language === 'bn' ? 'ফরম জমা, স্লিপ ও আলাদা হিসাব' : 'Forms, Slips & Separate Ledger',
+      icon: FileSpreadsheet,
+      colorClass: 'text-fuchsia-600 dark:text-fuchsia-400 bg-fuchsia-500/10 border-fuchsia-500/20',
+      items: [
+        { href: '/admission-service/new', label: language === 'bn' ? 'নতুন ফরম জমা ও স্লিপ' : 'New Form & Slip', icon: PlusCircle, badge: 'Slip', highlight: true },
+        { href: '/admission-service', label: language === 'bn' ? 'সব আবেদন ও স্লিপ তালিকা' : 'All Forms & Slips', icon: ClipboardList },
+        { href: '/admission-service/accounts', label: language === 'bn' ? 'ভর্তি হিসাব ও লেজার' : 'Admission Accounts', icon: Scale, badge: 'Ledger', highlight: true },
+        { href: '/admission-service/packages', label: language === 'bn' ? 'বিশ্ববিদ্যালয় ও ফি সেটআপ' : 'Universities & Fees', icon: GraduationCap }
       ]
     },
     {
@@ -320,6 +335,7 @@ export function Sidebar({ onNavigate, userRole = 'admin' }: SidebarProps = {}) {
       '/buses',
       '/trips',
       '/bookings',
+      '/admission-service',
       '/payments',
       '/reports',
       '/staff',

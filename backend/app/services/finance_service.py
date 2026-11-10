@@ -30,10 +30,10 @@ async def calculate_day_closing_summary(db: Session, date_input: datetime) -> Di
         .all()
     )
 
-    expected_gross = sum(b.gross_amount for b in bookings)
-    expected_discount = sum(b.discount_amount for b in bookings)
-    expected_net = sum(b.net_amount for b in bookings)
-    expected_due = sum(b.due_amount for b in bookings)
+    expected_gross = round(sum(float(b.gross_amount or 0) for b in bookings), 2)
+    expected_discount = round(sum(float(b.discount_amount or 0) for b in bookings), 2)
+    expected_net = round(sum(float(b.net_amount or 0) for b in bookings), 2)
+    expected_due = round(sum(float(b.due_amount or 0) for b in bookings), 2)
 
     # Payments recorded in the window — even for bookings from prior days.
     payments = (
@@ -41,7 +41,7 @@ async def calculate_day_closing_summary(db: Session, date_input: datetime) -> Di
         .filter(Payment.created_at >= start_of_day, Payment.created_at <= end_of_day)
         .all()
     )
-    expected_collected = sum(p.amount for p in payments)
+    expected_collected = round(sum(float(p.amount or 0) for p in payments), 2)
 
     # Refunds issued in the window — netted against collections.
     refunds = (
@@ -49,7 +49,7 @@ async def calculate_day_closing_summary(db: Session, date_input: datetime) -> Di
         .filter(Refund.created_at >= start_of_day, Refund.created_at <= end_of_day)
         .all()
     )
-    expected_refunds = sum(r.amount for r in refunds)
+    expected_refunds = round(sum(float(r.amount or 0) for r in refunds), 2)
 
     method_totals = {
         "BKASH": {"expected": 0.0, "count": 0},
@@ -61,7 +61,7 @@ async def calculate_day_closing_summary(db: Session, date_input: datetime) -> Di
     }
     for p in payments:
         if p.method in method_totals:
-            method_totals[p.method]["expected"] += p.amount
+            method_totals[p.method]["expected"] = round(method_totals[p.method]["expected"] + float(p.amount or 0), 2)
             method_totals[p.method]["count"] += 1
 
     return {
@@ -99,8 +99,8 @@ async def submit_day_closing(db: Session, req: SubmitDayClosingRequest, staff_id
     has_excess = False
 
     for m in req.method_actuals:
-        expected = summary["methods"].get(m.method, {}).get("expected", 0.0)
-        diff = round(m.actual_amount - expected, 2)
+        expected = float(summary["methods"].get(m.method, {}).get("expected", 0.0) or 0.0)
+        diff = round(float(m.actual_amount) - expected, 2)
         status = "MATCHED" if diff == 0 else ("SHORT" if diff < 0 else "EXCESS")
         if status == "SHORT":
             has_short = True

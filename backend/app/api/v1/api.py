@@ -21,7 +21,8 @@ from app.api.v1.endpoints import (
     analytics,
     uploads,
     recycle_bin,
-    notifications
+    notifications,
+    admission_service,
 )
 
 api_router = APIRouter()
@@ -47,6 +48,7 @@ api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytic
 api_router.include_router(uploads.router, prefix="/uploads", tags=["File & Media Uploads"])
 api_router.include_router(recycle_bin.router, prefix="/recycle-bin", tags=["Recycle Bin & Data Restore"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications & Message Logs"])
+api_router.include_router(admission_service.router, prefix="/admission-service", tags=["Admission Form Service & Accounting"])
 
 # -----------------------------------------------------------------------------
 # HONEYPOT - FAKE ROUTES FOR SECURITY (MUST BE AT THE END OR SPECIFIC PATH)

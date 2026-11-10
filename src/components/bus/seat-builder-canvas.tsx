@@ -578,7 +578,7 @@ export function SeatBuilderCanvas({
   const handleAIFillSaveForm = () => {
     const uni = targetUniversity.trim() || 'রাজশাহী বিশ্ববিদ্যালয় (RU)';
     let unit = admissionUnit.trim();
-    let exam = examName.trim() || 'ভর্তি পরীক্ষা ২০২৫-২৬';
+    const exam = examName.trim() || 'ভর্তি পরীক্ষা ২০২৫-২৬';
     
     // Auto-detect unit if empty
     if (!unit) {
@@ -1481,7 +1481,7 @@ export function SeatBuilderCanvas({
     if (!raw) return 'কাস্টম বাস সিট লেআউট';
 
     // Remove raw bracket noise like [DU] [Kha / B Unit (...)] from the start
-    let cleaned = raw
+    const cleaned = raw
       .replace(/^\[[A-Z0-9_-]+\]\s*/i, '')
       .replace(/^\[[^\]]+\]\s*/i, '')
       .trim();

@@ -38,6 +38,7 @@ DEFAULT_POLICIES = [
     # Ticketing & Counter Staff
     ("OPERATOR", "/api/v1/bookings/*", "(GET|POST|PUT)"),
     ("OPERATOR", "/api/v1/payments/*", "(GET|POST)"),
+    ("OPERATOR", "/api/v1/admission-service/*", "(GET|POST|PUT|PATCH)"),
     ("OPERATOR", "/api/v1/buses/*", "GET"),
     ("OPERATOR", "/api/v1/trips/*", "GET"),
     

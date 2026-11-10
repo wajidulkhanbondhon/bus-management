@@ -148,10 +148,11 @@ export function BookingWizard({
   const trips = initialTrips && initialTrips.length > 0 ? initialTrips : EMPTY_ARRAY;
 
   const allBookingsRef = useRef(allBookings);
-  allBookingsRef.current = allBookings;
-
   const tripsRef = useRef(trips);
-  tripsRef.current = trips;
+  useEffect(() => {
+    allBookingsRef.current = allBookings;
+    tripsRef.current = trips;
+  }, [allBookings, trips]);
 
   const rawParamId =
     initialParams?.tripId ||
@@ -182,7 +183,6 @@ export function BookingWizard({
   // Refresh the seat map whenever the user lands back on the seat step.
   useEffect(() => {
     if (step === 2) setSeatRefreshNonce((n) => n + 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
   const [passengers, setPassengers] = useState<PassengerInput[]>([]);
@@ -428,7 +428,9 @@ export function BookingWizard({
   }, [selectedTripId, selectedTrip, liveLayouts, resolveLayout]);
 
   const activeSegmentsRef = useRef(activeSegments);
-  activeSegmentsRef.current = activeSegments;
+  useEffect(() => {
+    activeSegmentsRef.current = activeSegments;
+  }, [activeSegments]);
 
   // ── Seat inventory fetch ────────────────────────────────────
   const getSegmentForRow = useCallback(
@@ -861,7 +863,6 @@ export function BookingWizard({
           : `${removedSeatCountRef.current} of your selected seat(s) were just booked/held. Please choose again.`
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripSeats, extraSeats, isLoadingSeats]);
 
   // ── Financial calculations ──────────────────────────────────

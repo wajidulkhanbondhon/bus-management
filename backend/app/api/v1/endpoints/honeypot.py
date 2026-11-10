@@ -38,7 +38,7 @@ async def honeypot_trap(path: str, request: Request, db: WrappedAsyncSession = D
         try:
             await db.commit()
         except Exception:
-            db.rollback()
+            await db.rollback()
             
     # Always return 403 Forbidden to mimic a secured endpoint or just block them
     raise HTTPException(

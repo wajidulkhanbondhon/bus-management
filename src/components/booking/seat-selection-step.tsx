@@ -459,7 +459,7 @@ function LuxuryCoachSeatItem({
     const rowChar = rowLetters[r] || `R${r + 1}`;
     const isLastRow5 = r === totalRows - 1 && (activeCapacity === 45 || activeCapacity === 42);
 
-    let seatObj =
+    const seatObj =
       rowCells.find((cell) => cell.colIndex === c) ||
       rowCells.find((cell) => {
         const sNum = (cell.seatNumber || cell.seat_number || cell.label || '').toString().trim().toUpperCase();

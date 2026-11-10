@@ -20,14 +20,17 @@ async function handleProxy(
 
   const rawFastapiToken = request.cookies.get('fastapi_token')?.value;
   const { getValidFastApiToken } = await import('@/lib/token');
-  // Forward the caller's token when present; in local dev with ALLOW_DEV_AUTH=true a
-  // dev token may be generated. Never auto-mints privileged identities in production.
-  const validToken = getValidFastApiToken(rawFastapiToken);
-
   const headers = new Headers(request.headers);
   headers.delete('host');
   headers.delete('content-length');
-  headers.set('Authorization', `Bearer ${validToken}`);
+  try {
+    const validToken = getValidFastApiToken(rawFastapiToken);
+    if (validToken) {
+      headers.set('Authorization', `Bearer ${validToken}`);
+    }
+  } catch {
+    // Unauthenticated requests (e.g., /auth/login or public endpoints) pass through without Authorization
+  }
   headers.set('X-Forwarded-Host', request.headers.get('host') || '');
 
   const target = `${FASTAPI_BASE}/${pathname}${search}`;

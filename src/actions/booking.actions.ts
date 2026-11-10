@@ -31,7 +31,7 @@ import { cookies } from 'next/headers';
 function formatZodErrors(error: any): string {
   if (error?.issues) {
     return error.issues.map((i: any) => {
-      let msg = i.message || '';
+      const msg = i.message || '';
       if (msg.includes('Trip ID is required')) return 'ট্রিপ বা বাস নির্বাচন করা আবশ্যক।';
       if (msg.includes('At least one seat must be selected')) return 'অনুগ্রহ করে অন্তত একটি আসন নির্বাচন করুন।';
       if (msg.includes('At least one passenger is required')) return 'কমপক্ষে একজন যাত্রীর তথ্য প্রয়োজন।';

@@ -2057,8 +2057,8 @@ export function TripSelectionStep({
               const isHighOccupancy = soldPct >= 80;
               const isMediumOccupancy = soldPct >= 40 && soldPct < 80;
 
-              let minF = t.basePrice || 550;
-              let maxF = t.maxPrice || minF;
+              const minF = t.basePrice || 550;
+              const maxF = t.maxPrice || minF;
               const fareDisplay = minF === maxF ? formatCurrency(minF) : `${formatCurrency(minF)} - ${formatCurrency(maxF)}`;
 
               return (
@@ -2352,8 +2352,8 @@ export function TripSelectionStep({
               const soldPct = t.stats?.soldPercentage ?? (totalSeats > 0 ? Math.round((bookedCount / totalSeats) * 100) : 0);
               const isFull = isTripBookingFull(t);
 
-              let minF = t.basePrice || 550;
-              let maxF = t.maxPrice || minF;
+              const minF = t.basePrice || 550;
+              const maxF = t.maxPrice || minF;
               const fareDisplay = minF === maxF ? formatCurrency(minF) : `${formatCurrency(minF)} - ${formatCurrency(maxF)}`;
 
               return (
@@ -2515,8 +2515,8 @@ export function TripSelectionStep({
                     const soldPct = t.stats?.soldPercentage ?? (totalSeats > 0 ? Math.round((bookedCount / totalSeats) * 100) : 0);
                     const isFull = isTripBookingFull(t);
 
-                    let minF = t.basePrice || 550;
-                    let maxF = t.maxPrice || minF;
+                    const minF = t.basePrice || 550;
+                    const maxF = t.maxPrice || minF;
                     const fareDisplay = minF === maxF ? `৳${minF}` : `৳${minF}-৳${maxF}`;
 
                     return (

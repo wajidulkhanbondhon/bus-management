@@ -58,8 +58,8 @@ async def record_counter_payment(
     )
     db.add(payment)
 
-    new_paid = booking.paid_amount + req.amount
-    new_due = max(0.0, booking.net_amount - new_paid)
+    new_paid = round(float(booking.paid_amount or 0) + float(req.amount or 0), 2)
+    new_due = max(0.0, round(float(booking.net_amount or 0) - new_paid, 2))
     booking.paid_amount = new_paid
     booking.due_amount = new_due
     booking.payment_status = "PAID" if new_due == 0 else "PARTIALLY_PAID"

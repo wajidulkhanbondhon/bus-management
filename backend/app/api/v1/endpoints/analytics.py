@@ -42,7 +42,7 @@ async def get_daily_stats(
     """Returns analytics for the last 30 days for charting (newest 30, ascending)."""
     today = date.today()
     start = today - timedelta(days=29)
-    stats = (
+    stats = await (
         db.query(DailyAnalytics)
         .filter(DailyAnalytics.date >= start, DailyAnalytics.date <= today)
         .order_by(DailyAnalytics.date.asc())

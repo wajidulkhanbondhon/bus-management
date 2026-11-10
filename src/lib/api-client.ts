@@ -217,6 +217,59 @@ export const fastApiClient = {
   updateUniversity: (id: string, data: any) => apiRequest(`/universities/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUniversity: (id: string) => apiRequest(`/universities/${id}`, { method: 'DELETE' }),
 
+  // Admission Form Service (Separate Module & Accounting)
+  getAdmissionPresets: (includeInactive = false) =>
+    apiRequest(`/admission-service/presets${includeInactive ? '?include_inactive=true' : ''}`),
+  createAdmissionPreset: (data: any) =>
+    apiRequest('/admission-service/presets', { method: 'POST', body: JSON.stringify(data) }),
+  updateAdmissionPreset: (id: string, data: any) =>
+    apiRequest(`/admission-service/presets/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAdmissionPreset: (id: string) =>
+    apiRequest(`/admission-service/presets/${id}`, { method: 'DELETE' }),
+
+  getAdmissionOrders: (params?: {
+    search?: string;
+    payment_status?: string;
+    order_status?: string;
+    has_due?: boolean;
+    date_from?: string;
+    date_to?: string;
+  }) => {
+    const sp = new URLSearchParams();
+    if (params?.search) sp.set('search', params.search);
+    if (params?.payment_status) sp.set('payment_status', params.payment_status);
+    if (params?.order_status) sp.set('order_status', params.order_status);
+    if (params?.has_due !== undefined) sp.set('has_due', String(params.has_due));
+    if (params?.date_from) sp.set('date_from', params.date_from);
+    if (params?.date_to) sp.set('date_to', params.date_to);
+    const qs = sp.toString();
+    return apiRequest(`/admission-service/orders${qs ? `?${qs}` : ''}`);
+  },
+  getAdmissionOrderById: (id: string) => apiRequest(`/admission-service/orders/${id}`),
+  createAdmissionOrder: (data: any) =>
+    apiRequest('/admission-service/orders', { method: 'POST', body: JSON.stringify(data) }),
+  deleteAdmissionOrder: (id: string) =>
+    apiRequest(`/admission-service/orders/${id}`, { method: 'DELETE' }),
+  updateAdmissionItemStatus: (itemId: string, data: any) =>
+    apiRequest(`/admission-service/items/${itemId}/status`, { method: 'PATCH', body: JSON.stringify(data) }),
+  collectAdmissionDue: (orderId: string, data: { amount: number; method: string; transaction_id?: string; notes?: string }) =>
+    apiRequest(`/admission-service/orders/${orderId}/collect-due`, { method: 'POST', body: JSON.stringify(data) }),
+  refundAdmissionOrder: (orderId: string, data: { amount: number; method: string; reason: string }) =>
+    apiRequest(`/admission-service/orders/${orderId}/refund`, { method: 'POST', body: JSON.stringify(data) }),
+
+  getAdmissionAccountsSummary: (dateFrom?: string, dateTo?: string) => {
+    const sp = new URLSearchParams();
+    if (dateFrom) sp.set('date_from', dateFrom);
+    if (dateTo) sp.set('date_to', dateTo);
+    const qs = sp.toString();
+    return apiRequest(`/admission-service/accounts/summary${qs ? `?${qs}` : ''}`);
+  },
+  getAdmissionLedger: () => apiRequest('/admission-service/accounts/ledger'),
+  getAdmissionDayClosings: () => apiRequest('/admission-service/accounts/day-closings'),
+  submitAdmissionDayClosing: (data: { closing_date: string; actual_total_cash: number; notes?: string }) =>
+    apiRequest('/admission-service/accounts/day-closing', { method: 'POST', body: JSON.stringify(data) }),
+  getAdmissionDashboardSummary: () => apiRequest('/admission-service/dashboard-summary'),
+
   // Marketing Coupons
   getCoupons: () => apiRequest('/coupons/'),
   validateCoupon: (code: string, amount: number = 0, university?: string) =>

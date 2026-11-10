@@ -129,12 +129,12 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
     }
   }, [isJustBooked]);
 
-  if (!booking) return null;
+  // Guard moved below React Hooks to obey Rules of Hooks
 
   const currentBooking = React.useMemo(() => {
-    if (!customAccommodation) return booking;
+    if (!customAccommodation) return booking || {};
     return {
-      ...booking,
+      ...(booking || {}),
       accommodation: customAccommodation,
       hasHotelPackage: true
     };
@@ -299,7 +299,8 @@ export function BookingDetailView({ booking, autoPrint = false, isSuccess = fals
     return `SEC-${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
   }, [bookingNumber, grossAmount, paidAmount, seatNumbers]);
 
-  const verifyUrl = `${hostUrl}/bookings/${booking.id || ''}`;
+  const verifyUrl = `${hostUrl}/bookings/${booking?.id || ''}`;
+  if (!booking) return null;
 
   // Actions
   const handleCopyLink = () => {

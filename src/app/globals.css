@@ -528,7 +528,7 @@ html.dark .seat-available {
   }
 
   /* The outer flex wrapper that contains the viewport */
-  .ticket-sheet-viewport:parent,
+  *:has(> .ticket-sheet-viewport),
   .ticket-print-outer {
     display: block !important;
     width: 210mm !important;

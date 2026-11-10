@@ -24,6 +24,7 @@ export async function getLiveDashboardData(dateInput?: string | Date) {
   let bookingsData: any[] = [];
   let paymentsData: any[] = [];
   let tripsData: any[] = [];
+  let admissionSummary: any = null;
 
   try {
     const [kpiRes, bookRes, payRes, tripRes] = await Promise.all([
@@ -33,20 +34,35 @@ export async function getLiveDashboardData(dateInput?: string | Date) {
       fastApiClient.getTrips()
     ]);
 
-    if (kpiRes.success && kpiRes.data) kpisData = kpiRes.data;
+    if (kpiRes.success && kpiRes.data) {
+      kpisData = kpiRes.data;
+      if (kpiRes.data.admission_service) {
+        admissionSummary = kpiRes.data.admission_service;
+      }
+    }
     if (bookRes.success && Array.isArray(bookRes.data)) bookingsData = bookRes.data;
     if (payRes.success && Array.isArray(payRes.data)) paymentsData = payRes.data;
     if (tripRes.success && Array.isArray(tripRes.data)) tripsData = tripRes.data;
+
+    if (!admissionSummary) {
+      const admRes = await fastApiClient.getAdmissionDashboardSummary();
+      if (admRes.success && admRes.data) admissionSummary = admRes.data;
+    }
   } catch (e) {
     console.warn('Dashboard live data fetch warning:', e);
   }
 
+  const grossFromBookings = bookingsData.reduce((sum, b) => sum + (Number(b.gross_amount) || Number(b.net_amount) || 0), 0);
+  const discountFromBookings = bookingsData.reduce((sum, b) => sum + (Number(b.discount_amount) || 0), 0);
   const todaySales = kpisData?.today_sales ?? bookingsData.reduce((sum, b) => sum + (Number(b.net_amount) || 0), 0);
   const todayTickets = kpisData?.today_tickets ?? bookingsData.reduce((sum, b) => sum + (b.seats?.length || 1), 0);
   const todayCollected = kpisData?.today_collected ?? paymentsData.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const todayDue = kpisData?.today_due ?? Math.max(0, todaySales - todayCollected);
   const activeBuses = kpisData?.active_buses ?? tripsData.length;
   const activeTrips = kpisData?.active_trips ?? tripsData.filter((t: any) => t.status === 'SCHEDULED' || t.status === 'BOARDING').length;
+  const grossSales = Math.max(grossFromBookings, todaySales + discountFromBookings);
+  const totalDiscount = discountFromBookings;
+  const bookingsCount = todayTickets || bookingsData.length;
 
   // Real payment method breakdown
   const methodTotals: Record<string, { total: number; count: number }> = {
@@ -82,9 +98,11 @@ export async function getLiveDashboardData(dateInput?: string | Date) {
   // Real bus performance
   const busPerformance = tripsData.map((t: any) => {
     const totalSeats = t.bus?.seatLayout?.totalSeats || t.bus?.capacity || 40;
-    const bookedSeats = t.bookings?.length || 0;
-    const occupancyPercent = totalSeats > 0 ? (bookedSeats / totalSeats) * 100 : 0;
+    const bookedSeats = (t.bookings || []).reduce((sum: number, b: any) => sum + (b.seats?.length || 1), 0);
+    const availableSeats = Math.max(0, totalSeats - bookedSeats);
+    const occupancyPercent = totalSeats > 0 ? Math.min(100, Math.round((bookedSeats / totalSeats) * 100)) : 0;
     const totalRevenue = (t.bookings || []).reduce((sum: number, b: any) => sum + (Number(b.net_amount) || 0), 0);
+    const collected = (t.bookings || []).reduce((sum: number, b: any) => sum + (Number(b.paid_amount) || Number(b.net_amount) || 0), 0);
 
     return {
       tripId: t.id,
@@ -98,10 +116,14 @@ export async function getLiveDashboardData(dateInput?: string | Date) {
       totalSeats,
       bookedSeats,
       soldSeats: bookedSeats,
+      sold: bookedSeats,
+      available: availableSeats,
       occupancyPercent,
       occupancyRate: occupancyPercent,
+      occupancy: occupancyPercent,
       netSales: totalRevenue,
       totalRevenue,
+      collected,
       status: t.status || 'ACTIVE'
     };
   });
@@ -109,27 +131,70 @@ export async function getLiveDashboardData(dateInput?: string | Date) {
   // Real recent transactions
   const recentTransactions = paymentsData.slice(0, 10).map((p: any) => ({
     id: p.id,
+    receiptNumber: p.receipt_number || p.receiptNumber || p.notes?.replace('TrxID: ', '') || p.transaction_id || p.id,
     trxId: p.notes?.replace('TrxID: ', '') || p.transaction_id || p.id,
     method: p.method || 'HAND_CASH',
     amount: Number(p.amount) || 0,
     bookingNumber: p.booking?.booking_number || 'BK-CONF',
+    booking: { bookingNumber: p.booking?.booking_number || p.booking_number || 'BK-CONF' },
     passengerName: p.booking?.contact_name || p.booking?.passengers?.[0]?.passenger_name || 'Passenger',
-    timestamp: p.created_at ? new Date(p.created_at) : new Date()
+    timestamp: p.created_at ? new Date(p.created_at) : new Date(),
+    createdAt: p.created_at ? new Date(p.created_at) : new Date()
   }));
 
   // Real activity feed
   const activityFeed = paymentsData.slice(0, 5).map((p: any) => ({
     id: `act-${p.id}`,
     action: 'PAYMENT_RECEIVED',
-    entity: 'Payment',
+    entity: 'PAYMENT',
     entityId: p.id,
+    entityName: `${p.method || 'CASH'} ৳${p.amount || 0}`,
     description: `${p.method} পেমেন্ট সংগ্রহ ৳${p.amount} (${p.booking?.booking_number || 'Booking'})`,
     user: { fullName: p.received_by?.full_name || 'Staff' },
     createdAt: p.created_at ? new Date(p.created_at) : new Date()
   }));
 
+  // Progressive sales buckets by hour
+  const hourBuckets = new Map<string, { sales: number; collected: number; bookings: number; tickets: number }>();
+  bookingsData.forEach((b: any) => {
+    const dt = b.created_at ? new Date(b.created_at) : new Date();
+    const label = `${String(dt.getHours()).padStart(2, '0')}:00`;
+    const cur = hourBuckets.get(label) || { sales: 0, collected: 0, bookings: 0, tickets: 0 };
+    cur.sales += Number(b.net_amount) || 0;
+    cur.collected += Number(b.paid_amount) || 0;
+    cur.bookings += 1;
+    cur.tickets += b.seats?.length || 1;
+    hourBuckets.set(label, cur);
+  });
+  let cumSales = 0;
+  let cumTickets = 0;
+  const progressiveSales: ProgressiveSalesSlot[] = Array.from(hourBuckets.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([time, val]) => {
+      cumSales += val.sales;
+      cumTickets += val.tickets;
+      return {
+        slotLabel: time,
+        targetTime: time,
+        time,
+        bookings: val.bookings,
+        sales: val.sales,
+        collected: val.collected,
+        cumulativeSales: cumSales,
+        cumulativeTickets: cumTickets,
+        intervalSales: val.sales,
+        intervalTickets: val.tickets
+      };
+    });
+
   return {
     kpis: {
+      grossSales,
+      totalDiscount,
+      netSales: todaySales,
+      totalCollected: todayCollected,
+      totalDue: todayDue,
+      bookingsCount,
       todaySales,
       todayTickets,
       todayCollected,
@@ -149,8 +214,8 @@ export async function getLiveDashboardData(dateInput?: string | Date) {
     todayBookings,
     recentPayments: paymentsData,
     methodBreakdown: methodTotals,
-    hourlySales: [] as HourlySalesPoint[],
-    progressiveSales: [] as ProgressiveSalesSlot[],
+    hourlySales: progressiveSales.map((s) => ({ hour: s.time, sales: s.sales, tickets: s.intervalTickets })),
+    progressiveSales,
     busPerformance,
     paymentBreakdown: {
       BKASH: methodTotals.BKASH.total,
@@ -163,6 +228,7 @@ export async function getLiveDashboardData(dateInput?: string | Date) {
     routeBreakdown: tripsData.map((t: any) => ({
       routeName: t.route?.route_name || 'Admission Express Route',
       ticketsSold: t.bookings?.length || 0,
+      tickets: t.bookings?.length || 0,
       revenue: (t.bookings || []).reduce((sum: number, b: any) => sum + (Number(b.net_amount) || 0), 0)
     })),
     passengerDemographics: {
@@ -173,6 +239,7 @@ export async function getLiveDashboardData(dateInput?: string | Date) {
     },
     recentTransactions,
     activityFeed,
+    admissionService: admissionSummary,
     tripOccupancyList: tripsData.map((t: any) => {
       const totalSeats = t.bus?.seatLayout?.totalSeats || t.bus?.capacity || 40;
       const soldSeats = t.bookings?.length || 0;

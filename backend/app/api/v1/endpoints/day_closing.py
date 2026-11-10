@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.async_wrapper import WrappedAsyncSession
@@ -21,7 +21,7 @@ async def get_daily_summary(
 ) -> Dict[str, Any]:
     try:
         date_obj = datetime.fromisoformat(date_str)
-        return calculate_day_closing_summary(db, date_obj)
+        return await calculate_day_closing_summary(db, date_obj)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -34,6 +34,6 @@ async def close_business_day(
     current_user: User = Depends(require_role(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT"]))
 ):
     try:
-        return submit_day_closing(db, req, current_user.id, tenant_id)
+        return await submit_day_closing(db, req, current_user.id, tenant_id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

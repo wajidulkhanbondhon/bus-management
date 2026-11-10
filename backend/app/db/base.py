@@ -12,3 +12,11 @@ from app.models.finance import FinancialLedger, DayClosing, DayClosingPaymentSum
 from app.models.audit import AuditLog, Notification, SystemSetting
 from app.models.analytics import DailyAnalytics
 from app.models.passenger_pin import PassengerPin
+from app.models.admission_service import (
+    AdmissionFeePreset,
+    AdmissionOrder,
+    AdmissionOrderItem,
+    AdmissionPayment,
+    AdmissionLedgerEntry,
+    AdmissionDayClosing,
+)

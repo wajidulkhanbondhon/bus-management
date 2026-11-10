@@ -190,7 +190,7 @@ async def import_database_backup(
         }
 
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to restore database backup: {str(e)}")
 
 

@@ -1033,6 +1033,59 @@ describe('ATOMS Domain Engine & Business Rules', () => {
       expect(seat.fare).toBe(650);
       expect(netRefund).toBe(600);
     });
+
+    it('should extract seat numbers cleanly and build updated ticket data for alternative seat or bus transfer', async () => {
+      const {
+        extractSeatNumber,
+        getBookingSeatsList,
+        buildSeatUpdatedBooking
+      } = await import('@/components/booking/seat-shift-client');
+
+      expect(extractSeatNumber({ seat_number: 'a1' })).toBe('A1');
+      expect(extractSeatNumber({ seatNumber: 'B4' })).toBe('B4');
+      expect(extractSeatNumber({ seat_id: 'trip-ru-01-C2' })).toBe('C2');
+      expect(extractSeatNumber({ seat: { seatNumber: 'D3' } })).toBe('D3');
+
+      const multiBooking = {
+        id: 'bk-multi-1',
+        booking_number: 'BK-MULTI-01',
+        trip_id: 'trip-ru-01',
+        contact_name: 'সুমাইয়া আক্তার',
+        contact_phone: '01711-234567',
+        seats: [
+          { seat_number: 'A1', fare: 650 },
+          { seat_id: 'trip-ru-01-A2', fare: 650 }
+        ],
+        passengers: [
+          { passenger_name: 'সুমাইয়া আক্তার', seat_number: 'A1', gender: 'FEMALE' },
+          { passenger_name: 'ফাতেমা জাহান', seat_number: 'A2', gender: 'FEMALE' }
+        ],
+        trip: {
+          id: 'trip-ru-01',
+          targetUniversity: 'রাজশাহী বিশ্ববিদ্যালয় (RU)',
+          bus: { busName: 'কোচ-০১', busNumber: 'DH-1101' }
+        }
+      };
+
+      expect(getBookingSeatsList(multiBooking)).toEqual(['A1', 'A2']);
+
+      const targetTrip = {
+        id: 'trip-ru-02',
+        targetUniversity: 'রাজশাহী বিশ্ববিদ্যালয় (RU)',
+        bus: { busName: 'কোচ-০২ (এসি)', busNumber: 'DH-2202' },
+        departureTime: 'রাত ১১:০০'
+      };
+
+      const transferred = buildSeatUpdatedBooking(multiBooking, 'A1', 'C4', targetTrip);
+      expect(transferred.trip_id).toBe('trip-ru-02');
+      expect(transferred.trip.bus.busName).toBe('কোচ-০২ (এসি)');
+      expect(transferred.seats[0].seatNumber).toBe('C4');
+      expect(transferred.seats[0].seat_number).toBe('C4');
+      expect(transferred.seats[1].seat_id).toBe('trip-ru-01-A2');
+      expect(transferred.passengers[0].seatNumber).toBe('C4');
+      expect(transferred.passengers[1].seat_number).toBe('A2');
+      expect(transferred.grossAmount).toBe(1200);
+    });
   });
 });
 

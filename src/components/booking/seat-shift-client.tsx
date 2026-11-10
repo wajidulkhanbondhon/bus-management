@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useId } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeftRight,
@@ -84,6 +84,152 @@ export interface SeatZoneInfo {
   badgeClass: string;
   accentClass: string;
   desc: string;
+}
+
+export function extractSeatNumber(item: any): string {
+  if (!item) return '';
+  if (typeof item === 'string') {
+    const trimmed = item.trim().toUpperCase();
+    return /^[A-J][1-5]$/.test(trimmed) ? trimmed : (trimmed.split('-').pop() || trimmed);
+  }
+  const direct =
+    item.seat_number ||
+    item.seatNumber ||
+    item.seat?.seatNumber ||
+    item.seat?.seat_number ||
+    '';
+  if (direct) return String(direct).trim().toUpperCase();
+  const rawId = item.seat_id || item.seatId || '';
+  if (typeof rawId === 'string' && rawId.trim()) {
+    const clean = rawId.trim().toUpperCase();
+    const tail = clean.split('-').pop() || clean;
+    return tail;
+  }
+  return '';
+}
+
+export function getBookingSeatsList(booking: any): string[] {
+  if (!booking) return [];
+  const seen = new Set<string>();
+  const add = (val: string) => {
+    if (val) seen.add(val.toUpperCase());
+  };
+  (booking.seats || []).forEach((s: any) => add(extractSeatNumber(s)));
+  (booking.passengers || []).forEach((p: any) => add(extractSeatNumber(p)));
+  return Array.from(seen);
+}
+
+export function buildSeatUpdatedBooking(
+  booking: any,
+  oldSeat: string,
+  newSeat: string,
+  targetTrip?: any
+) {
+  if (!booking) return booking;
+  const oldNorm = oldSeat.toUpperCase().trim();
+  const newNorm = newSeat.toUpperCase().trim();
+  const newZone = getSeatZoneInfo(newNorm);
+
+  const existingSeats = Array.isArray(booking.seats) ? booking.seats : [];
+  let seatReplaced = false;
+  const updatedSeats = existingSeats.length > 0
+    ? existingSeats.map((s: any) => {
+        const sNum = extractSeatNumber(s);
+        if (!seatReplaced && (sNum === oldNorm || existingSeats.length === 1)) {
+          seatReplaced = true;
+          return {
+            ...s,
+            seat_number: newNorm,
+            seatNumber: newNorm,
+            fare: newZone.fare,
+            fareSnapshot: newZone.fare,
+            fare_snapshot: newZone.fare
+          };
+        }
+        return s;
+      })
+    : [{ seat_number: newNorm, seatNumber: newNorm, fare: newZone.fare, fareSnapshot: newZone.fare }];
+
+  const existingPassengers = Array.isArray(booking.passengers) ? booking.passengers : [];
+  let passengerReplaced = false;
+  const updatedPassengers = existingPassengers.length > 0
+    ? existingPassengers.map((p: any) => {
+        const pSeat = extractSeatNumber(p);
+        if (!passengerReplaced && (pSeat === oldNorm || existingPassengers.length === 1)) {
+          passengerReplaced = true;
+          return {
+            ...p,
+            seat_number: newNorm,
+            seatNumber: newNorm,
+            fareSnapshot: newZone.fare,
+            fare_snapshot: newZone.fare
+          };
+        }
+        return p;
+      })
+    : [
+        {
+          passenger_name: booking.contact_name || booking.contactName || 'যাত্রী',
+          passengerName: booking.contact_name || booking.contactName || 'যাত্রী',
+          passenger_phone: booking.contact_phone || booking.contactPhone || '',
+          passengerPhone: booking.contact_phone || booking.contactPhone || '',
+          gender: booking.passenger_gender || booking.passengerGender || 'MALE',
+          seat_number: newNorm,
+          seatNumber: newNorm,
+          fareSnapshot: newZone.fare
+        }
+      ];
+
+  const totalFare = updatedSeats.reduce(
+    (sum: number, s: any) => sum + Number(s.fareSnapshot ?? s.fare_snapshot ?? s.fare ?? newZone.fare),
+    0
+  );
+  const existingPaid = booking.paidAmount ?? booking.paid_amount;
+  const paidAmount = existingPaid !== undefined && existingPaid !== null
+    ? Number(existingPaid)
+    : getSeatZoneInfo(oldNorm).fare;
+
+  const updatedTrip = targetTrip
+    ? {
+        ...targetTrip,
+        departure_date: targetTrip.departure_date || targetTrip.departureDate,
+        departureDate: targetTrip.departureDate || targetTrip.departure_date,
+        departure_time: targetTrip.departure_time || targetTrip.departureTime,
+        departureTime: targetTrip.departureTime || targetTrip.departure_time,
+        targetUniversity: targetTrip.targetUniversity || targetTrip.target_university || booking.trip?.targetUniversity,
+        bus: targetTrip.bus || booking.trip?.bus,
+        route: targetTrip.route || booking.trip?.route || {
+          origin: 'ঢাকা',
+          destination: targetTrip.targetUniversity || targetTrip.target_university || 'বিশ্ববিদ্যালয় ক্যাম্পাস'
+        }
+      }
+    : booking.trip;
+
+  return {
+    ...booking,
+    trip_id: targetTrip ? targetTrip.id : (booking.trip_id || booking.tripId),
+    tripId: targetTrip ? targetTrip.id : (booking.tripId || booking.trip_id),
+    trip: updatedTrip,
+    bookingNumber: booking.bookingNumber || booking.booking_number,
+    booking_number: booking.booking_number || booking.bookingNumber,
+    contactName: booking.contactName || booking.contact_name,
+    contact_name: booking.contact_name || booking.contactName,
+    contactPhone: booking.contactPhone || booking.contact_phone,
+    contact_phone: booking.contact_phone || booking.contactPhone,
+    shift_request: undefined,
+    seats: updatedSeats,
+    passengers: updatedPassengers,
+    grossAmount: totalFare,
+    gross_amount: totalFare,
+    totalAmount: totalFare,
+    total_amount: totalFare,
+    paidAmount,
+    paid_amount: paidAmount,
+    dueAmount: Math.max(0, totalFare - paidAmount),
+    due_amount: Math.max(0, totalFare - paidAmount),
+    paymentStatus: paidAmount >= totalFare ? 'PAID' : 'PARTIAL',
+    payment_status: paidAmount >= totalFare ? 'PAID' : 'PARTIAL'
+  };
 }
 
 export function getSeatZoneInfo(seatNumber: string): SeatZoneInfo {
@@ -397,11 +543,29 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
     ];
   }, [initialTrips]);
 
+  const initialBookingIds = useMemo(
+    () => new Set((initialBookings || []).map((b: any) => String(b?.id || ''))),
+    [initialBookings]
+  );
+  const initialTripIds = useMemo(
+    () => new Set((initialTrips || []).map((t: any) => String(t?.id || ''))),
+    [initialTrips]
+  );
+
   const [bookingsList, setBookingsList] = useState<any[]>(seededBookings);
-  const [tripsList, setTripsList] = useState<any[]>(seededTrips);
+  const tripsList = seededTrips;
+
+  // Accessible IDs for filter controls
+  const uniFilterId = useId();
+  const busFilterId = useId();
+  const genderFilterId = useId();
+  const zoneFilterId = useId();
+  const searchInputId = useId();
 
   // ──────────────── Left Filter Bar States ────────────────
-  const [viewTab, setViewTab] = useState<'ALL' | 'REQUESTS'>('REQUESTS');
+  const [viewTab, setViewTab] = useState<'ALL' | 'REQUESTS'>(() =>
+    seededBookings.some((b) => Boolean(b.shift_request)) ? 'REQUESTS' : 'ALL'
+  );
   const [selectedUniversityFilter, setSelectedUniversityFilter] = useState<string>('ALL');
   const [selectedBusFilter, setSelectedBusFilter] = useState<string>('ALL');
   const [selectedGenderFilter, setSelectedGenderFilter] = useState<'ALL' | 'MALE' | 'FEMALE'>('ALL');
@@ -411,8 +575,9 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
   // ──────────────── Active Booking & Passenger ────────────────
   const [selectedBooking, setSelectedBooking] = useState<any | null>(seededBookings[0] || null);
   const [selectedOldSeat, setSelectedOldSeat] = useState<string>(
-    (seededBookings[0]?.seats || [])[0]?.seat_number || 'A1'
+    () => getBookingSeatsList(seededBookings[0])[0] || 'A1'
   );
+  const prevSelectedBookingIdRef = useRef<string | null>(seededBookings[0]?.id || null);
 
   // ──────────────── 4 Distinct Operational Workbenches ────────────────
   // 1. RELOCATE: Shift to Vacant Seat
@@ -442,6 +607,8 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string; actionType?: string } | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
+  const [ticketModalBooking, setTicketModalBooking] = useState<any | null>(null);
+  const [lastUpdatedTicketBooking, setLastUpdatedTicketBooking] = useState<any | null>(null);
   const [showGuide, setShowGuide] = useState(false);
 
   // Live Seats of Current Bus
@@ -484,6 +651,25 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
     );
   };
 
+  // Dynamic University Filter Options combining presets + live booking universities
+  const universityFilterOptions = useMemo(() => {
+    const options = [...TARGET_UNIVERSITIES];
+    bookingsList.forEach((b) => {
+      const uni = getBookingUniversity(b).trim();
+      if (!uni) return;
+      const alreadyExists = options.some(
+        (opt) =>
+          opt.id !== 'ALL' &&
+          (opt.name.toLowerCase() === uni.toLowerCase() ||
+            uni.toLowerCase().includes(opt.id.toLowerCase()))
+      );
+      if (!alreadyExists) {
+        options.push({ id: uni, name: uni });
+      }
+    });
+    return options;
+  }, [bookingsList]);
+
   // Extract unique bus list for filter dropdown
   const availableBusNames = useMemo(() => {
     const set = new Set<string>();
@@ -499,7 +685,7 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
     if (!selectedBooking) return null;
     const passengers = selectedBooking.passengers || [];
     const matched = passengers.find(
-      (p: any) => (p.seat_number || p.seatNumber || '').toUpperCase() === selectedOldSeat.toUpperCase()
+      (p: any) => extractSeatNumber(p) === selectedOldSeat.toUpperCase()
     );
     if (matched) return matched;
     return {
@@ -529,8 +715,13 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
 
       // 2. University Filter
       if (selectedUniversityFilter !== 'ALL') {
-        const uni = getBookingUniversity(b);
-        if (!uni.toLowerCase().includes(selectedUniversityFilter.toLowerCase())) {
+        const uni = getBookingUniversity(b).toLowerCase();
+        const filterVal = selectedUniversityFilter.toLowerCase();
+        const matchedOpt = universityFilterOptions.find((u) => u.id === selectedUniversityFilter);
+        const optName = matchedOpt?.name.toLowerCase() || '';
+        const matchesCode = uni.includes(filterVal);
+        const matchesName = optName ? (uni.includes(optName) || optName.includes(uni)) : false;
+        if (!matchesCode && !matchesName) {
           return false;
         }
       }
@@ -553,9 +744,11 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
 
       // 5. Zone Filter
       if (selectedZoneFilter !== 'ALL') {
-        const primarySeat = (b.seats || [])[0]?.seat_number || 'A1';
-        const zInfo = getSeatZoneInfo(primarySeat);
-        if (zInfo.zone !== selectedZoneFilter) {
+        const seats = getBookingSeatsList(b);
+        const matchesZone = (seats.length > 0 ? seats : ['A1']).some(
+          (s) => getSeatZoneInfo(s).zone === selectedZoneFilter
+        );
+        if (!matchesZone) {
           return false;
         }
       }
@@ -566,13 +759,14 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
         const bNum = (b.booking_number || b.bookingNumber || '').toLowerCase();
         const name = (b.contact_name || b.contactName || '').toLowerCase();
         const phone = (b.contact_phone || b.contactPhone || '').toLowerCase();
-        const seats = (b.seats || []).map((s: any) => s.seat_number || s.seatNumber || '').join(' ').toLowerCase();
-        return bNum.includes(q) || name.includes(q) || phone.includes(q) || seats.includes(q);
+        const seats = getBookingSeatsList(b).join(' ').toLowerCase();
+        const uni = getBookingUniversity(b).toLowerCase();
+        return bNum.includes(q) || name.includes(q) || phone.includes(q) || seats.includes(q) || uni.includes(q);
       }
 
       return true;
     });
-  }, [bookingsList, viewTab, selectedUniversityFilter, selectedBusFilter, selectedGenderFilter, selectedZoneFilter, searchQuery]);
+  }, [bookingsList, viewTab, selectedUniversityFilter, selectedBusFilter, selectedGenderFilter, selectedZoneFilter, searchQuery, universityFilterOptions]);
 
   // Build realistic coach map
   const generateRealisticCoachSeats = (tripId: string, currentBookingSeats: string[], allBookings: any[]) => {
@@ -582,10 +776,14 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
     const bookedSeatMap = new Map<string, { gender: 'MALE' | 'FEMALE'; name: string; phone: string; bId: string; bNum: string }>();
 
     allBookings.forEach((b) => {
+      const bStatus = (b.booking_status || b.bookingStatus || '').toUpperCase();
+      if (bStatus === 'CANCELLED' || bStatus === 'EXPIRED' || bStatus === 'REJECTED') {
+        return;
+      }
       const bTrip = b.trip_id || b.tripId || b.trip?.id;
       if (bTrip === tripId && b.id !== selectedBooking?.id) {
         (b.passengers || []).forEach((p: any) => {
-          const sNum = (p.seat_number || p.seatNumber || '').toUpperCase();
+          const sNum = extractSeatNumber(p);
           if (sNum) {
             bookedSeatMap.set(sNum, {
               gender: (p.gender || 'MALE').toUpperCase() === 'FEMALE' ? 'FEMALE' : 'MALE',
@@ -597,7 +795,7 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
           }
         });
         (b.seats || []).forEach((s: any) => {
-          const sNum = (s.seat_number || s.seatNumber || s.seat_id || '').toUpperCase();
+          const sNum = extractSeatNumber(s);
           if (sNum && !bookedSeatMap.has(sNum)) {
             bookedSeatMap.set(sNum, {
               gender: (b.passenger_gender || 'MALE').toUpperCase() === 'FEMALE' ? 'FEMALE' : 'MALE',
@@ -654,7 +852,7 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
           fare: zInfo.fare,
           status,
           gender: isCurrentMine ? activeGender : booked?.gender,
-          passengerName: isCurrentMine ? (activePassenger?.passenger_name || 'Passenger') : booked?.name,
+          passengerName: isCurrentMine ? (activePassenger?.passenger_name || activePassenger?.passengerName || 'Passenger') : booked?.name,
           passengerPhone: booked?.phone,
           bookingId: booked?.bId,
           bookingNumber: booked?.bNum
@@ -665,9 +863,10 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
     return seats;
   };
 
-  // Load Current Bus Seats
+  // Load Current Bus Seats (only reset transient selection/status when switching to a DIFFERENT booking)
   useEffect(() => {
     if (!selectedBooking) {
+      prevSelectedBookingIdRef.current = null;
       setTripSeats([]);
       setSelectedOldSeat('');
       setTargetVacantSeat('');
@@ -675,9 +874,8 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
       return;
     }
 
-    const currentSeats = (selectedBooking.seats || []).map(
-      (s: any) => (s.seat_number || s.seatNumber || s.seat_id || '').toUpperCase()
-    );
+    const isCancelled = (selectedBooking.booking_status || selectedBooking.bookingStatus || '').toUpperCase() === 'CANCELLED';
+    const currentSeats = isCancelled ? [] : getBookingSeatsList(selectedBooking);
 
     // Auto-select the passenger's current seat!
     if (currentSeats.length > 0) {
@@ -686,9 +884,16 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
       }
     }
 
-    setTargetVacantSeat('');
-    setTargetSwapSeat(null);
-    setStatusMessage(null);
+    const switchedBooking = prevSelectedBookingIdRef.current !== selectedBooking.id;
+    prevSelectedBookingIdRef.current = selectedBooking.id;
+
+    if (switchedBooking) {
+      setTargetVacantSeat('');
+      setTargetSwapSeat(null);
+      setTargetOtherBusSeat('');
+      setStatusMessage(null);
+      setLastUpdatedTicketBooking(null);
+    }
 
     const tripId = selectedBooking.trip_id || selectedBooking.tripId || selectedBooking.trip?.id || 'trip-ru-01';
     setTripSeats(generateRealisticCoachSeats(tripId, currentSeats, bookingsList));
@@ -796,8 +1001,13 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
   }, [tripsList, selectedBooking]);
 
   useEffect(() => {
-    if (alternateTrips.length > 0 && !targetOtherTripId) {
+    if (alternateTrips.length === 0) {
+      if (targetOtherTripId) setTargetOtherTripId('');
+      return;
+    }
+    if (!targetOtherTripId || !alternateTrips.some((t) => t.id === targetOtherTripId)) {
       setTargetOtherTripId(alternateTrips[0].id);
+      setTargetOtherBusSeat('');
     }
   }, [alternateTrips, targetOtherTripId]);
 
@@ -817,6 +1027,28 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
     if (!targetOtherBusSeat) return null;
     return calculateFareComparison(selectedOldSeat, targetOtherBusSeat);
   }, [selectedOldSeat, targetOtherBusSeat]);
+
+  // Live Preview Booking for the selected alternative seat/bus (ready before AND after confirmation)
+  const previewTicketBooking = useMemo(() => {
+    if (!selectedBooking || !selectedOldSeat) return null;
+    if (activeTab === 'RELOCATE' && targetVacantSeat) {
+      return buildSeatUpdatedBooking(selectedBooking, selectedOldSeat, targetVacantSeat);
+    }
+    if (activeTab === 'SWAP' && targetSwapSeat?.seatNumber) {
+      return buildSeatUpdatedBooking(selectedBooking, selectedOldSeat, targetSwapSeat.seatNumber);
+    }
+    if (activeTab === 'TRANSFER_BUS' && targetOtherTripId && targetOtherBusSeat) {
+      const targetTrip = alternateTrips.find((t) => t.id === targetOtherTripId);
+      return buildSeatUpdatedBooking(selectedBooking, selectedOldSeat, targetOtherBusSeat, targetTrip);
+    }
+    return null;
+  }, [selectedBooking, selectedOldSeat, activeTab, targetVacantSeat, targetSwapSeat, targetOtherTripId, targetOtherBusSeat, alternateTrips]);
+
+  const openTicketModal = (bookingData: any) => {
+    if (!bookingData) return;
+    setTicketModalBooking(bookingData);
+    setShowTicketModal(true);
+  };
 
   // Handle Seat Click on Current Bus
   const handleSeatClick = (seat: SeatItemData) => {
@@ -876,24 +1108,28 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
   }, [viewTab, selectedUniversityFilter, selectedBusFilter, selectedGenderFilter, selectedZoneFilter, searchQuery]);
 
   // ──────────────── Execute Operations ────────────────
-  const handleExecuteOperation = async () => {
+  const handleExecuteOperation = async (openTicketAfter = false) => {
     if (!selectedBooking || !selectedOldSeat) return;
     setIsProcessing(true);
     setStatusMessage(null);
     setShowConfirmModal(false);
+
+    const isSampleBooking = !initialBookingIds.has(String(selectedBooking.id));
 
     try {
       // ──────────────── OPTION 1: RELOCATE TO VACANT SEAT ────────────────
       if (activeTab === 'RELOCATE') {
         if (!targetVacantSeat) throw new Error('অনুগ্রহ করে বাসের ম্যাপ থেকে একটি ফাঁকা আসন পছন্দ করুন।');
 
-        const res = await shiftSeatAction({
-          bookingId: selectedBooking.id,
-          currentSeat: selectedOldSeat,
-          targetSeat: targetVacantSeat,
-          reason: shiftReason
-        });
-        if (!res.success) throw new Error(res.error || 'আসন স্থানান্তর করা যায়নি।');
+        if (!isSampleBooking) {
+          const res = await shiftSeatAction({
+            bookingId: selectedBooking.id,
+            currentSeat: selectedOldSeat,
+            targetSeat: targetVacantSeat,
+            reason: shiftReason
+          });
+          if (!res.success) throw new Error(res.error || 'আসন স্থানান্তর করা যায়নি।');
+        }
 
         const oldSeatNum = selectedOldSeat.toUpperCase();
         const newSeatNum = targetVacantSeat.toUpperCase();
@@ -906,21 +1142,16 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
               return { ...s, status: 'AVAILABLE', passengerName: undefined, gender: undefined };
             }
             if (s.seatNumber.toUpperCase() === newSeatNum) {
-              return { ...s, status: 'CURRENT_BOOKING', passengerName: activePassenger?.passenger_name, gender: activeGender, fare: newZone.fare };
+              return { ...s, status: 'CURRENT_BOOKING', passengerName: activePassenger?.passenger_name || activePassenger?.passengerName, gender: activeGender, fare: newZone.fare };
             }
             return s;
           })
         );
 
-        // Update local booking
-        const updatedBooking = {
-          ...selectedBooking,
-          shift_request: undefined,
-          seats: [{ seat_number: newSeatNum, fare: newZone.fare }],
-          passengers: [{ ...(selectedBooking.passengers?.[0] || {}), seat_number: newSeatNum }]
-        };
+        const updatedBooking = buildSeatUpdatedBooking(selectedBooking, oldSeatNum, newSeatNum);
         setSelectedBooking(updatedBooking);
         setBookingsList((prev) => prev.map((b) => (b.id === selectedBooking.id ? updatedBooking : b)));
+        setLastUpdatedTicketBooking(updatedBooking);
 
         setSelectedOldSeat(newSeatNum);
         setTargetVacantSeat('');
@@ -931,6 +1162,10 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
           text: `আসন স্থানান্তর সফল হয়েছে! পূর্বের সিট [${oldSeatNum}] খালি করে নতুন সিট [${newSeatNum}] বরাদ্দ করা হয়েছে। (${comp.amountText})`,
           actionType: 'SHIFT'
         });
+
+        if (openTicketAfter) {
+          openTicketModal(updatedBooking);
+        }
       }
 
       // ──────────────── OPTION 2: MUTUAL SEAT SWAP ────────────────
@@ -940,7 +1175,7 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
         // Mutual Gender Safety Verification
         const p1CanSitInSeat2 = validateGenderRule(targetSwapSeat.seatNumber, currentBusLocks, activeGender);
         if (!p1CanSitInSeat2.allowed) {
-          throw new Error(`সোয়াপ বাতিল: ${activePassenger?.passenger_name} সিট ${targetSwapSeat.seatNumber}-এ বসলে জেন্ডার রুলস ভঙ্গ হবে (${p1CanSitInSeat2.reason})`);
+          throw new Error(`সোয়াপ বাতিল: ${activePassenger?.passenger_name || activePassenger?.passengerName} সিট ${targetSwapSeat.seatNumber}-এ বসলে জেন্ডার রুলস ভঙ্গ হবে (${p1CanSitInSeat2.reason})`);
         }
 
         const p2Gender = targetSwapSeat.gender || 'MALE';
@@ -949,17 +1184,21 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
           throw new Error(`সোয়াপ বাতিল: অপর যাত্রী (${targetSwapSeat.passengerName}) আপনার সিট ${selectedOldSeat}-এ বসলে জেন্ডার রুলস ভঙ্গ হবে (${p2CanSitInSeat1.reason})`);
         }
 
-        const res = await swapSeatsAction({
-          bookingId1: selectedBooking.id,
-          seat1: selectedOldSeat,
-          bookingId2: targetSwapSeat.bookingId || 'bk-swap',
-          seat2: targetSwapSeat.seatNumber,
-          reason: shiftReason
-        });
-        if (!res.success) throw new Error(res.error || 'সিট অদলবদল ব্যর্থ হয়েছে।');
+        const isSwapPartnerSample = !targetSwapSeat.bookingId || !initialBookingIds.has(String(targetSwapSeat.bookingId));
+        if (!isSampleBooking && !isSwapPartnerSample) {
+          const res = await swapSeatsAction({
+            bookingId1: selectedBooking.id,
+            seat1: selectedOldSeat,
+            bookingId2: targetSwapSeat.bookingId || 'bk-swap',
+            seat2: targetSwapSeat.seatNumber,
+            reason: shiftReason
+          });
+          if (!res.success) throw new Error(res.error || 'সিট অদলবদল ব্যর্থ হয়েছে।');
+        }
 
         const s1 = selectedOldSeat.toUpperCase();
         const s2 = targetSwapSeat.seatNumber.toUpperCase();
+        const partnerBookingId = targetSwapSeat.bookingId;
 
         setTripSeats((prev) =>
           prev.map((s) => {
@@ -967,20 +1206,24 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
               return { ...s, status: 'BOOKED', passengerName: targetSwapSeat.passengerName, gender: targetSwapSeat.gender };
             }
             if (s.seatNumber.toUpperCase() === s2) {
-              return { ...s, status: 'CURRENT_BOOKING', passengerName: activePassenger?.passenger_name, gender: activeGender };
+              return { ...s, status: 'CURRENT_BOOKING', passengerName: activePassenger?.passenger_name || activePassenger?.passengerName, gender: activeGender };
             }
             return s;
           })
         );
 
-        const updatedBooking = {
-          ...selectedBooking,
-          shift_request: undefined,
-          seats: [{ seat_number: s2, fare: getSeatZoneInfo(s2).fare }],
-          passengers: [{ ...(selectedBooking.passengers?.[0] || {}), seat_number: s2 }]
-        };
+        const updatedBooking = buildSeatUpdatedBooking(selectedBooking, s1, s2);
         setSelectedBooking(updatedBooking);
-        setBookingsList((prev) => prev.map((b) => (b.id === selectedBooking.id ? updatedBooking : b)));
+        setBookingsList((prev) =>
+          prev.map((b) => {
+            if (b.id === selectedBooking.id) return updatedBooking;
+            if (partnerBookingId && b.id === partnerBookingId) {
+              return buildSeatUpdatedBooking(b, s2, s1);
+            }
+            return b;
+          })
+        );
+        setLastUpdatedTicketBooking(updatedBooking);
 
         setSelectedOldSeat(s2);
         setTargetSwapSeat(null);
@@ -991,6 +1234,10 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
           text: `সিট অদলবদল (Swap) সফল হয়েছে! আপনার আসন [${s2}] এবং ${targetSwapSeat.passengerName}-এর আসন [${s1}] সফলভাবে ইন্টারচেঞ্জ করা হয়েছে!`,
           actionType: 'SWAP'
         });
+
+        if (openTicketAfter) {
+          openTicketModal(updatedBooking);
+        }
       }
 
       // ──────────────── OPTION 3: TRANSFER TO ALTERNATIVE BUS ────────────────
@@ -999,20 +1246,24 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
           throw new Error('বিকল্প বাস ও নতুন খালি আসন নির্বাচন করুন।');
         }
 
-        const res = await transferBusAction({
-          bookingId: selectedBooking.id,
-          currentSeat: selectedOldSeat,
-          targetTripId: targetOtherTripId,
-          targetSeat: targetOtherBusSeat,
-          reason: shiftReason
-        });
-        if (!res.success) throw new Error(res.error || 'বাস স্থানান্তর ব্যর্থ হয়েছে।');
+        const isSampleTargetTrip = !initialTripIds.has(String(targetOtherTripId));
+        if (!isSampleBooking && !isSampleTargetTrip) {
+          const res = await transferBusAction({
+            bookingId: selectedBooking.id,
+            currentSeat: selectedOldSeat,
+            targetTripId: targetOtherTripId,
+            targetSeat: targetOtherBusSeat,
+            reason: shiftReason
+          });
+          if (!res.success) throw new Error(res.error || 'বাস স্থানান্তর ব্যর্থ হয়েছে।');
+        }
 
         const targetTrip = alternateTrips.find((t) => t.id === targetOtherTripId);
         const newBusName = targetTrip?.bus?.busName || targetTrip?.bus?.bus_number || 'নতুন বাস';
 
         // Free seat on old bus
         const oldSeatNum = selectedOldSeat.toUpperCase();
+        const newSeatNum = targetOtherBusSeat.toUpperCase();
         setTripSeats((prev) =>
           prev.map((s) => {
             if (s.seatNumber.toUpperCase() === oldSeatNum) {
@@ -1022,26 +1273,24 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
           })
         );
 
-        const updatedBooking = {
-          ...selectedBooking,
-          trip_id: targetOtherTripId,
-          trip: targetTrip,
-          shift_request: undefined,
-          seats: [{ seat_number: targetOtherBusSeat, fare: getSeatZoneInfo(targetOtherBusSeat).fare }],
-          passengers: [{ ...(selectedBooking.passengers?.[0] || {}), seat_number: targetOtherBusSeat }]
-        };
+        const updatedBooking = buildSeatUpdatedBooking(selectedBooking, oldSeatNum, newSeatNum, targetTrip);
         setSelectedBooking(updatedBooking);
         setBookingsList((prev) => prev.map((b) => (b.id === selectedBooking.id ? updatedBooking : b)));
+        setLastUpdatedTicketBooking(updatedBooking);
 
-        setSelectedOldSeat(targetOtherBusSeat);
+        setSelectedOldSeat(newSeatNum);
         setTargetOtherBusSeat('');
         setActiveTab('RELOCATE');
 
         setStatusMessage({
           type: 'success',
-          text: `সফলভাবে ${newBusName}-এ সিট [${targetOtherBusSeat}]-এ টিকিট স্থানান্তর সম্পন্ন হয়েছে!`,
+          text: `সফলভাবে ${newBusName}-এ সিট [${newSeatNum}]-এ টিকিট স্থানান্তর সম্পন্ন হয়েছে!`,
           actionType: 'TRANSFER'
         });
+
+        if (openTicketAfter) {
+          openTicketModal(updatedBooking);
+        }
       }
 
       // ──────────────── OPTION 4: CANCEL SEAT & REFUND ────────────────
@@ -1049,14 +1298,16 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
         const fare = currentSeatZone.fare;
         const refundAmt = Math.max(0, fare - cancellationFee);
 
-        const res = await cancelSeatAction({
-          bookingId: selectedBooking.id,
-          seatNumber: selectedOldSeat,
-          reason: cancellationReason,
-          cancellationFee: cancellationFee,
-          refundAmount: refundAmt
-        });
-        if (!res.success) throw new Error(res.error || 'সিট বাতিল করা যায়নি।');
+        if (!isSampleBooking) {
+          const res = await cancelSeatAction({
+            bookingId: selectedBooking.id,
+            seatNumber: selectedOldSeat,
+            reason: cancellationReason,
+            cancellationFee: cancellationFee,
+            refundAmount: refundAmt
+          });
+          if (!res.success) throw new Error(res.error || 'সিট বাতিল করা যায়নি।');
+        }
 
         // Instantly free the seat on the bus map so anyone can book/shift into it!
         const freedSeatNum = selectedOldSeat.toUpperCase();
@@ -1073,12 +1324,14 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
         const updatedBooking = {
           ...selectedBooking,
           booking_status: 'CANCELLED',
+          bookingStatus: 'CANCELLED',
           shift_request: undefined,
           cancellation_fee: cancellationFee,
           refund_amount: refundAmt
         };
         setSelectedBooking(updatedBooking);
         setBookingsList((prev) => prev.map((b) => (b.id === selectedBooking.id ? updatedBooking : b)));
+        setLastUpdatedTicketBooking(updatedBooking);
 
         setStatusMessage({
           type: 'success',
@@ -1336,13 +1589,15 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
       {/* ──────────────── Status Feedback Banner ──────────────── */}
       {statusMessage && (
         <div
+          role="status"
+          aria-live="polite"
           className={`p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm font-bold border transition-all ${
             statusMessage.type === 'success'
               ? 'bg-emerald-50 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800'
               : 'bg-rose-50 text-rose-900 border-rose-300 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-800'
           }`}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             {statusMessage.type === 'success' ? (
               <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             ) : (
@@ -1351,12 +1606,13 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
             <span>{statusMessage.text}</span>
           </div>
 
-          <div className="flex items-center gap-2">
-            {statusMessage.type === 'success' && selectedBooking && (
+          <div className="flex items-center gap-2 shrink-0">
+            {statusMessage.type === 'success' && (lastUpdatedTicketBooking || selectedBooking) && (
               <Button
+                type="button"
                 variant="primary"
                 size="sm"
-                onClick={() => setShowTicketModal(true)}
+                onClick={() => openTicketModal(lastUpdatedTicketBooking || selectedBooking)}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm"
               >
                 <Printer className="w-3.5 h-3.5" />
@@ -1366,8 +1622,10 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
               </Button>
             )}
             <button
+              type="button"
+              aria-label="বার্তা বন্ধ করুন"
               onClick={() => setStatusMessage(null)}
-              className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-slate-500"
+              className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-slate-500"
             >
               <X className="w-4 h-4" />
             </button>
@@ -1378,19 +1636,20 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
       {/* ──────────────── Main Two-Column Structure ──────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ──────────────── Left Column: Organized Filter Console & Bookings List ──────────────── */}
-        <div className="lg:col-span-4 space-y-4">
-          <Card className="rounded-3xl border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden">
-            <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 space-y-3 bg-slate-50/50 dark:bg-slate-950/40">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-black flex items-center gap-1.5 text-slate-900 dark:text-white">
-                  <Filter className="w-3.5 h-3.5 text-blue-600" />
+        <div className="lg:col-span-4 space-y-4 min-w-0">
+          <Card className="rounded-3xl border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900">
+            <CardHeader className="flex-col items-stretch gap-3 p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 space-y-0">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm font-black flex items-center gap-2 text-slate-900 dark:text-white">
+                  <Filter className="w-4 h-4 text-blue-600 shrink-0" />
                   <span>ফিল্টার ও টিকিট সিলেকশন</span>
                 </CardTitle>
 
                 {hasActiveFilters && (
                   <button
+                    type="button"
                     onClick={handleResetFilters}
-                    className="text-[11px] font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1"
+                    className="px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-100 transition-colors flex items-center gap-1 shrink-0"
                   >
                     <RotateCcw className="w-3 h-3" />
                     <span>রিসেট</span>
@@ -1399,128 +1658,160 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
               </div>
 
               {/* Tab Selector: Requests vs All Bookings */}
-              <div className="flex items-center p-1 bg-slate-200/70 dark:bg-slate-800 rounded-2xl">
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-200/80 dark:bg-slate-800 rounded-2xl">
                 <button
                   type="button"
                   onClick={() => setViewTab('REQUESTS')}
-                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  className={`min-h-[38px] min-w-0 px-2 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                     viewTab === 'REQUESTS'
                       ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  <Bookmark className="w-3.5 h-3.5 text-amber-500" />
-                  <span>শিফট রিকোয়েস্ট</span>
-                  <Badge variant="warning" className="text-[10px] px-1 py-0 font-mono">
+                  <Bookmark className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span className="truncate">শিফট রিকোয়েস্ট</span>
+                  <Badge variant="warning" className="text-[10px] px-1.5 py-0 font-mono shrink-0">
                     {pendingRequestsCount}
                   </Badge>
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewTab('ALL')}
-                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  className={`min-h-[38px] min-w-0 px-2 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                     viewTab === 'ALL'
                       ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  <Users className="w-3.5 h-3.5 text-blue-600" />
-                  <span>সকল সক্রিয় বুকিং</span>
-                  <Badge variant="outline" className="text-[10px] px-1 py-0 font-mono">
+                  <Users className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span className="truncate">সকল বুকিং</span>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono shrink-0">
                     {bookingsList.length}
                   </Badge>
                 </button>
               </div>
 
-              {/* Filter 1: Target University */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
-                  <GraduationCap className="w-3.5 h-3.5 text-indigo-500" />
-                  <span>টার্গেট বিশ্ববিদ্যালয়:</span>
-                </label>
-                <select
-                  value={selectedUniversityFilter}
-                  onChange={(e) => setSelectedUniversityFilter(e.target.value)}
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                >
-                  {TARGET_UNIVERSITIES.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Filter 2: Bus Name */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
-                  <Bus className="w-3.5 h-3.5 text-sky-500" />
-                  <span>বাস অনুযায়ী ফিল্টার:</span>
-                </label>
-                <select
-                  value={selectedBusFilter}
-                  onChange={(e) => setSelectedBusFilter(e.target.value)}
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                >
-                  <option value="ALL">সকল বাস</option>
-                  {availableBusNames.map((bus) => (
-                    <option key={bus} value={bus}>
-                      {bus}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Filter 3 & 4: Gender & Zone */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                    জেন্ডার:
+              <search aria-label="টিকিট ফিল্টার এবং অনুসন্ধান" className="space-y-2.5">
+                {/* Filter 1: Target University */}
+                <div className="min-w-0">
+                  <label
+                    htmlFor={uniFilterId}
+                    className="text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1 flex items-center gap-1.5"
+                  >
+                    <GraduationCap className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                    <span>টার্গেট বিশ্ববিদ্যালয়:</span>
                   </label>
                   <select
-                    value={selectedGenderFilter}
-                    onChange={(e: any) => setSelectedGenderFilter(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white"
+                    id={uniFilterId}
+                    value={selectedUniversityFilter}
+                    onChange={(e) => setSelectedUniversityFilter(e.target.value)}
+                    className="w-full min-h-[38px] px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus-visible:outline-2 focus-visible:outline-blue-600 focus-visible:outline-offset-1"
                   >
-                    <option value="ALL">সকল</option>
-                    <option value="MALE">👨 ছাত্র / পুরুষ</option>
-                    <option value="FEMALE">👩 ছাত্রী / নারী</option>
+                    {universityFilterOptions.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                    সিট জোন:
+                {/* Filter 2: Bus Name */}
+                <div className="min-w-0">
+                  <label
+                    htmlFor={busFilterId}
+                    className="text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1 flex items-center gap-1.5"
+                  >
+                    <Bus className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                    <span>বাস অনুযায়ী ফিল্টার:</span>
                   </label>
                   <select
-                    value={selectedZoneFilter}
-                    onChange={(e: any) => setSelectedZoneFilter(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white"
+                    id={busFilterId}
+                    value={selectedBusFilter}
+                    onChange={(e) => setSelectedBusFilter(e.target.value)}
+                    className="w-full min-h-[38px] px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus-visible:outline-2 focus-visible:outline-blue-600 focus-visible:outline-offset-1"
                   >
-                    <option value="ALL">সকল জোন</option>
-                    <option value="VIP">🌟 VIP (A-B)</option>
-                    <option value="STANDARD">💺 রেগুলার (C-H)</option>
-                    <option value="ECONOMY">💰 ইকোনমি (I-J)</option>
+                    <option value="ALL">সকল বাস</option>
+                    {availableBusNames.map((bus) => (
+                      <option key={bus} value={bus}>
+                        {bus}
+                      </option>
+                    ))}
                   </select>
                 </div>
-              </div>
+
+                {/* Filter 3 & 4: Gender & Zone */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="min-w-0">
+                    <label
+                      htmlFor={genderFilterId}
+                      className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1"
+                    >
+                      জেন্ডার:
+                    </label>
+                    <select
+                      id={genderFilterId}
+                      value={selectedGenderFilter}
+                      onChange={(e) => setSelectedGenderFilter(e.target.value as 'ALL' | 'MALE' | 'FEMALE')}
+                      className="w-full min-w-0 min-h-[38px] px-2.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus-visible:outline-2 focus-visible:outline-blue-600 focus-visible:outline-offset-1"
+                    >
+                      <option value="ALL">সকল</option>
+                      <option value="MALE">👨 ছাত্র / পুরুষ</option>
+                      <option value="FEMALE">👩 ছাত্রী / নারী</option>
+                    </select>
+                  </div>
+
+                  <div className="min-w-0">
+                    <label
+                      htmlFor={zoneFilterId}
+                      className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1"
+                    >
+                      সিট জোন:
+                    </label>
+                    <select
+                      id={zoneFilterId}
+                      value={selectedZoneFilter}
+                      onChange={(e) => setSelectedZoneFilter(e.target.value as 'ALL' | 'VIP' | 'STANDARD' | 'ECONOMY')}
+                      className="w-full min-w-0 min-h-[38px] px-2.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus-visible:outline-2 focus-visible:outline-blue-600 focus-visible:outline-offset-1"
+                    >
+                      <option value="ALL">সকল জোন</option>
+                      <option value="VIP">🌟 VIP (A-B)</option>
+                      <option value="STANDARD">💺 রেগুলার (C-H)</option>
+                      <option value="ECONOMY">💰 ইকোনমি (I-J)</option>
+                    </select>
+                  </div>
+                </div>
+              </search>
             </CardHeader>
 
             <CardContent className="p-4 space-y-3">
               {/* Search Box */}
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <label htmlFor={searchInputId} className="sr-only">
+                  টিকিট নম্বর, মোবাইল, নাম বা সিট দিয়ে খুঁজুন
+                </label>
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 <input
-                  type="text"
+                  id={searchInputId}
+                  type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="টিকিট নং, মোবাইল, নাম বা সিট..."
-                  className="w-full pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-slate-900 dark:text-white"
+                  className="w-full min-h-[40px] pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold focus-visible:outline-2 focus-visible:outline-blue-600 focus-visible:outline-offset-1 text-slate-900 dark:text-white"
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    aria-label="অনুসন্ধান মুছুন"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               {/* Matching Count Header */}
-              <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold px-1">
+              <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-bold px-1">
                 <span>ফিল্টার অনুযায়ী তালিকা:</span>
                 <span className="font-mono text-blue-600 dark:text-blue-400">
                   {filteredBookings.length} টি টিকিট
@@ -1528,12 +1819,13 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
               </div>
 
               {/* Bookings List */}
-              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[520px] overflow-y-auto overscroll-contain pr-1">
                 {filteredBookings.length === 0 ? (
                   <div className="text-center py-10 space-y-2 text-slate-400">
                     <Search className="w-7 h-7 mx-auto stroke-1" />
                     <p className="text-xs font-bold">কোনো টিকিট বা রিকোয়েস্ট পাওয়া যায়নি</p>
                     <button
+                      type="button"
                       onClick={handleResetFilters}
                       className="text-xs text-blue-600 dark:text-blue-400 underline font-bold"
                     >
@@ -1545,54 +1837,66 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
                     const bNum = b.booking_number || b.bookingNumber || 'BK-2026';
                     const name = b.contact_name || b.contactName || 'যাত্রী';
                     const phone = b.contact_phone || b.contactPhone || '—';
-                    const primarySeat = (b.seats || [])[0]?.seat_number || 'A1';
+                    const bookingSeats = getBookingSeatsList(b);
+                    const primarySeat = bookingSeats[0] || 'A1';
+                    const seatsDisplay = bookingSeats.length > 0 ? bookingSeats.join(', ') : primarySeat;
                     const zInfo = getSeatZoneInfo(primarySeat);
                     const isSelected = selectedBooking?.id === b.id;
                     const busName = getBookingBusName(b);
                     const uni = getBookingUniversity(b);
                     const gender = (b.passenger_gender || b.passengers?.[0]?.gender || 'MALE').toUpperCase();
+                    const isCancelled = (b.booking_status || b.bookingStatus || '').toUpperCase() === 'CANCELLED';
 
                     return (
-                      <div
+                      <button
                         key={b.id}
+                        type="button"
                         onClick={() => {
                           setSelectedBooking(b);
-                          setSelectedOldSeat((b.seats || [])[0]?.seat_number || 'A1');
+                          setSelectedOldSeat(primarySeat);
                           setTargetVacantSeat('');
                           setTargetSwapSeat(null);
                           setTargetOtherBusSeat('');
                           setStatusMessage(null);
+                          setLastUpdatedTicketBooking(null);
                         }}
-                        className={`p-3 rounded-2xl border transition-all cursor-pointer relative overflow-hidden ${
+                        className={`w-full text-left p-3 rounded-2xl border transition-all cursor-pointer relative overflow-hidden focus-visible:outline-2 focus-visible:outline-blue-600 focus-visible:outline-offset-1 ${
                           isSelected
                             ? 'bg-blue-50/90 dark:bg-blue-950/50 border-blue-500 shadow-md ring-2 ring-blue-500/30'
-                            : 'bg-slate-50/50 dark:bg-slate-900/60 border-slate-200/80 dark:border-slate-800 hover:border-blue-300 hover:bg-white dark:hover:bg-slate-900'
+                            : 'bg-slate-50/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-blue-300 hover:bg-white dark:hover:bg-slate-900'
                         }`}
                       >
                         {isSelected && (
-                          <div className="absolute top-0 right-0 w-2 h-full bg-blue-600 rounded-r-2xl" />
+                          <div className="absolute top-0 right-0 w-1.5 h-full bg-blue-600" />
                         )}
 
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono font-black text-xs text-blue-600 dark:text-blue-400">
+                        <div className="flex items-center justify-between gap-2 pr-1">
+                          <span className="font-mono font-black text-xs text-blue-600 dark:text-blue-400 truncate">
                             {bNum}
                           </span>
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black font-mono border ${zInfo.badgeClass}`}>
-                            সিট: {primarySeat} (৳{zInfo.fare})
-                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {isCancelled && (
+                              <Badge variant="danger" className="text-[9px] px-1.5 py-0 font-bold">
+                                বাতিল
+                              </Badge>
+                            )}
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black font-mono border ${zInfo.badgeClass}`}>
+                              সিট: {seatsDisplay} (৳{zInfo.fare})
+                            </span>
+                          </div>
                         </div>
 
-                        <div className="mt-1 flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-1 font-bold text-slate-800 dark:text-slate-100">
-                            <span>{name}</span>
-                            <span className={`text-[9px] px-1 py-0.2 rounded font-bold ${gender === 'FEMALE' ? 'bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'}`}>
+                        <div className="mt-1.5 flex items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-100 min-w-0">
+                            <span className="truncate">{name}</span>
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0 ${gender === 'FEMALE' ? 'bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'}`}>
                               {gender === 'FEMALE' ? '👩 নারী' : '👨 পুরুষ'}
                             </span>
                           </div>
-                          <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">{phone}</span>
+                          <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px] shrink-0">{phone}</span>
                         </div>
 
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                        <div className="mt-2 flex flex-wrap items-center gap-1">
                           <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold border border-indigo-200 dark:border-indigo-800 truncate max-w-[190px]">
                             🎓 {uni}
                           </span>
@@ -1606,7 +1910,7 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
                             💬 {b.shift_request}
                           </div>
                         )}
-                      </div>
+                      </button>
                     );
                   })
                 )}
@@ -1616,7 +1920,7 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
         </div>
 
         {/* ──────────────── Right Column: Shift Workbench & Map ──────────────── */}
-        <div className="lg:col-span-8 space-y-4">
+        <div className="lg:col-span-8 space-y-4 min-w-0">
           {!selectedBooking ? (
             <Card className="rounded-3xl border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 p-12 text-center">
               <div className="max-w-md mx-auto space-y-3 py-10">
@@ -1636,11 +1940,14 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
               {/* Selected Ticket Profile Header */}
               <Card className="rounded-3xl border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden">
                 <div className="bg-slate-50 dark:bg-slate-950/60 p-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono font-black text-sm text-blue-600 dark:text-blue-400">
                       {selectedBooking.booking_number || selectedBooking.bookingNumber}
                     </span>
-                    <Badge variant="success" className="text-[10px] font-bold">
+                    <Badge
+                      variant={(selectedBooking.booking_status || '').toUpperCase() === 'CANCELLED' ? 'danger' : 'success'}
+                      className="text-[10px] font-bold"
+                    >
                       {selectedBooking.booking_status || 'CONFIRMED'}
                     </Badge>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeGender === 'FEMALE' ? 'bg-pink-100 text-pink-700 border border-pink-300 dark:bg-pink-950 dark:text-pink-300' : 'bg-blue-100 text-blue-700 border border-blue-300 dark:bg-blue-950 dark:text-blue-300'}`}>
@@ -1648,11 +1955,35 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[10px] text-slate-400 font-bold">বর্তমান আসন:</span>
-                    <span className={`px-2.5 py-1 rounded-xl font-mono font-black text-xs border ${currentSeatZone.badgeClass}`}>
-                      সিট {selectedOldSeat} • {currentSeatZone.shortLabel} • ৳{currentSeatZone.fare}
-                    </span>
+                    {getBookingSeatsList(selectedBooking).length > 1 ? (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {getBookingSeatsList(selectedBooking).map((seatCode) => (
+                          <button
+                            key={seatCode}
+                            type="button"
+                            onClick={() => {
+                              setSelectedOldSeat(seatCode);
+                              setTargetVacantSeat('');
+                              setTargetSwapSeat(null);
+                              setTargetOtherBusSeat('');
+                            }}
+                            className={`px-2 py-1 rounded-lg font-mono font-black text-xs border transition-all ${
+                              selectedOldSeat.toUpperCase() === seatCode
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                            }`}
+                          >
+                            {seatCode}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className={`px-2.5 py-1 rounded-xl font-mono font-black text-xs border ${currentSeatZone.badgeClass}`}>
+                        সিট {selectedOldSeat} • {currentSeatZone.shortLabel} • ৳{currentSeatZone.fare}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1661,10 +1992,10 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
                     <div>
                       <span className="text-slate-400 text-[10px] block font-bold">যাত্রীর নাম ও মোবাইল:</span>
                       <span className="font-bold text-slate-900 dark:text-white block truncate">
-                        {activePassenger?.passenger_name || 'Passenger'}
+                        {activePassenger?.passenger_name || activePassenger?.passengerName || 'Passenger'}
                       </span>
                       <span className="text-slate-500 font-mono text-[11px]">
-                        {selectedBooking.contact_phone || '—'}
+                        {selectedBooking.contact_phone || selectedBooking.contactPhone || '—'}
                       </span>
                     </div>
 
@@ -1688,7 +2019,9 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
                     <div>
                       <span className="text-slate-400 text-[10px] block font-bold">যাত্রা ও সময়:</span>
                       <span className="font-bold text-slate-800 dark:text-slate-200 block">
-                        {selectedBooking.trip?.departure_date ? formatDate(selectedBooking.trip.departure_date) : 'Today'}
+                        {selectedBooking.trip?.departure_date || selectedBooking.trip?.departureDate
+                          ? formatDate(selectedBooking.trip?.departure_date || selectedBooking.trip?.departureDate)
+                          : 'Today'}
                       </span>
                       <span className="text-slate-500 text-[11px]">
                         {selectedBooking.trip?.departure_time || selectedBooking.trip?.departureTime || 'রাত ১০:৩০'}
@@ -1877,8 +2210,8 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
 
                     {/* Live Dynamic Fare Difference Card */}
                     {relocateFareComp && (
-                      <div className={`p-4 rounded-2xl border-2 space-y-2 animate-in fade-in ${relocateFareComp.badgeColor}`}>
-                        <div className="flex items-center justify-between">
+                      <div className={`p-4 rounded-2xl border-2 space-y-3 animate-in fade-in ${relocateFareComp.badgeColor}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <DollarSign className="w-4 h-4 shrink-0" />
                             <h4 className="text-xs font-black">
@@ -1902,6 +2235,24 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
                             <span className="font-bold">সিট {targetVacantSeat} ({relocateFareComp.newZone}) = ৳{relocateFareComp.newFare}</span>
                           </div>
                         </div>
+
+                        {previewTicketBooking && (
+                          <div className="pt-2 border-t border-black/10 dark:border-white/10 flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[11px] font-bold">
+                              বিকল্প সিট [{targetVacantSeat}] নির্বাচিত হয়েছে — নতুন টিকিট প্রিভিউ ও প্রিন্ট প্রস্তুত:
+                            </span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="primary"
+                              onClick={() => openTicketModal(previewTicketBooking)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>নতুন টিকিট দেখুন / প্রিন্ট</span>
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </CardContent>
@@ -1911,12 +2262,12 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
               {/* ──────────────── TAB 2: MUTUAL SEAT SWAP ──────────────── */}
               {activeTab === 'SWAP' && (
                 <Card className="rounded-3xl border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden">
-                  <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <CardHeader className="flex-col items-stretch gap-1 pb-3 border-b border-slate-100 dark:border-slate-800">
                     <CardTitle className="text-sm font-black flex items-center gap-2 text-slate-900 dark:text-white">
-                      <Repeat className="w-4 h-4 text-amber-600" />
+                      <Repeat className="w-4 h-4 text-amber-600 shrink-0" />
                       <span>যাত্রীদ্বয়ের আসন অদলবদল (Mutual Seat Exchange / Swap)</span>
                     </CardTitle>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       বাসে খালি সিট না থাকলে অপর কোনো বুকড যাত্রীর আসনে ক্লিক করে পারস্পরিক সমঝোতায় সিট অদলবদল করুন।
                     </p>
                   </CardHeader>
@@ -1936,9 +2287,9 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
                         </div>
                         <div className="text-xs space-y-1">
                           <p className="font-bold text-slate-900 dark:text-white">
-                            {activePassenger?.passenger_name} ({activeGender === 'FEMALE' ? 'নারী' : 'পুরুষ'})
+                            {activePassenger?.passenger_name || activePassenger?.passengerName} ({activeGender === 'FEMALE' ? 'নারী' : 'পুরুষ'})
                           </p>
-                          <p className="text-slate-500 font-mono text-[11px]">মোবাইল: {selectedBooking.contact_phone || '—'}</p>
+                          <p className="text-slate-500 font-mono text-[11px]">মোবাইল: {selectedBooking.contact_phone || selectedBooking.contactPhone || '—'}</p>
                           <p className="text-[11px] font-bold text-blue-600 dark:text-blue-400">
                             {currentSeatZone.shortLabel} (৳{currentSeatZone.fare})
                           </p>
@@ -2017,7 +2368,7 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
 
                     {/* Swap Mutual Gender and Fare Notice */}
                     {targetSwapSeat && (
-                      <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl space-y-2 text-xs animate-in fade-in">
+                      <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl space-y-2.5 text-xs animate-in fade-in">
                         <div className="flex items-center gap-2 font-black text-amber-900 dark:text-amber-200">
                           <ShieldCheck className="w-4 h-4 text-emerald-600" />
                           <span>পারস্পরিক জেন্ডার ও ভাড়া যাচাই সম্পন্ন:</span>
@@ -2025,6 +2376,23 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
                         <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
                           সিট {selectedOldSeat} (৳{currentSeatZone.fare}) এবং সিট {targetSwapSeat.seatNumber} (৳{getSeatZoneInfo(targetSwapSeat.seatNumber).fare}) এর মধ্যে সোয়াপ করা হচ্ছে। উভয় যাত্রীর সংলগ্ন আসনে জেন্ডার নিয়মাবলী সুরক্ষিত থাকবে।
                         </p>
+                        {previewTicketBooking && (
+                          <div className="pt-2 border-t border-amber-200 dark:border-amber-800/60 flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[11px] font-bold text-amber-900 dark:text-amber-200">
+                              বিকল্প সিট [{targetSwapSeat.seatNumber}] এর নতুন টিকিট প্রিভিউ:
+                            </span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="primary"
+                              onClick={() => openTicketModal(previewTicketBooking)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>নতুন টিকিট দেখুন / প্রিন্ট</span>
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </CardContent>
@@ -2034,12 +2402,12 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
               {/* ──────────────── TAB 3: TRANSFER TO ALTERNATIVE BUS ──────────────── */}
               {activeTab === 'TRANSFER_BUS' && (
                 <Card className="rounded-3xl border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden">
-                  <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <CardHeader className="flex-col items-stretch gap-1 pb-3 border-b border-slate-100 dark:border-slate-800">
                     <CardTitle className="text-sm font-black flex items-center gap-2 text-slate-900 dark:text-white">
-                      <Bus className="w-4 h-4 text-sky-600" />
+                      <Bus className="w-4 h-4 text-sky-600 shrink-0" />
                       <span>বিকল্প বাসে স্থানান্তর (একই বা অন্য বিশ্ববিদ্যালয়)</span>
                     </CardTitle>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       যাত্রী অন্য কোনো বাসে যেতে চাইলে বিকল্প বাস সিলেক্ট করে সেখানকার সিট বেছে নিন এবং নতুন টিকিট প্রিন্ট করুন।
                     </p>
                   </CardHeader>
@@ -2047,37 +2415,38 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
                   <CardContent className="p-4 sm:p-6 space-y-4">
                     {/* Alternate Bus Selector Grid */}
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                      <div className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
                         গন্তব্য বাস নির্বাচন করুন:
-                      </label>
+                      </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         {alternateTrips.map((trip) => {
                           const isChosen = targetOtherTripId === trip.id;
                           const busName = trip.bus?.busName || trip.bus?.bus_name || 'কোচ';
-                          const busNo = trip.bus?.busNumber || trip.bus?.bus_number || trip.trip_code;
-                          const uni = trip.targetUniversity || 'বিশ্ববিদ্যালয়';
+                          const busNo = trip.bus?.busNumber || trip.bus?.bus_number || trip.trip_code || trip.tripCode;
+                          const uni = trip.targetUniversity || trip.target_university || 'বিশ্ববিদ্যালয়';
                           return (
-                            <div
+                            <button
                               key={trip.id}
+                              type="button"
                               onClick={() => {
                                 setTargetOtherTripId(trip.id);
                                 setTargetOtherBusSeat('');
                               }}
-                              className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                              className={`w-full text-left p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-2 focus-visible:outline-2 focus-visible:outline-sky-600 focus-visible:outline-offset-1 ${
                                 isChosen
                                   ? 'bg-sky-50 dark:bg-sky-950/40 border-sky-500 ring-2 ring-sky-500/20'
                                   : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-sky-300'
                               }`}
                             >
-                              <div>
-                                <p className="font-bold text-xs text-slate-900 dark:text-white">{busName}</p>
-                                <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">🎓 {uni}</p>
-                                <p className="text-[10px] text-slate-500 font-mono">{busNo} • {trip.departureTime || '১০:৩০ PM'}</p>
+                              <div className="min-w-0">
+                                <p className="font-bold text-xs text-slate-900 dark:text-white truncate">{busName}</p>
+                                <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold truncate">🎓 {uni}</p>
+                                <p className="text-[10px] text-slate-500 font-mono truncate">{busNo} • {trip.departureTime || trip.departure_time || '১০:৩০ PM'}</p>
                               </div>
-                              <Badge variant={isChosen ? 'primary' : 'outline'} className="text-[10px]">
+                              <Badge variant={isChosen ? 'primary' : 'outline'} className="text-[10px] shrink-0">
                                 {isChosen ? 'সিলেক্টেড' : 'বাছাই করুন'}
                               </Badge>
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -2120,12 +2489,30 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
                         </div>
 
                         {transferBusFareComp && (
-                          <div className={`p-3 rounded-2xl border ${transferBusFareComp.badgeColor} text-xs space-y-1`}>
-                            <div className="flex items-center justify-between font-bold">
+                          <div className={`p-3.5 rounded-2xl border ${transferBusFareComp.badgeColor} text-xs space-y-2.5`}>
+                            <div className="flex flex-wrap items-center justify-between gap-2 font-bold">
                               <span>ভাড়া সমন্বয়: {transferBusFareComp.titleBn}</span>
                               <span className="font-mono">{transferBusFareComp.amountText}</span>
                             </div>
                             <p className="text-[11px]">{transferBusFareComp.summaryBn}</p>
+
+                            {previewTicketBooking && (
+                              <div className="pt-2 border-t border-black/10 dark:border-white/10 flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-[11px] font-bold">
+                                  বিকল্প বাস ও সিট [{targetOtherBusSeat}] নির্বাচিত — নতুন টিকিট প্রস্তুত:
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="primary"
+                                  onClick={() => openTicketModal(previewTicketBooking)}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                  <span>নতুন টিকিট দেখুন / প্রিন্ট</span>
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -2137,12 +2524,12 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
               {/* ──────────────── TAB 4: CANCEL SEAT & REFUND ──────────────── */}
               {activeTab === 'CANCEL_SEAT' && (
                 <Card className="rounded-3xl border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden">
-                  <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <CardHeader className="flex-col items-stretch gap-1 pb-3 border-b border-slate-100 dark:border-slate-800">
                     <CardTitle className="text-sm font-black flex items-center gap-2 text-rose-600 dark:text-rose-400">
-                      <Ban className="w-4 h-4" />
+                      <Ban className="w-4 h-4 shrink-0" />
                       <span>আসন বাতিল ও রিফান্ড ক্যালকুলেটর</span>
                     </CardTitle>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       যাত্রী সিট ছেড়ে দিলে বা যাত্রা বাতিল করলে সিটটি তাত্ক্ষণিক উন্মুক্ত হয়ে যাবে এবং প্রদেয় রিফান্ড টাকা নির্ধারিত হবে।
                     </p>
                   </CardHeader>
@@ -2246,14 +2633,50 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
 
               {/* ──────────────── Action Confirmation Workbench ──────────────── */}
               <Card className="rounded-3xl border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900">
-                <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex-wrap gap-2">
                   <CardTitle className="text-sm font-black flex items-center gap-2 text-slate-900 dark:text-white">
                     <CheckCircle2 className="w-4 h-4 text-purple-600" />
                     <span>অপারেশন চূড়ান্ত নিশ্চিতকরণ</span>
                   </CardTitle>
+                  {previewTicketBooking && (
+                    <Badge variant="success" className="text-[10px] font-bold">
+                      নতুন টিকিট প্রস্তুত
+                    </Badge>
+                  )}
                 </CardHeader>
 
                 <CardContent className="p-4 sm:p-5 space-y-4">
+                  {/* Persistent New Ticket Ready Banner right inside Workbench after confirmation */}
+                  {statusMessage?.type === 'success' && lastUpdatedTicketBooking && (
+                    <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border-2 border-emerald-400/70 dark:border-emerald-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <div className="text-xs font-black text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span>
+                            {statusMessage.actionType === 'CANCEL'
+                              ? 'সিট বাতিল সম্পন্ন — রিফান্ড ভাউচার প্রস্তুত!'
+                              : 'আপডেটেড নতুন টিকিট প্রিন্টের জন্য প্রস্তুত!'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                          {statusMessage.text}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        onClick={() => openTicketModal(lastUpdatedTicketBooking)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md shrink-0"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>
+                          {statusMessage.actionType === 'CANCEL' ? 'রিফান্ড ভাউচার দেখুন' : 'নতুন টিকিট প্রিন্ট করুন'}
+                        </span>
+                      </Button>
+                    </div>
+                  )}
+
                   {/* Preset Reasons (Only for Relocate, Swap, and Transfer Bus) */}
                   {activeTab !== 'CANCEL_SEAT' && (
                     <>
@@ -2341,7 +2764,7 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
 
                     <div className="text-xs text-right text-slate-600 dark:text-slate-300">
                       <p className="font-bold">
-                        {activePassenger?.passenger_name} ({activeGender === 'FEMALE' ? 'নারী' : 'পুরুষ'})
+                        {activePassenger?.passenger_name || activePassenger?.passengerName} ({activeGender === 'FEMALE' ? 'নারী' : 'পুরুষ'})
                       </p>
                       <p className="text-[11px] text-slate-400 font-mono">
                         {activeTab === 'RELOCATE'
@@ -2355,50 +2778,66 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
                     </div>
                   </div>
 
-                  {/* Submit Button */}
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    disabled={
-                      isProcessing ||
-                      !selectedOldSeat ||
-                      (activeTab === 'RELOCATE' && !targetVacantSeat) ||
-                      (activeTab === 'SWAP' && !targetSwapSeat) ||
-                      (activeTab === 'TRANSFER_BUS' && (!targetOtherTripId || !targetOtherBusSeat))
-                    }
-                    onClick={() => setShowConfirmModal(true)}
-                    className={`w-full font-black rounded-2xl py-3.5 shadow-lg text-sm flex items-center justify-center gap-2 ${
-                      activeTab === 'CANCEL_SEAT'
-                        ? 'bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-700 hover:to-red-800 shadow-rose-500/20 text-white'
-                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/20 text-white'
-                    }`}
-                  >
-                    {isProcessing ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>প্রসেসিং হচ্ছে...</span>
-                      </>
-                    ) : (
-                      <>
-                        {activeTab === 'CANCEL_SEAT' ? <Ban className="w-4 h-4" /> : <ArrowLeftRight className="w-4 h-4" />}
-                        <span>
-                          {activeTab === 'RELOCATE'
-                            ? targetVacantSeat
-                              ? `সিট [${selectedOldSeat}] থেকে [${targetVacantSeat}]-এ স্থানান্তর নিশ্চিত করুন`
-                              : 'ম্যাপ থেকে পছন্দসই খালি আসন সিলেক্ট করুন'
-                            : activeTab === 'SWAP'
-                            ? targetSwapSeat
-                              ? `সিট [${selectedOldSeat}] ও [${targetSwapSeat.seatNumber}] অদলবদল (Swap) করুন`
-                              : 'সোয়াপ করার জন্য অপর যাত্রীর আসন সিলেক্ট করুন'
-                            : activeTab === 'TRANSFER_BUS'
-                            ? targetOtherBusSeat
-                              ? `বিকল্প বাসের সিট [${targetOtherBusSeat}]-এ স্থানান্তর করুন`
-                              : 'নতুন বাসের আসন সিলেক্ট করুন'
-                            : `সিট [${selectedOldSeat}] বাতিল ও ৳${Math.max(0, currentSeatZone.fare - cancellationFee)} রিফান্ড নিশ্চিত করুন`}
-                        </span>
-                      </>
+                  {/* Action Buttons (Confirm + Direct New Ticket Option when alternative seat is selected) */}
+                  <div className={`grid gap-2.5 ${previewTicketBooking ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="lg"
+                      disabled={
+                        isProcessing ||
+                        !selectedOldSeat ||
+                        (activeTab === 'RELOCATE' && !targetVacantSeat) ||
+                        (activeTab === 'SWAP' && !targetSwapSeat) ||
+                        (activeTab === 'TRANSFER_BUS' && (!targetOtherTripId || !targetOtherBusSeat))
+                      }
+                      onClick={() => setShowConfirmModal(true)}
+                      className={`w-full font-black rounded-2xl py-3.5 shadow-lg text-sm flex items-center justify-center gap-2 ${
+                        activeTab === 'CANCEL_SEAT'
+                          ? 'bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-700 hover:to-red-800 shadow-rose-500/20 text-white'
+                          : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/20 text-white'
+                      }`}
+                    >
+                      {isProcessing ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>প্রসেসিং হচ্ছে...</span>
+                        </>
+                      ) : (
+                        <>
+                          {activeTab === 'CANCEL_SEAT' ? <Ban className="w-4 h-4" /> : <ArrowLeftRight className="w-4 h-4" />}
+                          <span>
+                            {activeTab === 'RELOCATE'
+                              ? targetVacantSeat
+                                ? `সিট [${selectedOldSeat}] ➔ [${targetVacantSeat}] নিশ্চিত করুন`
+                                : 'ম্যাপ থেকে পছন্দসই খালি আসন সিলেক্ট করুন'
+                              : activeTab === 'SWAP'
+                              ? targetSwapSeat
+                                ? `সিট [${selectedOldSeat}] ও [${targetSwapSeat.seatNumber}] অদলবদল করুন`
+                                : 'সোয়াপ করার জন্য অপর যাত্রীর আসন সিলেক্ট করুন'
+                              : activeTab === 'TRANSFER_BUS'
+                              ? targetOtherBusSeat
+                                ? `বিকল্প বাসের সিট [${targetOtherBusSeat}]-এ স্থানান্তর করুন`
+                                : 'নতুন বাসের আসন সিলেক্ট করুন'
+                              : `সিট [${selectedOldSeat}] বাতিল ও ৳${Math.max(0, currentSeatZone.fare - cancellationFee)} রিফান্ড নিশ্চিত করুন`}
+                          </span>
+                        </>
+                      )}
+                    </Button>
+
+                    {previewTicketBooking && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        onClick={() => openTicketModal(previewTicketBooking)}
+                        className="w-full font-black rounded-2xl py-3.5 text-sm flex items-center justify-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-2 border-emerald-400 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-700 shadow-sm"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>নতুন টিকিট প্রিভিউ / প্রিন্ট</span>
+                      </Button>
                     )}
-                  </Button>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -2431,7 +2870,7 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
                 <p className="text-xs text-slate-500">
                   {activeTab === 'CANCEL_SEAT'
                     ? 'নিশ্চিত করলে আসনটি তাত্ক্ষণিক খালি হয়ে যাবে।'
-                    : 'নিশ্চিত করলে পূর্বের আসন তাৎক্ষণিক সবার জন্য উন্মুক্ত হয়ে যাবে।'}
+                    : 'নিশ্চিত করলে পূর্বের আসন তাৎক্ষণিক সবার জন্য উন্মুক্ত হয়ে যাবে এবং নতুন টিকিট তৈরি হবে।'}
                 </p>
               </div>
             </div>
@@ -2446,7 +2885,7 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
               <div className="flex justify-between">
                 <span className="text-slate-400">যাত্রী:</span>
                 <span className="font-bold text-slate-900 dark:text-white">
-                  {activePassenger?.passenger_name} ({activeGender === 'FEMALE' ? 'নারী' : 'পুরুষ'})
+                  {activePassenger?.passenger_name || activePassenger?.passengerName} ({activeGender === 'FEMALE' ? 'নারী' : 'পুরুষ'})
                 </span>
               </div>
 
@@ -2495,38 +2934,62 @@ export function SeatShiftClient({ initialBookings, initialTrips = [] }: Props) {
               </div>
             </div>
 
-            <div className="flex items-center gap-3 pt-1">
+            <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
               <Button
+                type="button"
                 variant="outline"
-                className="w-1/2 rounded-xl text-xs font-bold"
+                className="w-full sm:w-auto sm:flex-1 rounded-xl text-xs font-bold"
                 onClick={() => setShowConfirmModal(false)}
                 disabled={isProcessing}
               >
                 না, ফিরে যান
               </Button>
-              <Button
-                variant="primary"
-                className={`w-1/2 rounded-xl text-xs font-bold ${
-                  activeTab === 'CANCEL_SEAT'
-                    ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                }`}
-                onClick={handleExecuteOperation}
-                disabled={isProcessing}
-              >
-                {isProcessing ? 'প্রসেসিং হচ্ছে...' : 'হ্যাঁ, নিশ্চিত করুন'}
-              </Button>
+              {activeTab !== 'CANCEL_SEAT' ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full sm:w-auto sm:flex-1 rounded-xl text-xs font-bold border-emerald-500 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                    onClick={() => handleExecuteOperation(false)}
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? 'প্রসেসিং...' : 'শুধু নিশ্চিত করুন'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    className="w-full sm:w-auto sm:flex-1 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={() => handleExecuteOperation(true)}
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? 'প্রসেসিং...' : 'নিশ্চিত ও নতুন টিকিট'}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  type="button"
+                  variant="primary"
+                  className="w-full sm:w-auto sm:flex-1 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white"
+                  onClick={() => handleExecuteOperation(false)}
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? 'প্রসেসিং হচ্ছে...' : 'হ্যাঁ, নিশ্চিত করুন'}
+                </Button>
+              )}
             </div>
           </div>
         </div>
       )}
 
       {/* ──────────────── Ticket Print / Preview Modal ──────────────── */}
-      {showTicketModal && selectedBooking && (
+      {showTicketModal && (ticketModalBooking || lastUpdatedTicketBooking || selectedBooking) && (
         <PaymentReceiptModal
-          booking={selectedBooking}
+          booking={ticketModalBooking || lastUpdatedTicketBooking || selectedBooking}
           isOpen={showTicketModal}
-          onClose={() => setShowTicketModal(false)}
+          onClose={() => {
+            setShowTicketModal(false);
+            setTicketModalBooking(null);
+          }}
         />
       )}
     </div>

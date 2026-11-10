@@ -12,8 +12,9 @@ import app.db.base  # noqa: F401 — registers all models on Base.metadata
 # access to the values within the .ini file in use.
 config = context.config
 
-# Override the sqlalchemy.url from the app settings so one source of truth.
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Override the sqlalchemy.url from the app settings so one source of truth (sync driver for Alembic).
+_sync_db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://").replace("sqlite+aiosqlite://", "sqlite://")
+config.set_main_option("sqlalchemy.url", _sync_db_url)
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
